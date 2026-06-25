@@ -1,0 +1,20 @@
+{
+  "version": 3,
+  "artifactType": {
+    "type": "MERGED_MANIFESTS",
+    "kind": "Directory"
+  },
+  "applicationId": "com.qtwl.gateway",
+  "variantName": "debug",
+  "elements": [
+    {
+      "type": "SINGLE",
+      "filters": [],
+      "attributes": [],
+      "versionCode": 31,
+      "versionName": "2.6.2",
+      "outputFile": "AndroidManifest.xml"
+    }
+  ],
+  "elementType": "File"
+}

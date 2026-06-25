@@ -1,0 +1,244 @@
+package com.qtwl.gateway.gateway
+
+import com.qtwl.gateway.data.db.AppDatabase
+import com.qtwl.gateway.data.model.Provider
+import com.qtwl.gateway.network.UpstreamClient
+import io.ktor.http.ContentType
+import io.ktor.http.HttpStatusCode
+import io.ktor.server.application.ApplicationCall
+import io.ktor.server.application.call
+import io.ktor.server.application.install
+import io.ktor.server.cio.CIO
+import io.ktor.server.engine.EmbeddedServer
+import io.ktor.server.engine.embeddedServer
+import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.server.request.receiveText
+import io.ktor.server.response.respondBytesWriter
+import io.ktor.server.response.respondText
+import io.ktor.server.routing.get
+import io.ktor.server.routing.post
+import io.ktor.server.routing.routing
+import io.ktor.serialization.kotlinx.json.json
+import io.ktor.utils.io.ByteWriteChannel
+import io.ktor.utils.io.writeFully
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+
+/**
+ * 本地 AI 网关服务（Ktor Server）
+ * 运行在手机本地，转发 AI 请求到上游服务商
+ */
+class GatewayService(private val database: AppDatabase) {
+
+    private var server: EmbeddedServer<*, *>? = null
+    private val json = Json { ignoreUnknownKeys = true; prettyPrint = false }
+
+    /**
+     * 启动网关服务器
+     * @param port 监听端口，默认 8889
+     */
+    fun start(port: Int = 8889) {
+        if (server != null) return
+
+        val embedded = embeddedServer(CIO, port = port) {
+            install(ContentNegotiation) {
+                json(json)
+            }
+
+            routing {
+                // 健康检查
+                get("/health") {
+                    call.respondText("OK", ContentType.Text.Plain)
+                }
+
+                // 获取模型列表 (OpenAI Compatible)
+                get("/v1/models") {
+                    try {
+                        val models = database.aiModelDao().getAllModelsList()
+                        val modelList = models.map { model ->
+                            buildJsonObject {
+                                put("id", JsonPrimitive(model.modelId))
+                                put("object", JsonPrimitive("model"))
+                                put("owned_by", JsonPrimitive("custom"))
+                                put("display_name", JsonPrimitive(model.displayName))
+                            }
+                        }
+                        val response = buildJsonObject {
+                            put("object", JsonPrimitive("list"))
+                            put("data", JsonArray(modelList))
+                        }
+                        call.respondText(
+                            contentType = ContentType.Application.Json,
+                            text = response.toString()
+                        )
+                    } catch (e: Exception) {
+                        call.respondText(
+                            contentType = ContentType.Application.Json,
+                            status = HttpStatusCode.InternalServerError,
+                            text = """{"error":"Failed to fetch models: ${e.message}"}"""
+                        )
+                    }
+                }
+
+                // 聊天补全接口 (兼容 OpenAI)
+                post("/v1/chat/completions") {
+                    val requestBody = call.receiveText()
+                    val requestJson = try {
+                        json.parseToJsonElement(requestBody).jsonObject
+                    } catch (e: Exception) {
+                        call.respondText(
+                            contentType = ContentType.Application.Json,
+                            status = HttpStatusCode.BadRequest,
+                            text = """{"error":"Invalid JSON request body"}"""
+                        )
+                        return@post
+                    }
+
+                    val modelId = try {
+                        requestJson["model"]?.jsonPrimitive?.content
+                    } catch (_: Exception) { null }
+                        ?: run {
+                            call.respondText(
+                                contentType = ContentType.Application.Json,
+                                status = HttpStatusCode.BadRequest,
+                                text = """{"error":"model field is required"}"""
+                            )
+                            return@post
+                        }
+
+                    val stream = try {
+                        val prim = requestJson["stream"]?.jsonPrimitive
+                        prim?.content?.toBooleanStrictOrNull() ?: false
+                    } catch (_: Exception) { false }
+
+                    // 查找模型对应的服务商
+                    val allModels = database.aiModelDao().getAllModelsList()
+                    val matchedModel = allModels.find { it.modelId == modelId }
+                    if (matchedModel == null) {
+                        call.respondText(
+                            contentType = ContentType.Application.Json,
+                            status = HttpStatusCode.NotFound,
+                            text = """{"error":"Model '$modelId' not found"}"""
+                        )
+                        return@post
+                    }
+
+                    val provider = database.providerDao().getProviderById(matchedModel.providerId)
+                    if (provider == null || !provider.isEnabled) {
+                        call.respondText(
+                            contentType = ContentType.Application.Json,
+                            status = HttpStatusCode.BadRequest,
+                            text = """{"error":"Provider for model '$modelId' is disabled or not found"}"""
+                        )
+                        return@post
+                    }
+
+                    // 转发到上游
+                    if (stream) {
+                        handleStreamRequest(call, provider, requestBody)
+                    } else {
+                        handleNormalRequest(call, provider, requestBody)
+                    }
+                }
+            }
+        }
+        server = embedded.start(wait = false)
+    }
+
+    fun stop() {
+        server?.stop(1000, 2000)
+        server = null
+    }
+
+    val isRunning: Boolean get() = server != null
+
+    private suspend fun handleNormalRequest(
+        call: ApplicationCall,
+        provider: Provider,
+        requestBody: String
+    ) {
+        try {
+            val resolvedUrl = provider.resolvedBaseUrl
+            val response = UpstreamClient.request(
+                baseUrl = resolvedUrl,
+                apiKey = provider.apiKey,
+                requestBody = requestBody
+            )
+
+            if (!response.isSuccessful) {
+                val errorBody = response.body?.string() ?: "Unknown error"
+                call.respondText(
+                    contentType = ContentType.Application.Json,
+                    status = HttpStatusCode.fromValue(response.code),
+                    text = errorBody
+                )
+                return
+            }
+
+            val responseBody = response.body?.string() ?: "{}"
+            call.respondText(
+                contentType = ContentType.Application.Json,
+                text = responseBody
+            )
+        } catch (e: Exception) {
+            call.respondText(
+                contentType = ContentType.Application.Json,
+                status = HttpStatusCode.BadGateway,
+                text = """{"error":"Upstream request failed: ${e.message}"}"""
+            )
+        }
+    }
+
+    private suspend fun handleStreamRequest(
+        call: ApplicationCall,
+        provider: Provider,
+        requestBody: String
+    ) {
+        call.respondBytesWriter(
+            contentType = ContentType.Text.EventStream,
+            status = HttpStatusCode.OK
+        ) {
+            try {
+                val resolvedUrl = provider.resolvedBaseUrl
+                val response = UpstreamClient.request(
+                    baseUrl = resolvedUrl,
+                    apiKey = provider.apiKey,
+                    requestBody = requestBody
+                )
+
+                if (!response.isSuccessful) {
+                    val errorBody = response.body?.string() ?: "Unknown error"
+                    writeResponse("""data: {"error":"${errorBody.replace("\"", "\\\"")}"}""".toByteArray())
+                    writeResponse("\n\n".toByteArray())
+                    writeResponse("data: [DONE]\n\n".toByteArray())
+                    return@respondBytesWriter
+                }
+
+                val body = response.body?.byteStream()
+                if (body != null) {
+                    body.use { input ->
+                        val buffer = ByteArray(4096)
+                        var bytesRead: Int
+                        while (input.read(buffer).also { bytesRead = it } != -1) {
+                            writeFully(buffer, 0, bytesRead)
+                            flush()
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                writeResponse("""data: {"error":"${e.message?.replace("\"", "\\\"") ?: "Unknown"}"}""".toByteArray())
+                writeResponse("\n\n".toByteArray())
+                writeResponse("data: [DONE]\n\n".toByteArray())
+            }
+        }
+    }
+}
+
+private suspend fun ByteWriteChannel.writeResponse(data: ByteArray) {
+    writeFully(data)
+    flush()
+}

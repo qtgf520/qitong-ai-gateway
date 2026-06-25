@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">綦桐AI网关</string>
+    <string name="channel_name">网关服务</string>
+    <string name="channel_description">保持AI网关后台运行</string>
+    <string name="service_running">AI网关运行中</string>
+    <string name="notification_text">端口 8889 · 点击打开管理界面</string>
+</resources>
