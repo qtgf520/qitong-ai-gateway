@@ -2,11 +2,26 @@
 
 > 包名：com.qtwl.gateway
 > 签名证书：qitong.jks (别名: qitong)
-> 最后更新：2026-06-24
+> 最后更新：2026-06-25
 
 ---
 
-## 🔄 v2.6.2（当前最新）
+## 🔄 v3.0.0（当前最新）
+### 🆕 新增
+- **全面 OpenAI 兼容** — 响应格式标准化（`id`/`object`/`created`/`model`）
+- **标准错误格式** — 全部改为 `{"error":{"message":"...","type":"...","code":null}}` 格式
+- **新增 API 端点** — 显式支持 `/v1/embeddings`、`/v1/completions`、`/v1/moderations`、`/v1/images/generations`、`/v1/images/edits`、`/v1/audio/transcriptions`、`/v1/audio/translations`
+- **流式标准格式** — SSE chunk 使用 `chat.completion.chunk` 标准
+
+### 🔧 修复
+- ❌ 禁用服务商后模型页仍显示该服务商的模型
+- ✅ 模型页使用 `INNER JOIN providers` 过滤已禁用服务商的模型
+- ❌ APP不适配网关（格式不标准）
+- ✅ 完全遵循 OpenAI API 格式规范
+
+---
+
+## 🔄 v2.6.2
 ### 🆕 新增
 - **内置网关抓包工具** — 管理页「网关抓包」卡片，实时记录请求/响应日志（含输入输出流量）
 - **备份全面覆盖** — 新增 `代理列表` + `网关端口` 的备份与恢复
@@ -16,6 +31,8 @@
 - ❌ OkHttp 无连接池 → ✅ `ConnectionPool(5, 30s)` 连接复用加速
 - ❌ 抓包清空按钮 → ✅ 真清空（`clearDebugLogs()` 调用 clear）
 - ❌ 抓包按钮颜色不变 → ✅ `debugMode` 改为 StateFlow，Compose 响应式变化
+
+---
 
 ## 🔄 v2.6.1
 ### ⚡ 性能优化
