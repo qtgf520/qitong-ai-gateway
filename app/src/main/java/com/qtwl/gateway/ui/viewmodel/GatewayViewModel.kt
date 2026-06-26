@@ -37,7 +37,10 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.Serializable
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.net.InetSocketAddress
+import java.util.concurrent.TimeUnit
 
 /**
  * 网关应用的主 ViewModel —— 管理全部业务状态
@@ -386,41 +389,29 @@ fun refreshTokenStats() {
     /** 启用/禁用某个代理（选中即激活 — 互斥：开启一个时自动关闭其他） */
     fun toggleProxyEnabled(profile: ProxyProfile) {
         val newEnabled = !profile.enabled
-        
+
         if (newEnabled) {
-            val upperType = profile.type.uppercase()
-            // 检查是否为非标准代理协议
-            if (upperType !in listOf("HTTP", "HTTPS", "SOCKS5", "SOCKS")) {
-                // 非标准协议只保存，不激活
-                val updated = profile.copy(enabled = newEnabled)
-                updateProxy(updated)
-                _snackbarMessage.value = "ℹ️ ${profile.type} 节点已保存，启用需配合第三方代理客户端（如v2rayNG）使用"
-                return
-            }
-            
-            // ★ 互斥逻辑：把其他所有代理设为 disabled
+            // ★ 互斥逻辑：把其他所有代理设为 disabled，当前设为 enabled
             val list = _proxyProfiles.value.toMutableList()
             val newList = list.map { it.copy(enabled = it.id == profile.id) }
             _proxyProfiles.value = newList
             saveProxyListToPrefs()
-            
-            // 激活当前代理
+
             _activeProxyId.value = profile.id
             _proxyEnabled.value = true
             applyProxyToNetwork(profile.copy(enabled = true))
-            _snackbarMessage.value = "🚀 代理「${profile.name}」已启用（其他代理已自动关闭）"
+            _snackbarMessage.value = "🚀 代理「${profile.name}」已启用（${profile.type}）"
         } else {
             if (_activeProxyId.value == profile.id) {
                 _activeProxyId.value = null
                 _proxyEnabled.value = false
                 UpstreamClient.setProxy(null)
-                // 关闭时：所有代理都设为 disabled
-                val list = _proxyProfiles.value.toMutableList()
-                val newList = list.map { it.copy(enabled = false) }
-                _proxyProfiles.value = newList
-                saveProxyListToPrefs()
-                _snackbarMessage.value = "🔌 代理已关闭"
             }
+            val list = _proxyProfiles.value.toMutableList()
+            val newList = list.map { it.copy(enabled = it.id != profile.id && it.enabled) }
+            _proxyProfiles.value = newList
+            saveProxyListToPrefs()
+            _snackbarMessage.value = "🔌 代理「${profile.name}」已关闭"
         }
     }
 
@@ -464,80 +455,45 @@ fun refreshTokenStats() {
         }
     }
 
-    /** 智能测速 — 同时并发测试百度和谷歌，海外通=海外，只有国内通=国内 */
+    /** 智能测速 — 仅支持 HTTP/HTTPS/SOCKS5 */
     fun testProxySpeed(profile: ProxyProfile) {
         viewModelScope.launch {
             try {
                 _snackbarMessage.value = "⏳ 正在测试 ${profile.name}..."
                 withContext(Dispatchers.IO) {
                     val upstreamConfig = UpstreamClient.ProxyConfig(
-                        type = profile.type,
-                        host = profile.host,
-                        port = profile.port,
-                        username = profile.username,
-                        password = profile.password,
-                        enabled = true
+                        type = profile.type, host = profile.host, port = profile.port,
+                        username = profile.username, password = profile.password, enabled = true
                     )
-                    val tempClient = if (upstreamConfig.isValid) {
-                        when (profile.type.uppercase()) {
-                            "HTTP", "HTTPS" -> {
-                                okhttp3.OkHttpClient.Builder()
-                                    .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
-                                    .readTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
-                                    .proxy(java.net.Proxy(
-                                        java.net.Proxy.Type.HTTP,
-                                        java.net.InetSocketAddress(profile.host, profile.port)
-                                    ))
-                                    .build()
-                            }
-                            "SOCKS5", "SOCKS" -> {
-                                val factory = Socks5SocketFactory(
-                                    profile.host, profile.port,
-                                    profile.username, profile.password
-                                )
-                                okhttp3.OkHttpClient.Builder()
-                                    .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
-                                    .readTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
-                                    .socketFactory(factory)
-                                    .build()
-                            }
-                            else -> okhttp3.OkHttpClient.Builder()
-                                .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
-                                .readTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
-                                .build()
-                        }
-                    } else {
-                        okhttp3.OkHttpClient.Builder()
-                            .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
-                            .readTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+                    val tempClient = when (profile.type.uppercase()) {
+                        "HTTP", "HTTPS" -> OkHttpClient.Builder()
+                            .connectTimeout(5, TimeUnit.SECONDS).readTimeout(5, TimeUnit.SECONDS)
+                            .proxy(java.net.Proxy(java.net.Proxy.Type.HTTP, InetSocketAddress(profile.host, profile.port)))
                             .build()
+                        "SOCKS5", "SOCKS" -> OkHttpClient.Builder()
+                            .connectTimeout(5, TimeUnit.SECONDS).readTimeout(5, TimeUnit.SECONDS)
+                            .socketFactory(Socks5SocketFactory(profile.host, profile.port, profile.username, profile.password))
+                            .build()
+                        else -> { _snackbarMessage.value = "⚠️ 仅支持 HTTP/HTTPS/SOCKS5 测速"; return@withContext }
                     }
 
-                    // ========== 同时测试百度和谷歌（顺序执行，各5秒超时）==========
-                    var baiduLat = 0L; var baiduOk = false
-                    var googleLat = 0L; var googleOk = false
-
-                    // 测百度
+                    // ★★ 先测谷歌，通=海外，不通再测百度
+                    var result = ""
                     try {
                         val start = System.currentTimeMillis()
-                        baiduOk = tempClient.newCall(okhttp3.Request.Builder().url("https://www.baidu.com/favicon.ico").build()).execute().isSuccessful
-                        baiduLat = System.currentTimeMillis() - start
-                    } catch (_: Exception) { }
-                    // 测谷歌
-                    try {
-                        val start = System.currentTimeMillis()
-                        googleOk = tempClient.newCall(okhttp3.Request.Builder().url("https://www.google.com/favicon.ico").build()).execute().isSuccessful
-                        googleLat = System.currentTimeMillis() - start
+                        val gOk = tempClient.newCall(okhttp3.Request.Builder().url("https://www.google.com/favicon.ico").build()).execute().isSuccessful
+                        if (gOk) { result = "✅ ${profile.name}: ${System.currentTimeMillis() - start}ms (🌍 海外)" }
                     } catch (_: Exception) { }
 
-                    val result = when {
-                        // 海外通 = 海外节点
-                        googleOk -> "✅ ${profile.name}: ${googleLat}ms (🌍 海外)"
-                        // 只有国内通 = 国内节点
-                        baiduOk -> "✅ ${profile.name}: ${baiduLat}ms (🇨🇳 国内)"
-                        // 都不通
-                        else -> "❌ ${profile.name}: 国内外均无法访问"
+                    if (result.isEmpty()) {
+                        try {
+                            val start = System.currentTimeMillis()
+                            val bOk = tempClient.newCall(okhttp3.Request.Builder().url("https://www.baidu.com/favicon.ico").build()).execute().isSuccessful
+                            if (bOk) { result = "✅ ${profile.name}: ${System.currentTimeMillis() - start}ms (🇨🇳 国内)" }
+                        } catch (_: Exception) { }
                     }
+
+                    if (result.isEmpty()) { result = "❌ ${profile.name}: 国内外均无法访问" }
                     _snackbarMessage.value = result
                 }
             } catch (e: Exception) {
@@ -638,22 +594,9 @@ fun refreshTokenStats() {
                     for (info in parsed) {
                         val exists = list.any { it.host == info.host && it.port == info.port }
                         if (!exists) {
-                            val extraMap = kotlinx.serialization.json.buildJsonObject {
-                                put("network", kotlinx.serialization.json.JsonPrimitive(info.network))
-                                put("security", kotlinx.serialization.json.JsonPrimitive(info.security))
-                                put("path", kotlinx.serialization.json.JsonPrimitive(info.path))
-                                put("hostHeader", kotlinx.serialization.json.JsonPrimitive(info.hostHeader))
-                                put("alpn", kotlinx.serialization.json.JsonPrimitive(info.alpn))
-                                put("fingerprint", kotlinx.serialization.json.JsonPrimitive(info.fingerprint))
-                                put("publicKey", kotlinx.serialization.json.JsonPrimitive(info.publicKey))
-                                put("shortId", kotlinx.serialization.json.JsonPrimitive(info.shortId))
-                                put("flow", kotlinx.serialization.json.JsonPrimitive(info.flow))
-                                put("aid", kotlinx.serialization.json.JsonPrimitive(info.aid))
-                            }.toString()
                             val profile = ProxyProfile(
                                 name = info.name, type = info.type, host = info.host, port = info.port,
-                                username = info.uuid, password = info.encryption, enabled = false,
-                                extraJson = extraMap
+                                enabled = false
                             )
                             list.add(profile)
                             added++
@@ -674,22 +617,9 @@ fun refreshTokenStats() {
         try {
             val info = com.qtwl.gateway.network.ProxyLinkParser.parse(link)
             if (info != null) {
-                val extraMap = kotlinx.serialization.json.buildJsonObject {
-                    put("network", kotlinx.serialization.json.JsonPrimitive(info.network))
-                    put("security", kotlinx.serialization.json.JsonPrimitive(info.security))
-                    put("path", kotlinx.serialization.json.JsonPrimitive(info.path))
-                    put("hostHeader", kotlinx.serialization.json.JsonPrimitive(info.hostHeader))
-                    put("alpn", kotlinx.serialization.json.JsonPrimitive(info.alpn))
-                    put("fingerprint", kotlinx.serialization.json.JsonPrimitive(info.fingerprint))
-                    put("publicKey", kotlinx.serialization.json.JsonPrimitive(info.publicKey))
-                    put("shortId", kotlinx.serialization.json.JsonPrimitive(info.shortId))
-                    put("flow", kotlinx.serialization.json.JsonPrimitive(info.flow))
-                    put("aid", kotlinx.serialization.json.JsonPrimitive(info.aid))
-                }.toString()
                 val profile = ProxyProfile(
                     name = info.name, type = info.type, host = info.host, port = info.port,
-                    username = info.uuid, password = info.encryption, enabled = false,
-                    extraJson = extraMap
+                    enabled = false
                 )
                 addProxy(profile)
             } else {
@@ -700,17 +630,11 @@ fun refreshTokenStats() {
         }
     }
 
-    /** 检测剪贴板中的代理链接/订阅链接 */
+    /** 检测剪贴板中的代理链接/订阅链接（仅支持 HTTP/HTTPS/SOCKS5） */
     fun detectClipboardLink(clipText: String): String? {
         if (clipText.isBlank()) return null
         return when {
-            clipText.startsWith("vmess://") ||
-            clipText.startsWith("ss://") ||
-            clipText.startsWith("vless://") ||
-            clipText.startsWith("trojan://") ||
-            clipText.startsWith("hysteria2://") ||
-            clipText.startsWith("hy2://") ||
-            clipText.startsWith("http://") && (clipText.contains("subscribe") || clipText.contains("sub") || clipText.contains("token=")) ||
+            clipText.startsWith("http://") && (clipText.contains("subscribe") || clipText.contains("sub") || clipText.contains("token=")) -> clipText
             clipText.startsWith("https://") && (clipText.contains("subscribe") || clipText.contains("sub") || clipText.contains("token=")) -> clipText
             else -> null
         }
