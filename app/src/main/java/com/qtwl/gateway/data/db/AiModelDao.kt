@@ -23,6 +23,12 @@ interface AiModelDao {
     @Query("SELECT m.* FROM models m INNER JOIN providers p ON m.provider_id = p.id WHERE m.is_enabled = 1 AND p.is_enabled = 1 ORDER BY m.provider_id ASC, m.model_id ASC")
     suspend fun getEnabledModelsList(): List<AiModel>
 
+    @Query("SELECT m.* FROM models m INNER JOIN providers p ON m.provider_id = p.id WHERE p.is_enabled = 1 ORDER BY m.provider_id ASC, m.model_id ASC")
+    fun getAllModelsWithEnabledProviders(): Flow<List<AiModel>>
+
+    @Query("SELECT m.* FROM models m INNER JOIN providers p ON m.provider_id = p.id WHERE p.is_enabled = 1 ORDER BY m.provider_id ASC, m.model_id ASC")
+    suspend fun getAllModelsWithEnabledProvidersList(): List<AiModel>
+
     @Query("SELECT * FROM models WHERE provider_id = :providerId ORDER BY model_id ASC")
     suspend fun getModelsByProvider(providerId: Long): List<AiModel>
 

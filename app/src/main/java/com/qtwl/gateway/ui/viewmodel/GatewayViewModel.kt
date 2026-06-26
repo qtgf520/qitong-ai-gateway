@@ -56,8 +56,9 @@ class GatewayViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // ==================== 模型相关 ====================
+    /** 所有模型（仅来自已启用服务商） */
     val models: StateFlow<List<AiModel>> = database.aiModelDao()
-        .getAllModels()
+        .getAllModelsWithEnabledProviders()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     /** 仅返回已启用的模型——供聊天界面和网关API使用 */

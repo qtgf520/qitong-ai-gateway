@@ -35,6 +35,8 @@ import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.ByteArrayOutputStream
+import java.util.UUID
+import kotlinx.serialization.json.JsonNull
 
 /**
  * 本地 AI 网关服务（Ktor Server）
@@ -85,20 +87,39 @@ class GatewayService(private val database: AppDatabase) {
                             text = response.toString()
                         )
                     } catch (e: Exception) {
-                        call.respondText(
-                            contentType = ContentType.Application.Json,
-                            status = HttpStatusCode.InternalServerError,
-                            text = """{"error":"Failed to fetch models: ${e.message}"}"""
-                        )
+                        val (status, body) = openAIError(HttpStatusCode.InternalServerError, "Failed to fetch models: ${e.message}", "server_error")
+                        call.respondText(contentType = ContentType.Application.Json, status = status, text = body)
                     }
                 }
 
                 // === 通用代理：拦截 /v1/* 所有 POST/GET 请求 ===
-                // 匹配 /v1/chat/completions, /v1/images/generations, /v1/audio/transcriptions 等一切路径
+                // 匹配 /v1/chat/completions, /v1/images/generations, /v1/audio/transcriptions, /v1/embeddings, /v1/completions 等一切路径
                 post("/v1/{path...}") {
                     kotlinx.coroutines.runBlocking { proxyRequest(call, database) }
                 }
                 get("/v1/{path...}") {
+                    kotlinx.coroutines.runBlocking { proxyRequest(call, database) }
+                }
+                // ★ 新增：显式支持 embeddings / completions / moderations（某些客户端直接发送这些路径）
+                post("/v1/embeddings") {
+                    kotlinx.coroutines.runBlocking { proxyRequest(call, database) }
+                }
+                post("/v1/completions") {
+                    kotlinx.coroutines.runBlocking { proxyRequest(call, database) }
+                }
+                post("/v1/moderations") {
+                    kotlinx.coroutines.runBlocking { proxyRequest(call, database) }
+                }
+                post("/v1/images/generations") {
+                    kotlinx.coroutines.runBlocking { proxyRequest(call, database) }
+                }
+                post("/v1/images/edits") {
+                    kotlinx.coroutines.runBlocking { proxyRequest(call, database) }
+                }
+                post("/v1/audio/transcriptions") {
+                    kotlinx.coroutines.runBlocking { proxyRequest(call, database) }
+                }
+                post("/v1/audio/translations") {
                     kotlinx.coroutines.runBlocking { proxyRequest(call, database) }
                 }
             }
@@ -119,6 +140,60 @@ class GatewayService(private val database: AppDatabase) {
 private val proxyJson = Json { ignoreUnknownKeys = true; prettyPrint = false }
 private val DEFAULT_CT = "application/json".toMediaType()
 private const val STREAM_BUF_SIZE = 32768 // 32KB 大缓冲区，减少IO次数
+
+/** OpenAI 标准错误响应 */
+private fun openAIError(status: HttpStatusCode, message: String, type: String = "invalid_request_error", code: Int? = null): Pair<HttpStatusCode, String> {
+    val errorJson = buildJsonObject {
+        put("error", buildJsonObject {
+            put("message", JsonPrimitive(message))
+            put("type", JsonPrimitive(type))
+            put("param", JsonNull)
+            put("code", if (code != null) JsonPrimitive(code) else JsonNull)
+        })
+    }
+    return status to errorJson.toString()
+}
+
+/** 生成 OpenAI 标准 chat.completion 响应（用于回退/测试） */
+private fun makeChatCompletionResponse(modelId: String, content: String, stream: Boolean = false): String {
+    val id = "chatcmpl-${UUID.randomUUID().toString().take(8)}"
+    val created = System.currentTimeMillis() / 1000
+    if (stream) {
+        return buildJsonObject {
+            put("id", JsonPrimitive(id))
+            put("object", JsonPrimitive("chat.completion.chunk"))
+            put("created", JsonPrimitive(created))
+            put("model", JsonPrimitive(modelId))
+            put("choices", JsonArray(listOf(buildJsonObject {
+                put("index", JsonPrimitive(0))
+                put("delta", buildJsonObject {
+                    put("role", JsonPrimitive("assistant"))
+                    put("content", JsonPrimitive(content))
+                })
+                put("finish_reason", JsonPrimitive("stop"))
+            })))
+        }.toString()
+    }
+    return buildJsonObject {
+        put("id", JsonPrimitive(id))
+        put("object", JsonPrimitive("chat.completion"))
+        put("created", JsonPrimitive(created))
+        put("model", JsonPrimitive(modelId))
+        put("choices", JsonArray(listOf(buildJsonObject {
+            put("index", JsonPrimitive(0))
+            put("message", buildJsonObject {
+                put("role", JsonPrimitive("assistant"))
+                put("content", JsonPrimitive(content))
+            })
+            put("finish_reason", JsonPrimitive("stop"))
+        })))
+        put("usage", buildJsonObject {
+            put("prompt_tokens", JsonPrimitive(0))
+            put("completion_tokens", JsonPrimitive(0))
+            put("total_tokens", JsonPrimitive(0))
+        })
+    }.toString()
+}
 
 // Attribute keys 用于在 call 中传递 modelId / providerId
 private val MODEL_ID_KEY = AttributeKey<String>("proxyModelId")
@@ -159,29 +234,20 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
             val allModels = database.aiModelDao().getAllModelsList()
             val matchedModel = allModels.find { it.modelId == modelId }
             if (matchedModel == null) {
-                call.respondText(
-                    contentType = ContentType.Application.Json,
-                    status = HttpStatusCode.NotFound,
-                    text = """{"error":"Model '$modelId' not found"}"""
-                )
+                val (status, body) = openAIError(HttpStatusCode.NotFound, "The model '$modelId' does not exist", "invalid_model_error")
+                call.respondText(contentType = ContentType.Application.Json, status = status, text = body)
                 return
             }
             if (!matchedModel.isEnabled) {
-                call.respondText(
-                    contentType = ContentType.Application.Json,
-                    status = HttpStatusCode.Forbidden,
-                    text = """{"error":"Model '$modelId' is disabled"}"""
-                )
+                val (status, body) = openAIError(HttpStatusCode.Forbidden, "Model '$modelId' is disabled", "model_disabled")
+                call.respondText(contentType = ContentType.Application.Json, status = status, text = body)
                 return
             }
 
             val provider = database.providerDao().getProviderById(matchedModel.providerId)
             if (provider == null || !provider.isEnabled) {
-                call.respondText(
-                    contentType = ContentType.Application.Json,
-                    status = HttpStatusCode.BadRequest,
-                    text = """{"error":"Provider for model '$modelId' is disabled or not found"}"""
-                )
+                val (status, body) = openAIError(HttpStatusCode.BadRequest, "Provider for model '$modelId' is disabled or not found", "provider_error")
+                call.respondText(contentType = ContentType.Application.Json, status = status, text = body)
                 return
             }
 
@@ -210,11 +276,8 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
     val providers = database.providerDao().getAllProvidersList()
     val defaultProvider = providers.firstOrNull { it.isEnabled }
     if (defaultProvider == null) {
-        call.respondText(
-            contentType = ContentType.Application.Json,
-            status = HttpStatusCode.BadRequest,
-            text = """{"error":"No enabled provider available"}"""
-        )
+        val (status, body) = openAIError(HttpStatusCode.BadRequest, "No enabled provider available. Please add and enable a provider first.", "provider_error")
+        call.respondText(contentType = ContentType.Application.Json, status = status, text = body)
         return
     }
 
@@ -311,11 +374,8 @@ private suspend fun pipeNormalResponse(
         if (GatewayForegroundService.getDebugMode()) {
             GatewayForegroundService.addDebugLog("✗ ERR /v1/$path: ${e.message?.take(80)}")
         }
-        call.respondText(
-            contentType = ContentType.Application.Json,
-            status = HttpStatusCode.BadGateway,
-            text = """{"error":"Upstream request failed: ${e.message}"}"""
-        )
+        val (status, body) = openAIError(HttpStatusCode.BadGateway, "Upstream request failed: ${e.message}", "upstream_error")
+        call.respondText(contentType = ContentType.Application.Json, status = status, text = body)
     }
 }
 

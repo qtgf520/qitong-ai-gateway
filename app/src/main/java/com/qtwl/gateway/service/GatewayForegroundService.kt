@@ -92,42 +92,31 @@ class GatewayForegroundService : Service() {
             } catch (_: Exception) { }
         }
 
-        // 动态指示灯 — 监控流量（闲置时自动归零）
-        val prevUpload = lastUploadBytes
-        val prevDownload = lastDownloadBytes
-        val currentUpload = trafficUploadBytes
-        val currentDownload = trafficDownloadBytes
-        
-        // 如果3秒内没有新增流量，视为闲置 → 显示归零
-        val hasNewTraffic = currentUpload > prevUpload || currentDownload > prevDownload
-        if (!hasNewTraffic && currentUpload > 0 && currentDownload > 0) {
-            // 超过一次循环无变化则归零
-            if (idleCount++ > 2) {
-                trafficUploadBytes = 0
-                trafficDownloadBytes = 0
-                tokenPromptInput = 0
-                tokenCompletionOutput = 0
-                activeNodeName = ""
-                idleCount = 0
-            }
-        } else if (hasNewTraffic) {
-            idleCount = 0
-        }
-        lastUploadBytes = currentUpload
-        lastDownloadBytes = currentDownload
-        
-        val uploadBytes = trafficUploadBytes
-        val downloadBytes = trafficDownloadBytes
-        val hasTraffic = uploadBytes > 0 || downloadBytes > 0
+        // ★ 动态流量指示灯 — 累计模式，永不归零！仅通过时间戳判断活跃/空闲
+        val hasTraffic = trafficUploadBytes > 0 || trafficDownloadBytes > 0
+        val now = System.currentTimeMillis()
+        val idleSeconds = if (lastActivityTime > 0) (now - lastActivityTime) / 1000 else -1
+        val isActive = idleSeconds >= 0 && idleSeconds < 30 // 30秒内无流量视为空闲
         val nodeName = activeNodeName
+
+        // 更新最后活跃时间（只在有流量时更新）
+        if (trafficUploadBytes > lastUploadBytes || trafficDownloadBytes > lastDownloadBytes) {
+            lastActivityTime = now
+            idleCount = 0
+        } else if (hasTraffic) {
+            idleCount++
+        }
+        lastUploadBytes = trafficUploadBytes
+        lastDownloadBytes = trafficDownloadBytes
 
         val text = buildString {
             append("端口 $port")
-            append("\n输入: ${formatBytes(uploadBytes)} | 输出: ${formatBytes(downloadBytes)}")
-            if (hasTraffic && nodeName.isNotBlank()) {
-                append("\n🟢 $nodeName")
-            } else if (hasTraffic) {
-                append("\n🟡 流量传输中...")
+            append("\n总输入: ${formatBytes(trafficUploadBytes)} | 总输出: ${formatBytes(trafficDownloadBytes)}")
+            if (hasTraffic && isActive) {
+                val actNode = if (nodeName.isNotBlank()) " · $nodeName" else ""
+                append("\n🟢 传输中$actNode")
+            } else if (hasTraffic && !isActive) {
+                append("\n⚪ 空闲（累计 ${formatBytes(trafficUploadBytes)}/${formatBytes(trafficDownloadBytes)}）")
             }
             append("\n$proxyText")
         }
@@ -193,6 +182,7 @@ class GatewayForegroundService : Service() {
         @Volatile var lastUploadBytes: Long = 0L
         @Volatile var lastDownloadBytes: Long = 0L
         @Volatile var idleCount: Int = 0
+        @Volatile var lastActivityTime: Long = 0L  // ★ 最后活跃时间戳（毫秒）
 
         // ★ Debug 日志（环形缓冲区，保留最近20条）
         @Volatile var debugLogBuffer = mutableListOf<String>()

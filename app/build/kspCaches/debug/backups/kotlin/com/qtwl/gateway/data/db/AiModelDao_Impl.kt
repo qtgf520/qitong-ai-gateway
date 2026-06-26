@@ -302,6 +302,108 @@ public class AiModelDao_Impl(
     }
   }
 
+  public override fun getAllModelsWithEnabledProviders(): Flow<List<AiModel>> {
+    val _sql: String = "SELECT m.* FROM models m INNER JOIN providers p ON m.provider_id = p.id WHERE p.is_enabled = 1 ORDER BY m.provider_id ASC, m.model_id ASC"
+    return createFlow(__db, false, arrayOf("models", "providers")) { _connection ->
+      val _stmt: SQLiteStatement = _connection.prepare(_sql)
+      try {
+        val _columnIndexOfId: Int = getColumnIndexOrThrow(_stmt, "id")
+        val _columnIndexOfProviderId: Int = getColumnIndexOrThrow(_stmt, "provider_id")
+        val _columnIndexOfModelId: Int = getColumnIndexOrThrow(_stmt, "model_id")
+        val _columnIndexOfDisplayName: Int = getColumnIndexOrThrow(_stmt, "display_name")
+        val _columnIndexOfIsDefault: Int = getColumnIndexOrThrow(_stmt, "is_default")
+        val _columnIndexOfSyncStatus: Int = getColumnIndexOrThrow(_stmt, "sync_status")
+        val _columnIndexOfIsEnabled: Int = getColumnIndexOrThrow(_stmt, "is_enabled")
+        val _columnIndexOfCustomAlias: Int = getColumnIndexOrThrow(_stmt, "custom_alias")
+        val _columnIndexOfUseProxy: Int = getColumnIndexOrThrow(_stmt, "use_proxy")
+        val _result: MutableList<AiModel> = mutableListOf()
+        while (_stmt.step()) {
+          val _item: AiModel
+          val _tmpId: Long
+          _tmpId = _stmt.getLong(_columnIndexOfId)
+          val _tmpProviderId: Long
+          _tmpProviderId = _stmt.getLong(_columnIndexOfProviderId)
+          val _tmpModelId: String
+          _tmpModelId = _stmt.getText(_columnIndexOfModelId)
+          val _tmpDisplayName: String
+          _tmpDisplayName = _stmt.getText(_columnIndexOfDisplayName)
+          val _tmpIsDefault: Boolean
+          val _tmp: Int
+          _tmp = _stmt.getLong(_columnIndexOfIsDefault).toInt()
+          _tmpIsDefault = _tmp != 0
+          val _tmpSyncStatus: String
+          _tmpSyncStatus = _stmt.getText(_columnIndexOfSyncStatus)
+          val _tmpIsEnabled: Boolean
+          val _tmp_1: Int
+          _tmp_1 = _stmt.getLong(_columnIndexOfIsEnabled).toInt()
+          _tmpIsEnabled = _tmp_1 != 0
+          val _tmpCustomAlias: String
+          _tmpCustomAlias = _stmt.getText(_columnIndexOfCustomAlias)
+          val _tmpUseProxy: Boolean
+          val _tmp_2: Int
+          _tmp_2 = _stmt.getLong(_columnIndexOfUseProxy).toInt()
+          _tmpUseProxy = _tmp_2 != 0
+          _item = AiModel(_tmpId,_tmpProviderId,_tmpModelId,_tmpDisplayName,_tmpIsDefault,_tmpSyncStatus,_tmpIsEnabled,_tmpCustomAlias,_tmpUseProxy)
+          _result.add(_item)
+        }
+        _result
+      } finally {
+        _stmt.close()
+      }
+    }
+  }
+
+  public override suspend fun getAllModelsWithEnabledProvidersList(): List<AiModel> {
+    val _sql: String = "SELECT m.* FROM models m INNER JOIN providers p ON m.provider_id = p.id WHERE p.is_enabled = 1 ORDER BY m.provider_id ASC, m.model_id ASC"
+    return performSuspending(__db, true, false) { _connection ->
+      val _stmt: SQLiteStatement = _connection.prepare(_sql)
+      try {
+        val _columnIndexOfId: Int = getColumnIndexOrThrow(_stmt, "id")
+        val _columnIndexOfProviderId: Int = getColumnIndexOrThrow(_stmt, "provider_id")
+        val _columnIndexOfModelId: Int = getColumnIndexOrThrow(_stmt, "model_id")
+        val _columnIndexOfDisplayName: Int = getColumnIndexOrThrow(_stmt, "display_name")
+        val _columnIndexOfIsDefault: Int = getColumnIndexOrThrow(_stmt, "is_default")
+        val _columnIndexOfSyncStatus: Int = getColumnIndexOrThrow(_stmt, "sync_status")
+        val _columnIndexOfIsEnabled: Int = getColumnIndexOrThrow(_stmt, "is_enabled")
+        val _columnIndexOfCustomAlias: Int = getColumnIndexOrThrow(_stmt, "custom_alias")
+        val _columnIndexOfUseProxy: Int = getColumnIndexOrThrow(_stmt, "use_proxy")
+        val _result: MutableList<AiModel> = mutableListOf()
+        while (_stmt.step()) {
+          val _item: AiModel
+          val _tmpId: Long
+          _tmpId = _stmt.getLong(_columnIndexOfId)
+          val _tmpProviderId: Long
+          _tmpProviderId = _stmt.getLong(_columnIndexOfProviderId)
+          val _tmpModelId: String
+          _tmpModelId = _stmt.getText(_columnIndexOfModelId)
+          val _tmpDisplayName: String
+          _tmpDisplayName = _stmt.getText(_columnIndexOfDisplayName)
+          val _tmpIsDefault: Boolean
+          val _tmp: Int
+          _tmp = _stmt.getLong(_columnIndexOfIsDefault).toInt()
+          _tmpIsDefault = _tmp != 0
+          val _tmpSyncStatus: String
+          _tmpSyncStatus = _stmt.getText(_columnIndexOfSyncStatus)
+          val _tmpIsEnabled: Boolean
+          val _tmp_1: Int
+          _tmp_1 = _stmt.getLong(_columnIndexOfIsEnabled).toInt()
+          _tmpIsEnabled = _tmp_1 != 0
+          val _tmpCustomAlias: String
+          _tmpCustomAlias = _stmt.getText(_columnIndexOfCustomAlias)
+          val _tmpUseProxy: Boolean
+          val _tmp_2: Int
+          _tmp_2 = _stmt.getLong(_columnIndexOfUseProxy).toInt()
+          _tmpUseProxy = _tmp_2 != 0
+          _item = AiModel(_tmpId,_tmpProviderId,_tmpModelId,_tmpDisplayName,_tmpIsDefault,_tmpSyncStatus,_tmpIsEnabled,_tmpCustomAlias,_tmpUseProxy)
+          _result.add(_item)
+        }
+        _result
+      } finally {
+        _stmt.close()
+      }
+    }
+  }
+
   public override suspend fun getModelsByProvider(providerId: Long): List<AiModel> {
     val _sql: String = "SELECT * FROM models WHERE provider_id = ? ORDER BY model_id ASC"
     return performSuspending(__db, true, false) { _connection ->
