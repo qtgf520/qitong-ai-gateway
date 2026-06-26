@@ -1,6 +1,7 @@
 package com.qtwl.gateway.gateway
 
 import com.qtwl.gateway.data.db.AppDatabase
+import com.qtwl.gateway.data.model.AiModel
 import com.qtwl.gateway.data.model.Provider
 import com.qtwl.gateway.data.model.TokenUsage
 import com.qtwl.gateway.network.UpstreamClient
@@ -13,17 +14,13 @@ import io.ktor.server.cio.CIO
 import io.ktor.server.engine.EmbeddedServer
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.request.receive
-import io.ktor.server.request.receiveText
 import io.ktor.server.response.respondBytesWriter
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
-import io.ktor.utils.io.ByteWriteChannel
 import io.ktor.utils.io.writeFully
 import io.ktor.server.request.httpMethod
-import io.ktor.server.request.receiveChannel
-import io.ktor.server.request.header
 import io.ktor.server.response.header
 import io.ktor.util.AttributeKey
 import kotlinx.serialization.json.Json
@@ -34,12 +31,16 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
-import java.io.ByteArrayOutputStream
 import java.net.SocketTimeoutException
 import java.net.ConnectException
 import java.util.UUID
 import kotlinx.serialization.json.JsonNull
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
 
 /**
  * 本地 AI 网关服务（Ktor Server）
@@ -61,15 +62,9 @@ class GatewayService(private val database: AppDatabase) {
 
         val embedded = embeddedServer(CIO, port = port) {
             routing {
-                // 根路径/健康检查
+                // 健康检查
                 get("/health") {
                     call.respondText("OK", ContentType.Text.Plain)
-                }
-                get("/") {
-                    call.respondText(
-                        contentType = ContentType.Application.Json,
-                        text = """{"service":"qitong-ai-gateway","version":"3.2.0","status":"running"}"""
-                    )
                 }
 
                 // 获取模型列表 (OpenAI Compatible)
@@ -79,11 +74,11 @@ class GatewayService(private val database: AppDatabase) {
                         val modelList = models.map { model ->
                             val displayName = if (model.customAlias.isNotBlank()) model.customAlias else model.displayName
                             buildJsonObject {
-                                put("id", JsonPrimitive(model.modelId))           // 保持不变！客户端用 id 调 API
+                                put("id", JsonPrimitive(model.modelId))
                                 put("object", JsonPrimitive("model"))
                                 put("owned_by", JsonPrimitive("custom"))
-                                put("model_id", JsonPrimitive(model.modelId))     // 保留原始 modelId
-                                put("display_name", JsonPrimitive(displayName))    // 展示别名
+                                put("model_id", JsonPrimitive(model.modelId))
+                                put("display_name", JsonPrimitive(displayName))
                                 put("custom_alias", JsonPrimitive(model.customAlias))
                             }
                         }
@@ -101,13 +96,13 @@ class GatewayService(private val database: AppDatabase) {
                     }
                 }
 
-                // === 通用代理：拦截 /v1/* 所有 POST/GET 请求 ===
-                // 唯一入口！所有 /v1/ 开头的请求都走这里
+                // === 通用代理转发：拦截所有 /v1/* 请求 ===
+                // ★★ 去掉了 runBlocking！Ktor 路由 handler 本身就在协程中
                 post("/v1/{path...}") {
-                    kotlinx.coroutines.runBlocking { proxyRequest(call, database) }
+                    proxyRequest(call, database)
                 }
                 get("/v1/{path...}") {
-                    kotlinx.coroutines.runBlocking { proxyRequest(call, database) }
+                    proxyRequest(call, database)
                 }
             }
         }
@@ -124,21 +119,103 @@ class GatewayService(private val database: AppDatabase) {
 
 // ================== 通用代理转发核心 ==================
 
+/** 智能故障转移：模型健康状态缓存 */
 private val proxyJson = Json { ignoreUnknownKeys = true; prettyPrint = false }
 private val DEFAULT_CT = "application/json".toMediaType()
-private const val STREAM_BUF_SIZE = 32768 // 32KB 大缓冲区，减少IO次数
-private const val MAX_RETRIES = 5          // ★ 最大重试次数
+private const val MAX_RETRIES = 5
+private const val HEALTH_CHECK_TIMEOUT = 5000L // 5秒超时测速
+private val failoverScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-/** ★ 带重试的 HTTP 请求执行 */
+/** 模型健康状态 */
+private data class ModelHealth(
+    val modelId: String,
+    val providerId: Long,
+    val latencyMs: Long = Long.MAX_VALUE,  // 响应时长，越小越快
+    val lastCheckTime: Long = 0,
+    val isHealthy: Boolean = true
+)
+
+/** 模型健康缓存（协程安全） */
+private val healthCache = mutableMapOf<String, ModelHealth>()
+private var cacheTime: Long = 0
+private const val CACHE_TTL = 60_000L // 缓存有效期60秒
+
+/** ★ 在后台测试所有已启用模型的速度，更新健康缓存 */
+private suspend fun refreshHealthCache(database: AppDatabase) {
+    val now = System.currentTimeMillis()
+    if (now - cacheTime < CACHE_TTL) return // 缓存未过期
+
+    val models = database.aiModelDao().getEnabledModelsList().filter { it.isEnabled }
+    if (models.isEmpty()) return
+
+    cacheTime = now
+
+    // 并发测试所有模型
+    models.forEach { model ->
+        failoverScope.launch {
+            try {
+                val provider = database.providerDao().getProviderById(model.providerId) ?: return@launch
+                if (!provider.isEnabled) return@launch
+
+                val start = System.currentTimeMillis()
+                val resolvedUrl = provider.resolvedBaseUrl.trimEnd('/')
+                val testBody = """{"model":"${model.modelId}","messages":[{"role":"user","content":"hi"}],"max_tokens":1,"stream":false}"""
+                val req = okhttp3.Request.Builder()
+                    .url("$resolvedUrl/v1/chat/completions")
+                    .post(testBody.toRequestBody(DEFAULT_CT))
+                    .apply { if (!provider.apiKey.isNullOrBlank()) header("Authorization", "Bearer ${provider.apiKey}") }
+                    .build()
+                val client = okhttp3.OkHttpClient.Builder()
+                    .connectTimeout(HEALTH_CHECK_TIMEOUT, java.util.concurrent.TimeUnit.MILLISECONDS)
+                    .readTimeout(HEALTH_CHECK_TIMEOUT, java.util.concurrent.TimeUnit.MILLISECONDS)
+                    .build()
+                val resp = client.newCall(req).execute()
+                val latency = System.currentTimeMillis() - start
+                if (resp.isSuccessful) {
+                    synchronized(healthCache) {
+                        healthCache[model.modelId] = ModelHealth(model.modelId, model.providerId, latency, now, true)
+                    }
+                    if (GatewayForegroundService.getDebugMode()) {
+                        GatewayForegroundService.addDebugLog("⏱ ${model.modelId}: ${latency}ms ✅")
+                    }
+                } else {
+                    synchronized(healthCache) {
+                        healthCache[model.modelId] = ModelHealth(model.modelId, model.providerId, Long.MAX_VALUE, now, false)
+                    }
+                }
+                resp.close()
+            } catch (_: Exception) {
+                synchronized(healthCache) {
+                    healthCache[model.modelId] = ModelHealth(model.modelId, model.providerId, Long.MAX_VALUE, System.currentTimeMillis(), false)
+                }
+            }
+        }
+    }
+}
+
+/** 按健康状态排序：快的在前，不可用的在后 */
+private fun getSortedModels(models: List<AiModel>, preferredModelId: String?): List<AiModel> {
+    val preferred = models.find { it.modelId == preferredModelId }
+    val others = models.filter { it.modelId != preferredModelId }
+
+    val sortedOthers = others.sortedBy { model ->
+        val health = synchronized(healthCache) { healthCache[model.modelId] }
+        if (health != null && health.isHealthy) health.latencyMs else Long.MAX_VALUE
+    }
+
+    return if (preferred != null) listOf(preferred) + sortedOthers else sortedOthers
+}
+
+/** ★ 带重试的 HTTP 请求执行（阻塞调用已用 withContext(Dispatchers.IO) 包装） */
 private suspend fun executeWithRetry(client: okhttp3.OkHttpClient, request: okhttp3.Request, retries: Int = MAX_RETRIES): okhttp3.Response {
     var lastError: Exception? = null
     for (attempt in 1..retries) {
         try {
-            val response = client.newCall(request).execute()
+            // ★★ OkHttp execute() 是阻塞的，用 IO 调度器避免卡死 Ktor
+            val response = withContext(Dispatchers.IO) { client.newCall(request).execute() }
             if (response.isSuccessful || attempt == retries) {
                 return response
             }
-            // 非成功状态码且不是最后一次，关闭响应后重试
             response.close()
             if (attempt < retries) {
                 val waitMs = (attempt * 1000L).coerceAtMost(5000L)
@@ -146,24 +223,15 @@ private suspend fun executeWithRetry(client: okhttp3.OkHttpClient, request: okht
             }
         } catch (e: SocketTimeoutException) {
             lastError = e
-            if (attempt < retries) {
-                val waitMs = (attempt * 1000L).coerceAtMost(5000L)
-                delay(waitMs)
-            }
+            if (attempt < retries) { delay((attempt * 1000L).coerceAtMost(5000L)) }
         } catch (e: ConnectException) {
             lastError = e
-            if (attempt < retries) {
-                val waitMs = (attempt * 1500L).coerceAtMost(5000L)
-                delay(waitMs)
-            }
+            if (attempt < retries) { delay((attempt * 1500L).coerceAtMost(5000L)) }
         } catch (e: Exception) {
             lastError = e
-            if (attempt < retries) {
-                delay(1000)
-            }
+            if (attempt < retries) { delay(1000) }
         }
     }
-    // 所有重试失败，抛出最后一个错误
     throw lastError ?: Exception("Request failed after $retries retries")
 }
 
@@ -240,11 +308,22 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
 
     val path = call.parameters.getAll("path")?.joinToString("/") ?: ""
 
+    // ★★ 如果 path 为空但 body 是 JSON 且有 model 字段 → 自动转成 /v1/chat/completions
+    val effectivePath = if (path.isBlank()) {
+        // 尝试从 body 判断是否是 AI 请求
+        if (requestBodyStr.isNotBlank()) {
+            try {
+                val j = proxyJson.parseToJsonElement(requestBodyStr).jsonObject
+                if (j.containsKey("model") || j.containsKey("messages")) "chat/completions" else path
+            } catch (_: Exception) { path }
+        } else path
+    } else path
+
     if (GatewayForegroundService.getDebugMode()) {
-        GatewayForegroundService.addDebugLog("→ ${call.request.httpMethod.value} /v1/$path (${rawBytes.size}B)")
+        GatewayForegroundService.addDebugLog("→ ${call.request.httpMethod.value} /$effectivePath (${rawBytes.size}B)")
     }
 
-    val isChat = path == "chat/completions" || path == "completions"
+    val isChat = effectivePath == "chat/completions" || effectivePath == "completions"
 
     if (isChat && requestBodyStr.isNotBlank()) {
         val requestJson = try { proxyJson.parseToJsonElement(requestBodyStr).jsonObject } catch (_: Exception) { null }
@@ -252,31 +331,30 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
         val stream = requestJson?.get("stream")?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false
 
         if (modelId != null) {
-            // ★ 自动故障转移模式
+            // ★ 智能故障转移模式
             val autoFailover = GatewayForegroundService.getAutoFailover()
-            val failoverModels = if (autoFailover) {
-                // 收集所有已启用的模型（按服务商分组，优先同服务商）
-                database.aiModelDao().getEnabledModelsList().filter { it.isEnabled }
-            } else emptyList()
 
-            // 尝试模型列表：首选请求的模型，故障转移时尝试其他
-            val attemptModels = if (autoFailover && failoverModels.isNotEmpty()) {
-                // 把请求的模型放第一位，其他模型按序排列（排除已禁用的）
-                val primary = failoverModels.find { it.modelId == modelId }
-                val others = failoverModels.filter { it.modelId != modelId }
-                val ordered = if (primary != null) listOf(primary) + others else failoverModels
-                ordered
+            if (autoFailover) {
+                // ★★ 后台刷新健康缓存（如果缓存过期）
+                refreshHealthCache(database)
+            }
+
+            // ★★ 按速度排序尝试模型
+            val allEnabled = database.aiModelDao().getEnabledModelsList().filter { it.isEnabled }
+            val attemptModels = if (autoFailover && allEnabled.isNotEmpty()) {
+                // 按健康缓存排序：首选最快的，不可用的放最后
+                getSortedModels(allEnabled, modelId)
             } else {
-                // 非故障转移模式：只尝试请求的模型
-                val allModels = database.aiModelDao().getAllModelsList()
-                listOfNotNull(allModels.find { it.modelId == modelId })
+                // 非故障转移：只尝试指定模型
+                listOfNotNull(allEnabled.find { it.modelId == modelId })
             }
 
             var lastError: String? = null
+            var failCount = 0
             for ((idx, matchedModel) in attemptModels.withIndex()) {
                 if (idx > 0) {
                     if (GatewayForegroundService.getDebugMode()) {
-                        GatewayForegroundService.addDebugLog("↻ 故障转移尝试 #$idx → ${matchedModel.modelId}")
+                        GatewayForegroundService.addDebugLog("↻ 故障转移 #$idx → ${matchedModel.modelId}")
                     }
                 }
 
@@ -291,30 +369,30 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
                     call.attributes.put(PROVIDER_ID_KEY, matchedModel.providerId)
                     val useProxy = matchedModel.useProxy
 
-                    // ★ 修改请求体中的 model 为实际转发的模型
                     val modifiedBody = if (autoFailover && matchedModel.modelId != modelId) {
-                        // 替换 model 字段为故障转移的模型ID
                         requestBodyStr.replaceFirst(Regex("\"model\"\\s*:\\s*\"[^\"]+\""), "\"model\":\"${matchedModel.modelId}\"")
                     } else requestBodyStr
                     val modifiedBytes = modifiedBody.toByteArray()
 
                     if (stream) {
-                        pipeStreamResponse(call, provider, modifiedBytes, "/v1/$path", matchedModel.modelId, matchedModel.providerId, database, useProxy)
+                        pipeStreamResponse(call, provider, modifiedBytes, "/v1/$effectivePath", matchedModel.modelId, matchedModel.providerId, database, useProxy)
                     } else {
-                        pipeNormalResponse(call, provider, modifiedBytes, "/v1/$path", database, useProxy)
+                        pipeNormalResponse(call, provider, modifiedBytes, "/v1/$effectivePath", database, useProxy)
                     }
-                    return // 成功！
+                    return
                 } catch (e: Exception) {
+                    failCount++
                     lastError = "${matchedModel.modelId}: ${e.message}"
-                    if (GatewayForegroundService.getDebugMode()) {
-                        GatewayForegroundService.addDebugLog("✗ 模型 ${matchedModel.modelId} 失败: ${e.message?.take(60)}")
+                    synchronized(healthCache) {
+                        healthCache[matchedModel.modelId] = ModelHealth(matchedModel.modelId, matchedModel.providerId, Long.MAX_VALUE, System.currentTimeMillis(), false)
                     }
-                    // 继续尝试下一个模型
+                    if (GatewayForegroundService.getDebugMode()) {
+                        GatewayForegroundService.addDebugLog("✗ ${matchedModel.modelId}: ${e.message?.take(60)}")
+                    }
                 }
             }
 
-            // 所有模型都失败
-            val errMsg = if (autoFailover) "All models failed. Last error: $lastError" else "Model '$modelId' error: $lastError"
+            val errMsg = if (autoFailover) "All ${failCount} models failed. Last: $lastError" else "Model '$modelId' error: $lastError"
             val (status, body) = openAIError(HttpStatusCode.ServiceUnavailable, errMsg, "upstream_error")
             call.respondText(contentType = ContentType.Application.Json, status = status, text = body)
             return
@@ -330,13 +408,13 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
         return
     }
     GatewayForegroundService.trafficUploadBytes += rawBytes.size.toLong()
-    pipeNormalResponse(call, defaultProvider, rawBytes, "/v1/$path", database)
+    pipeNormalResponse(call, defaultProvider, rawBytes, "/v1/$effectivePath", database)
 }
 
 /**
  * 非流式转发：读取完整上游响应 → 回写客户端
- * 适合图片/视频/音频以及非流式文本
- * 自动解析 usage 字段并记录 Token 用量到数据库
+ * 使用 respondBytesWriter 确保二进制安全（图片/视频/音频都支持）
+ * Content-Type 直接透传上游 header，不额外设 Content-Length 避免冲突
  */
 private suspend fun pipeNormalResponse(
     call: ApplicationCall,
@@ -344,7 +422,7 @@ private suspend fun pipeNormalResponse(
     rawBody: ByteArray,
     path: String,
     database: AppDatabase,
-    useProxy: Boolean = true  // ★ 新增：是否走代理
+    useProxy: Boolean = true
 ) {
     try {
         val resolvedUrl = provider.resolvedBaseUrl.trimEnd('/')
@@ -361,73 +439,79 @@ private suspend fun pipeNormalResponse(
             }
             .build()
 
-        // ★ 根据 useProxy 选择客户端
         val httpClient = if (useProxy) UpstreamClient.getOkHttpClient() else UpstreamClient.getDirectClient()
-        // ★ 使用带重试的执行（非流式走 runBlocking）
-        val response = kotlinx.coroutines.runBlocking { executeWithRetry(httpClient, request) }
-
-        response.use { resp ->
-            val respBytes = resp.body?.bytes() ?: byteArrayOf()
-            GatewayForegroundService.trafficDownloadBytes += respBytes.size.toLong()
-
-            val contentType = resp.header("Content-Type") ?: "application/json"
-            val statusCode = HttpStatusCode.fromValue(resp.code)
-            call.respondBytesWriter(contentType = ContentType.parse(contentType), status = statusCode) {
-                writeFully(respBytes)
-                flush()
+        
+        // ★★ 整个阻塞 IO 操作包进 Dispatchers.IO
+        var respBytes: ByteArray = byteArrayOf()
+        var contentType: String = "application/json"
+        var statusCode: HttpStatusCode = HttpStatusCode.OK
+        var respCode: Int = 200
+        withContext(Dispatchers.IO) {
+            val response = executeWithRetry(httpClient, request)
+            response.use { resp ->
+                respBytes = resp.body?.bytes() ?: byteArrayOf()
+                GatewayForegroundService.trafficDownloadBytes += respBytes.size.toLong()
+                contentType = resp.header("Content-Type") ?: "application/json"
+                statusCode = HttpStatusCode.fromValue(resp.code)
+                respCode = resp.code
             }
+        }
 
-            // 解析 usage 并记录 TokenUsage
-            if (path.contains("chat/completions") || path.contains("completions")) {
-                kotlinx.coroutines.runBlocking {
-                    try {
-                        val respStr = respBytes.decodeToString()
-                        val respJson = proxyJson.parseToJsonElement(respStr).jsonObject
-                        val usage = respJson["usage"]?.jsonObject
-                        if (usage != null && call.proxyModelId != null && call.proxyProviderId != null) {
-                            val promptTokens = usage["prompt_tokens"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0
-                            val completionTokens = usage["completion_tokens"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0
-                            val totalTokens = usage["total_tokens"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0
-                            if (totalTokens > 0) {
-                                database.tokenUsageDao().insert(
-                                    TokenUsage(
-                                        providerId = call.proxyProviderId!!,
-                                        modelId = call.proxyModelId!!,
-                                        promptTokens = promptTokens,
-                                        completionTokens = completionTokens,
-                                        totalTokens = totalTokens
-                                    )
+        // 在 CIO 线程上写响应
+        call.respondBytesWriter(contentType = ContentType.parse(contentType), status = statusCode) {
+            writeFully(respBytes)
+            flush()
+        }
+
+        // 解析 usage（用 IO 线程）
+        if (path.contains("chat/completions") || path.contains("completions")) {
+            withContext(Dispatchers.IO) {
+                try {
+                    val respStr = respBytes.decodeToString()
+                    val respJson = proxyJson.parseToJsonElement(respStr).jsonObject
+                    val usage = respJson["usage"]?.jsonObject
+                    if (usage != null && call.proxyModelId != null && call.proxyProviderId != null) {
+                        val promptTokens = usage["prompt_tokens"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0
+                        val completionTokens = usage["completion_tokens"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0
+                        val totalTokens = usage["total_tokens"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0
+                        if (totalTokens > 0) {
+                            database.tokenUsageDao().insert(
+                                TokenUsage(
+                                    providerId = call.proxyProviderId!!,
+                                    modelId = call.proxyModelId!!,
+                                    promptTokens = promptTokens,
+                                    completionTokens = completionTokens,
+                                    totalTokens = totalTokens
                                 )
-                            }
+                            )
                         }
-                    } catch (_: Exception) { }
-                } // 关闭 runBlocking
-            } // 关闭 if path.contains
-
-            // ★ Debug 日志 - 响应成功
-            if (GatewayForegroundService.getDebugMode()) {
-                val modelPreview = if (path.contains("chat/completions")) {
-                    try {
-                        val respStr = respBytes.decodeToString()
-                        val m = proxyJson.parseToJsonElement(respStr).jsonObject["model"]?.jsonPrimitive?.content
-                        "model=$m"
-                    } catch (_: Exception) { "" }
-                } else ""
-                GatewayForegroundService.addDebugLog("← ${resp.code} /v1/$path (${respBytes.size}B) $modelPreview")
+                    }
+                } catch (_: Exception) { }
             }
-        } // 关闭 response.use
+        }
+
+        // Debug 日志
+        if (GatewayForegroundService.getDebugMode()) {
+            val modelPreview = if (path.contains("chat/completions")) {
+                try {
+                    val respStr = respBytes.decodeToString()
+                    val m = proxyJson.parseToJsonElement(respStr).jsonObject["model"]?.jsonPrimitive?.content
+                    "model=$m"
+                } catch (_: Exception) { "" }
+            } else ""
+            GatewayForegroundService.addDebugLog("← $respCode /v1/$path (${respBytes.size}B) $modelPreview")
+        }
     } catch (e: Exception) {
         if (GatewayForegroundService.getDebugMode()) {
             GatewayForegroundService.addDebugLog("✗ ERR /v1/$path: ${e.message?.take(80)}")
         }
-        // ★ 对于故障转移，需要抛出异常让调用方知道失败
         throw e
     }
 }
 
 /**
  * 流式管道直通：上游响应正文逐块转发给客户端
- * ★ 修复：HTTP 请求失败时抛出异常，触发故障转移
+ * ★★ 彻底修复：所有阻塞 IO 全部在 Dispatchers.IO 执行
  */
 private suspend fun pipeStreamResponse(
     call: ApplicationCall,
@@ -439,92 +523,81 @@ private suspend fun pipeStreamResponse(
     database: AppDatabase,
     useProxy: Boolean = true
 ) {
-    // ★★ 先在 respondBytesWriter 外执行 HTTP 请求，失败才能触发故障转移
+    // ★★ 整个阻塞 IO（HTTP 请求 + 读流）在 Dispatchers.IO 执行
     val resolvedUrl = provider.resolvedBaseUrl.trimEnd('/')
     val url = resolvedUrl + path
 
-    val reqBody = rawBody.toRequestBody(DEFAULT_CT)
-    val request = okhttp3.Request.Builder()
-        .url(url)
-        .post(reqBody)
-        .apply {
-            if (!provider.apiKey.isNullOrBlank()) {
-                header("Authorization", "Bearer ${provider.apiKey}")
-            }
-        }
-        .build()
-
     val httpClient = if (useProxy) UpstreamClient.getOkHttpClient() else UpstreamClient.getDirectClient()
-    // ★ 在 writer 外执行 HTTP 请求，失败会抛出异常被 proxyRequest 捕获
-    val response = executeWithRetry(httpClient, request)
 
-    // ★ 请求成功后，再进入 respondBytesWriter 开始流式输出
-    call.respondBytesWriter(
-        contentType = ContentType.Text.EventStream,
-        status = HttpStatusCode.OK
-    ) {
+    // ★★ 在 IO 线程执行 HTTP 请求，获取完整响应
+    var success = false
+    var stream: ByteArray = byteArrayOf()
+    var respStatus = 200
+    var ct = "text/event-stream"
+    withContext(Dispatchers.IO) {
         try {
-            call.response.header("Content-Type", "text/event-stream")
-
-            response.use { resp ->
-                if (!resp.isSuccessful) {
-                    val errBytes = resp.body?.bytes() ?: "Unknown error".toByteArray()
-                    val errMsg = errBytes.decodeToString().replace("\"", "\\\"")
-                    writeFully("""data: {"error":"$errMsg"}""".toByteArray())
-                    writeFully("\n\n".toByteArray())
-                    writeFully("data: [DONE]\n\n".toByteArray())
-                    flush()
-                    return@respondBytesWriter
-                }
-
-                val body = resp.body?.byteStream() ?: return@respondBytesWriter
-                body.use { input ->
-                    val buffer = ByteArray(STREAM_BUF_SIZE)
-                    var bytesRead: Int
-                    val accumulatedBytes = ByteArrayOutputStream(STREAM_BUF_SIZE)
-                    while (input.read(buffer).also { bytesRead = it } != -1) {
-                        writeFully(buffer, 0, bytesRead)
-                        flush()
-                        GatewayForegroundService.trafficDownloadBytes += bytesRead.toLong()
-                        if (path.contains("chat/completions")) {
-                            accumulatedBytes.write(buffer, 0, bytesRead)
-                        }
-                    }
-                    // 流式结束后只解码一次
-                    if (path.contains("chat/completions")) {
-                        try {
-                            val fullStr = accumulatedBytes.toString(Charsets.UTF_8.name())
-                            val usageMatch = Regex(""""usage"\s*:\s*\{[^}]+\}""").find(fullStr)
-                            if (usageMatch != null) {
-                                val usageStr = usageMatch.value
-                                val promptTokens = Regex(""""prompt_tokens"\s*:\s*(\d+)""").find(usageStr)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0
-                                val completionTokens = Regex(""""completion_tokens"\s*:\s*(\d+)""").find(usageStr)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0
-                                val totalTokens = Regex(""""total_tokens"\s*:\s*(\d+)""").find(usageStr)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0
-                                if (totalTokens > 0) {
-                                    database.tokenUsageDao().insert(
-                                        TokenUsage(
-                                            providerId = providerId,
-                                            modelId = modelId,
-                                            promptTokens = promptTokens,
-                                            completionTokens = completionTokens,
-                                            totalTokens = totalTokens
-                                        )
-                                    )
-                                }
-                            }
-                        } catch (_: Exception) { }
+            val reqBody = rawBody.toRequestBody(DEFAULT_CT)
+            val request = okhttp3.Request.Builder()
+                .url(url)
+                .post(reqBody)
+                .apply {
+                    if (!provider.apiKey.isNullOrBlank()) {
+                        header("Authorization", "Bearer ${provider.apiKey}")
                     }
                 }
+                .build()
+
+            val response = executeWithRetry(httpClient, request)
+            success = response.isSuccessful
+            respStatus = response.code
+            ct = response.header("Content-Type") ?: "text/event-stream"
+            if (success) {
+                stream = response.body?.bytes() ?: byteArrayOf()
+                GatewayForegroundService.trafficDownloadBytes += stream.size.toLong()
+            } else {
+                stream = response.body?.bytes() ?: "Unknown error".toByteArray()
             }
+            response.close()
         } catch (e: Exception) {
             if (GatewayForegroundService.getDebugMode()) {
-                GatewayForegroundService.addDebugLog("✗ STREAM ERR: ${e.message?.take(80)}")
+                GatewayForegroundService.addDebugLog("✗ STREAM HTTP ERR: ${e.message?.take(80)}")
             }
+            throw e
+        }
+    }
+
+    // 在 CIO 线程写响应
+    if (!success) {
+        val errMsg = stream.decodeToString().replace("\"", "\\\"")
+        call.respondBytesWriter(contentType = ContentType.Text.EventStream, status = HttpStatusCode.OK) {
+            writeFully("""data: {"error":"$errMsg"}""".toByteArray())
+            writeFully("\n\n".toByteArray())
+            writeFully("data: [DONE]\n\n".toByteArray())
+            flush()
+        }
+        return
+    }
+
+    call.respondBytesWriter(contentType = ContentType.parse(ct), status = HttpStatusCode.fromValue(respStatus)) {
+        writeFully(stream)
+        flush()
+    }
+
+    // ★ 解析 usage（用 IO 线程）
+    if (path.contains("chat/completions")) {
+        withContext(Dispatchers.IO) {
             try {
-                writeFully("""data: {"error":"${e.message?.replace("\"", "\\\"") ?: "Unknown"}"}""".toByteArray())
-                writeFully("\n\n".toByteArray())
-                writeFully("data: [DONE]\n\n".toByteArray())
-                flush()
+                val fullStr = stream.decodeToString()
+                val usageMatch = Regex(""""usage"\s*:\s*\{[^}]+\}""").find(fullStr)
+                if (usageMatch != null) {
+                    val usageStr = usageMatch.value
+                    val promptTokens = Regex(""""prompt_tokens"\s*:\s*(\d+)""").find(usageStr)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0
+                    val completionTokens = Regex(""""completion_tokens"\s*:\s*(\d+)""").find(usageStr)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0
+                    val totalTokens = Regex(""""total_tokens"\s*:\s*(\d+)""").find(usageStr)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0
+                    if (totalTokens > 0) {
+                        database.tokenUsageDao().insert(TokenUsage(providerId = providerId, modelId = modelId, promptTokens = promptTokens, completionTokens = completionTokens, totalTokens = totalTokens))
+                    }
+                }
             } catch (_: Exception) { }
         }
     }
