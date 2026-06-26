@@ -61,9 +61,15 @@ class GatewayService(private val database: AppDatabase) {
 
         val embedded = embeddedServer(CIO, port = port) {
             routing {
-                // 健康检查
+                // 根路径/健康检查
                 get("/health") {
                     call.respondText("OK", ContentType.Text.Plain)
+                }
+                get("/") {
+                    call.respondText(
+                        contentType = ContentType.Application.Json,
+                        text = """{"service":"qitong-ai-gateway","version":"3.2.0","status":"running"}"""
+                    )
                 }
 
                 // 获取模型列表 (OpenAI Compatible)
@@ -414,15 +420,14 @@ private suspend fun pipeNormalResponse(
         if (GatewayForegroundService.getDebugMode()) {
             GatewayForegroundService.addDebugLog("✗ ERR /v1/$path: ${e.message?.take(80)}")
         }
-        val (status, body) = openAIError(HttpStatusCode.BadGateway, "Upstream request failed: ${e.message}", "upstream_error")
-        call.respondText(contentType = ContentType.Application.Json, status = status, text = body)
+        // ★ 对于故障转移，需要抛出异常让调用方知道失败
+        throw e
     }
 }
 
 /**
  * 流式管道直通：上游响应正文逐块转发给客户端
- * 32KB 大缓冲区 + 每块 flush，延迟降到最低
- * 自动从 data: ... 行解析 usage 并记录 Token 用量
+ * ★ 修复：HTTP 请求失败时抛出异常，触发故障转移
  */
 private suspend fun pipeStreamResponse(
     call: ApplicationCall,
@@ -432,36 +437,40 @@ private suspend fun pipeStreamResponse(
     modelId: String,
     providerId: Long,
     database: AppDatabase,
-    useProxy: Boolean = true  // ★ 新增：是否走代理
+    useProxy: Boolean = true
 ) {
+    // ★★ 先在 respondBytesWriter 外执行 HTTP 请求，失败才能触发故障转移
+    val resolvedUrl = provider.resolvedBaseUrl.trimEnd('/')
+    val url = resolvedUrl + path
+
+    val reqBody = rawBody.toRequestBody(DEFAULT_CT)
+    val request = okhttp3.Request.Builder()
+        .url(url)
+        .post(reqBody)
+        .apply {
+            if (!provider.apiKey.isNullOrBlank()) {
+                header("Authorization", "Bearer ${provider.apiKey}")
+            }
+        }
+        .build()
+
+    val httpClient = if (useProxy) UpstreamClient.getOkHttpClient() else UpstreamClient.getDirectClient()
+    // ★ 在 writer 外执行 HTTP 请求，失败会抛出异常被 proxyRequest 捕获
+    val response = executeWithRetry(httpClient, request)
+
+    // ★ 请求成功后，再进入 respondBytesWriter 开始流式输出
     call.respondBytesWriter(
         contentType = ContentType.Text.EventStream,
         status = HttpStatusCode.OK
     ) {
         try {
-            val resolvedUrl = provider.resolvedBaseUrl.trimEnd('/')
-            val url = resolvedUrl + path
-
-            val reqBody = rawBody.toRequestBody(DEFAULT_CT)
-            val request = okhttp3.Request.Builder()
-                .url(url)
-                .post(reqBody)
-                .apply {
-                    if (!provider.apiKey.isNullOrBlank()) {
-                        header("Authorization", "Bearer ${provider.apiKey}")
-                    }
-                }
-                .build()
-
-            // ★ 根据 useProxy 选择客户端
-            val httpClient = if (useProxy) UpstreamClient.getOkHttpClient() else UpstreamClient.getDirectClient()
-            // ★ 使用带重试的执行（流式在协程体内直接调用）
-            val response = executeWithRetry(httpClient, request)
+            call.response.header("Content-Type", "text/event-stream")
 
             response.use { resp ->
                 if (!resp.isSuccessful) {
                     val errBytes = resp.body?.bytes() ?: "Unknown error".toByteArray()
-                    writeFully("""data: {"error":"${errBytes.decodeToString().replace("\"", "\\\"")}"}""".toByteArray())
+                    val errMsg = errBytes.decodeToString().replace("\"", "\\\"")
+                    writeFully("""data: {"error":"$errMsg"}""".toByteArray())
                     writeFully("\n\n".toByteArray())
                     writeFully("data: [DONE]\n\n".toByteArray())
                     flush()
@@ -469,8 +478,6 @@ private suspend fun pipeStreamResponse(
                 }
 
                 val body = resp.body?.byteStream() ?: return@respondBytesWriter
-                // ★ 正确设置流式 Content-Type
-                call.response.header("Content-Type", "text/event-stream")
                 body.use { input ->
                     val buffer = ByteArray(STREAM_BUF_SIZE)
                     var bytesRead: Int
@@ -513,10 +520,12 @@ private suspend fun pipeStreamResponse(
             if (GatewayForegroundService.getDebugMode()) {
                 GatewayForegroundService.addDebugLog("✗ STREAM ERR: ${e.message?.take(80)}")
             }
-            writeFully("""data: {"error":"${e.message?.replace("\"", "\\\"") ?: "Unknown"}"}""".toByteArray())
-            writeFully("\n\n".toByteArray())
-            writeFully("data: [DONE]\n\n".toByteArray())
-            flush()
+            try {
+                writeFully("""data: {"error":"${e.message?.replace("\"", "\\\"") ?: "Unknown"}"}""".toByteArray())
+                writeFully("\n\n".toByteArray())
+                writeFully("data: [DONE]\n\n".toByteArray())
+                flush()
+            } catch (_: Exception) { }
         }
     }
 }
