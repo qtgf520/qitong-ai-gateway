@@ -166,7 +166,9 @@ class GatewayForegroundService : Service() {
         private const val KEY_PROXY_PROTOCOL = "proxy_protocol"
         private const val KEY_WAKE_ENABLED = "wake_enabled"
         private const val KEY_PROXY_LIST_JSON = "proxy_list_json"
-        private const val KEY_DEBUG_MODE = "debug_mode"        // ★ 新增
+        private const val KEY_DEBUG_MODE = "debug_mode"
+        private const val KEY_AUTO_FAILOVER = "auto_failover"
+        private const val KEY_FAILOVER_MODEL = "failover_model"
         private const val EXTRA_TOGGLE_WAKE = "toggle_wake"
         private const val DEFAULT_PORT = 8889
         private const val DEFAULT_PROXY_PORT = 7890
@@ -214,6 +216,16 @@ class GatewayForegroundService : Service() {
             GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).edit().putBoolean(KEY_DEBUG_MODE, enabled).apply()
         }
         fun getDebugMode(): Boolean = GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).getBoolean(KEY_DEBUG_MODE, false)
+
+        fun saveAutoFailover(enabled: Boolean) {
+            GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).edit().putBoolean(KEY_AUTO_FAILOVER, enabled).apply()
+        }
+        fun getAutoFailover(): Boolean = GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).getBoolean(KEY_AUTO_FAILOVER, false)
+
+        fun saveFailoverModel(modelId: String) {
+            GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).edit().putString(KEY_FAILOVER_MODEL, modelId).apply()
+        }
+        fun getFailoverModel(): String = GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).getString(KEY_FAILOVER_MODEL, "") ?: ""
 
         fun saveGatewayPort(port: Int) {
             GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).edit().putInt(KEY_GATEWAY_PORT, port).apply()

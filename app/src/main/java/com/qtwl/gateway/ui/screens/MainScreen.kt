@@ -282,6 +282,36 @@ fun HomeScreen(viewModel: GatewayViewModel) {
             )
         }
 
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // ★★ 自动故障转移开关 ★★
+        val autoFailover by viewModel.autoFailover.collectAsState()
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
+            )
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("🔄 自动故障转移", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                    Text(
+                        text = if (autoFailover) "开启：请求失败自动切换其他可用模型" else "关闭：只使用指定模型",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = autoFailover,
+                    onCheckedChange = { viewModel.toggleAutoFailover() }
+                )
+            }
+        }
+
         Spacer(modifier = Modifier.height(16.dp))
 
         // 使用说明

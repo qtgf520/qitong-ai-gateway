@@ -1,0 +1,58 @@
+[
+    {
+        "merged": "com.qtwl.gateway.app-debug-3:/mipmap-xhdpi_ic_launcher.webp.flat",
+        "source": "com.qtwl.gateway.app-main-5:/mipmap-xhdpi/ic_launcher.webp"
+    },
+    {
+        "merged": "com.qtwl.gateway.app-debug-3:/xml_backup_rules.xml.flat",
+        "source": "com.qtwl.gateway.app-main-5:/xml/backup_rules.xml"
+    },
+    {
+        "merged": "com.qtwl.gateway.app-debug-3:/mipmap-mdpi_ic_launcher.webp.flat",
+        "source": "com.qtwl.gateway.app-main-5:/mipmap-mdpi/ic_launcher.webp"
+    },
+    {
+        "merged": "com.qtwl.gateway.app-debug-3:/mipmap-mdpi_ic_launcher_round.webp.flat",
+        "source": "com.qtwl.gateway.app-main-5:/mipmap-mdpi/ic_launcher_round.webp"
+    },
+    {
+        "merged": "com.qtwl.gateway.app-debug-3:/mipmap-xxhdpi_ic_launcher_round.webp.flat",
+        "source": "com.qtwl.gateway.app-main-5:/mipmap-xxhdpi/ic_launcher_round.webp"
+    },
+    {
+        "merged": "com.qtwl.gateway.app-debug-3:/mipmap-xxxhdpi_ic_launcher_round.webp.flat",
+        "source": "com.qtwl.gateway.app-main-5:/mipmap-xxxhdpi/ic_launcher_round.webp"
+    },
+    {
+        "merged": "com.qtwl.gateway.app-debug-3:/mipmap-xxhdpi_ic_launcher.webp.flat",
+        "source": "com.qtwl.gateway.app-main-5:/mipmap-xxhdpi/ic_launcher.webp"
+    },
+    {
+        "merged": "com.qtwl.gateway.app-debug-3:/mipmap-hdpi_ic_launcher_round.webp.flat",
+        "source": "com.qtwl.gateway.app-main-5:/mipmap-hdpi/ic_launcher_round.webp"
+    },
+    {
+        "merged": "com.qtwl.gateway.app-debug-3:/mipmap-xhdpi_ic_launcher_round.webp.flat",
+        "source": "com.qtwl.gateway.app-main-5:/mipmap-xhdpi/ic_launcher_round.webp"
+    },
+    {
+        "merged": "com.qtwl.gateway.app-debug-3:/mipmap-hdpi_ic_launcher.webp.flat",
+        "source": "com.qtwl.gateway.app-main-5:/mipmap-hdpi/ic_launcher.webp"
+    },
+    {
+        "merged": "com.qtwl.gateway.app-debug-3:/drawable_ic_launcher_background.xml.flat",
+        "source": "com.qtwl.gateway.app-main-5:/drawable/ic_launcher_background.xml"
+    },
+    {
+        "merged": "com.qtwl.gateway.app-debug-3:/mipmap-xxxhdpi_ic_launcher.webp.flat",
+        "source": "com.qtwl.gateway.app-main-5:/mipmap-xxxhdpi/ic_launcher.webp"
+    },
+    {
+        "merged": "com.qtwl.gateway.app-debug-3:/drawable_ic_launcher_foreground.xml.flat",
+        "source": "com.qtwl.gateway.app-main-5:/drawable/ic_launcher_foreground.xml"
+    },
+    {
+        "merged": "com.qtwl.gateway.app-debug-3:/xml_data_extraction_rules.xml.flat",
+        "source": "com.qtwl.gateway.app-main-5:/xml/data_extraction_rules.xml"
+    }
+]

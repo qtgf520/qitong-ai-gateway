@@ -1595,6 +1595,17 @@ fun clearChatError() {
     fun getDebugLogs(): List<String> = GatewayForegroundService.getDebugLogs()
     fun clearDebugLogs() { GatewayForegroundService.clearDebugLogs() }
 
+    // ★ 自动故障转移
+    private val _autoFailover = MutableStateFlow(GatewayForegroundService.getAutoFailover())
+    val autoFailover: StateFlow<Boolean> = _autoFailover.asStateFlow()
+
+    fun toggleAutoFailover() {
+        val newMode = !_autoFailover.value
+        _autoFailover.value = newMode
+        GatewayForegroundService.saveAutoFailover(newMode)
+        _snackbarMessage.value = if (newMode) "🔄 自动故障转移已开启，请求失败自动切换模型" else "🔄 自动故障转移已关闭"
+    }
+
     // ========== Factory ==========
 
     class Factory : ViewModelProvider.Factory {

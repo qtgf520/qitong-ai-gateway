@@ -35,8 +35,11 @@ import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.ByteArrayOutputStream
+import java.net.SocketTimeoutException
+import java.net.ConnectException
 import java.util.UUID
 import kotlinx.serialization.json.JsonNull
+import kotlinx.coroutines.delay
 
 /**
  * 本地 AI 网关服务（Ktor Server）
@@ -93,33 +96,11 @@ class GatewayService(private val database: AppDatabase) {
                 }
 
                 // === 通用代理：拦截 /v1/* 所有 POST/GET 请求 ===
-                // 匹配 /v1/chat/completions, /v1/images/generations, /v1/audio/transcriptions, /v1/embeddings, /v1/completions 等一切路径
+                // 唯一入口！所有 /v1/ 开头的请求都走这里
                 post("/v1/{path...}") {
                     kotlinx.coroutines.runBlocking { proxyRequest(call, database) }
                 }
                 get("/v1/{path...}") {
-                    kotlinx.coroutines.runBlocking { proxyRequest(call, database) }
-                }
-                // ★ 新增：显式支持 embeddings / completions / moderations（某些客户端直接发送这些路径）
-                post("/v1/embeddings") {
-                    kotlinx.coroutines.runBlocking { proxyRequest(call, database) }
-                }
-                post("/v1/completions") {
-                    kotlinx.coroutines.runBlocking { proxyRequest(call, database) }
-                }
-                post("/v1/moderations") {
-                    kotlinx.coroutines.runBlocking { proxyRequest(call, database) }
-                }
-                post("/v1/images/generations") {
-                    kotlinx.coroutines.runBlocking { proxyRequest(call, database) }
-                }
-                post("/v1/images/edits") {
-                    kotlinx.coroutines.runBlocking { proxyRequest(call, database) }
-                }
-                post("/v1/audio/transcriptions") {
-                    kotlinx.coroutines.runBlocking { proxyRequest(call, database) }
-                }
-                post("/v1/audio/translations") {
                     kotlinx.coroutines.runBlocking { proxyRequest(call, database) }
                 }
             }
@@ -140,6 +121,45 @@ class GatewayService(private val database: AppDatabase) {
 private val proxyJson = Json { ignoreUnknownKeys = true; prettyPrint = false }
 private val DEFAULT_CT = "application/json".toMediaType()
 private const val STREAM_BUF_SIZE = 32768 // 32KB 大缓冲区，减少IO次数
+private const val MAX_RETRIES = 5          // ★ 最大重试次数
+
+/** ★ 带重试的 HTTP 请求执行 */
+private suspend fun executeWithRetry(client: okhttp3.OkHttpClient, request: okhttp3.Request, retries: Int = MAX_RETRIES): okhttp3.Response {
+    var lastError: Exception? = null
+    for (attempt in 1..retries) {
+        try {
+            val response = client.newCall(request).execute()
+            if (response.isSuccessful || attempt == retries) {
+                return response
+            }
+            // 非成功状态码且不是最后一次，关闭响应后重试
+            response.close()
+            if (attempt < retries) {
+                val waitMs = (attempt * 1000L).coerceAtMost(5000L)
+                delay(waitMs)
+            }
+        } catch (e: SocketTimeoutException) {
+            lastError = e
+            if (attempt < retries) {
+                val waitMs = (attempt * 1000L).coerceAtMost(5000L)
+                delay(waitMs)
+            }
+        } catch (e: ConnectException) {
+            lastError = e
+            if (attempt < retries) {
+                val waitMs = (attempt * 1500L).coerceAtMost(5000L)
+                delay(waitMs)
+            }
+        } catch (e: Exception) {
+            lastError = e
+            if (attempt < retries) {
+                delay(1000)
+            }
+        }
+    }
+    // 所有重试失败，抛出最后一个错误
+    throw lastError ?: Exception("Request failed after $retries retries")
+}
 
 /** OpenAI 标准错误响应 */
 private fun openAIError(status: HttpStatusCode, message: String, type: String = "invalid_request_error", code: Int? = null): Pair<HttpStatusCode, String> {
@@ -205,16 +225,15 @@ private val ApplicationCall.proxyProviderId: Long? get() = attributes.getOrNull(
 /**
  * 通用代理转发：读取请求体 → 查找模型(如果是chat请求) → 转发到上游 → 管道式流回客户端
  * 支持图片/视频/音频等任意 Content-Type，数据不落盘，直接 pipe
+ * ★ v3.1.0 新增自动故障转移：请求失败时自动切换到其他可用模型
  */
 private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
     // 1. 读取原始请求体（二进制，兼容所有 Content-Type）
     val rawBytes = call.receive<ByteArray>()
     val requestBodyStr = String(rawBytes, Charsets.UTF_8)
 
-    // 2. 判断是否为 chat 请求（需要路由到特定模型对应的服务商）
     val path = call.parameters.getAll("path")?.joinToString("/") ?: ""
 
-    // ★ Debug 日志
     if (GatewayForegroundService.getDebugMode()) {
         GatewayForegroundService.addDebugLog("→ ${call.request.httpMethod.value} /v1/$path (${rawBytes.size}B)")
     }
@@ -222,69 +241,89 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
     val isChat = path == "chat/completions" || path == "completions"
 
     if (isChat && requestBodyStr.isNotBlank()) {
-        // 解析 model 字段，路由到对应服务商
-        val requestJson = try {
-            proxyJson.parseToJsonElement(requestBodyStr).jsonObject
-        } catch (_: Exception) { null }
-
+        val requestJson = try { proxyJson.parseToJsonElement(requestBodyStr).jsonObject } catch (_: Exception) { null }
         val modelId = requestJson?.get("model")?.jsonPrimitive?.content
         val stream = requestJson?.get("stream")?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false
 
         if (modelId != null) {
-            val allModels = database.aiModelDao().getAllModelsList()
-            val matchedModel = allModels.find { it.modelId == modelId }
-            if (matchedModel == null) {
-                val (status, body) = openAIError(HttpStatusCode.NotFound, "The model '$modelId' does not exist", "invalid_model_error")
-                call.respondText(contentType = ContentType.Application.Json, status = status, text = body)
-                return
-            }
-            if (!matchedModel.isEnabled) {
-                val (status, body) = openAIError(HttpStatusCode.Forbidden, "Model '$modelId' is disabled", "model_disabled")
-                call.respondText(contentType = ContentType.Application.Json, status = status, text = body)
-                return
-            }
+            // ★ 自动故障转移模式
+            val autoFailover = GatewayForegroundService.getAutoFailover()
+            val failoverModels = if (autoFailover) {
+                // 收集所有已启用的模型（按服务商分组，优先同服务商）
+                database.aiModelDao().getEnabledModelsList().filter { it.isEnabled }
+            } else emptyList()
 
-            val provider = database.providerDao().getProviderById(matchedModel.providerId)
-            if (provider == null || !provider.isEnabled) {
-                val (status, body) = openAIError(HttpStatusCode.BadRequest, "Provider for model '$modelId' is disabled or not found", "provider_error")
-                call.respondText(contentType = ContentType.Application.Json, status = status, text = body)
-                return
-            }
-
-            // 统计上传流量
-            GatewayForegroundService.trafficUploadBytes += rawBytes.size.toLong()
-
-            // 记录 modelId / providerId 到 call attributes，供 pipe 函数记录 TokenUsage
-            call.attributes.put(MODEL_ID_KEY, matchedModel.modelId)
-            call.attributes.put(PROVIDER_ID_KEY, matchedModel.providerId)
-
-            // ★ 按模型粒度决定是否走代理
-            val useProxy = matchedModel.useProxy
-
-            if (stream) {
-                // 流式：管道直通（传入 useProxy 参数）
-                pipeStreamResponse(call, provider, rawBytes, "/v1/$path", matchedModel.modelId, matchedModel.providerId, database, useProxy)
+            // 尝试模型列表：首选请求的模型，故障转移时尝试其他
+            val attemptModels = if (autoFailover && failoverModels.isNotEmpty()) {
+                // 把请求的模型放第一位，其他模型按序排列（排除已禁用的）
+                val primary = failoverModels.find { it.modelId == modelId }
+                val others = failoverModels.filter { it.modelId != modelId }
+                val ordered = if (primary != null) listOf(primary) + others else failoverModels
+                ordered
             } else {
-                // 非流式：转发并回复（传入 useProxy 参数）
-                pipeNormalResponse(call, provider, rawBytes, "/v1/$path", database, useProxy)
+                // 非故障转移模式：只尝试请求的模型
+                val allModels = database.aiModelDao().getAllModelsList()
+                listOfNotNull(allModels.find { it.modelId == modelId })
             }
+
+            var lastError: String? = null
+            for ((idx, matchedModel) in attemptModels.withIndex()) {
+                if (idx > 0) {
+                    if (GatewayForegroundService.getDebugMode()) {
+                        GatewayForegroundService.addDebugLog("↻ 故障转移尝试 #$idx → ${matchedModel.modelId}")
+                    }
+                }
+
+                if (!matchedModel.isEnabled) continue
+
+                val provider = database.providerDao().getProviderById(matchedModel.providerId)
+                if (provider == null || !provider.isEnabled) continue
+
+                try {
+                    GatewayForegroundService.trafficUploadBytes += rawBytes.size.toLong()
+                    call.attributes.put(MODEL_ID_KEY, matchedModel.modelId)
+                    call.attributes.put(PROVIDER_ID_KEY, matchedModel.providerId)
+                    val useProxy = matchedModel.useProxy
+
+                    // ★ 修改请求体中的 model 为实际转发的模型
+                    val modifiedBody = if (autoFailover && matchedModel.modelId != modelId) {
+                        // 替换 model 字段为故障转移的模型ID
+                        requestBodyStr.replaceFirst(Regex("\"model\"\\s*:\\s*\"[^\"]+\""), "\"model\":\"${matchedModel.modelId}\"")
+                    } else requestBodyStr
+                    val modifiedBytes = modifiedBody.toByteArray()
+
+                    if (stream) {
+                        pipeStreamResponse(call, provider, modifiedBytes, "/v1/$path", matchedModel.modelId, matchedModel.providerId, database, useProxy)
+                    } else {
+                        pipeNormalResponse(call, provider, modifiedBytes, "/v1/$path", database, useProxy)
+                    }
+                    return // 成功！
+                } catch (e: Exception) {
+                    lastError = "${matchedModel.modelId}: ${e.message}"
+                    if (GatewayForegroundService.getDebugMode()) {
+                        GatewayForegroundService.addDebugLog("✗ 模型 ${matchedModel.modelId} 失败: ${e.message?.take(60)}")
+                    }
+                    // 继续尝试下一个模型
+                }
+            }
+
+            // 所有模型都失败
+            val errMsg = if (autoFailover) "All models failed. Last error: $lastError" else "Model '$modelId' error: $lastError"
+            val (status, body) = openAIError(HttpStatusCode.ServiceUnavailable, errMsg, "upstream_error")
+            call.respondText(contentType = ContentType.Application.Json, status = status, text = body)
             return
         }
     }
 
-    // 3. 非 chat 请求 或 没有 model 字段 → 尝试通用转发到默认服务商
+    // 3. 非 chat 请求 → 通用转发
     val providers = database.providerDao().getAllProvidersList()
     val defaultProvider = providers.firstOrNull { it.isEnabled }
     if (defaultProvider == null) {
-        val (status, body) = openAIError(HttpStatusCode.BadRequest, "No enabled provider available. Please add and enable a provider first.", "provider_error")
+        val (status, body) = openAIError(HttpStatusCode.BadRequest, "No enabled provider available.", "provider_error")
         call.respondText(contentType = ContentType.Application.Json, status = status, text = body)
         return
     }
-
-    // 统计上传流量
     GatewayForegroundService.trafficUploadBytes += rawBytes.size.toLong()
-
-    // 非流式转发（图片/音频等一律非流式）
     pipeNormalResponse(call, defaultProvider, rawBytes, "/v1/$path", database)
 }
 
@@ -318,15 +357,16 @@ private suspend fun pipeNormalResponse(
 
         // ★ 根据 useProxy 选择客户端
         val httpClient = if (useProxy) UpstreamClient.getOkHttpClient() else UpstreamClient.getDirectClient()
-        val response = httpClient.newCall(request).execute()
+        // ★ 使用带重试的执行（非流式走 runBlocking）
+        val response = kotlinx.coroutines.runBlocking { executeWithRetry(httpClient, request) }
 
         response.use { resp ->
             val respBytes = resp.body?.bytes() ?: byteArrayOf()
             GatewayForegroundService.trafficDownloadBytes += respBytes.size.toLong()
 
             val contentType = resp.header("Content-Type") ?: "application/json"
-            call.response.header("Content-Type", contentType)
-            call.respondBytesWriter(status = HttpStatusCode.fromValue(resp.code)) {
+            val statusCode = HttpStatusCode.fromValue(resp.code)
+            call.respondBytesWriter(contentType = ContentType.parse(contentType), status = statusCode) {
                 writeFully(respBytes)
                 flush()
             }
@@ -415,7 +455,8 @@ private suspend fun pipeStreamResponse(
 
             // ★ 根据 useProxy 选择客户端
             val httpClient = if (useProxy) UpstreamClient.getOkHttpClient() else UpstreamClient.getDirectClient()
-            val response = httpClient.newCall(request).execute()
+            // ★ 使用带重试的执行（流式在协程体内直接调用）
+            val response = executeWithRetry(httpClient, request)
 
             response.use { resp ->
                 if (!resp.isSuccessful) {
@@ -428,16 +469,16 @@ private suspend fun pipeStreamResponse(
                 }
 
                 val body = resp.body?.byteStream() ?: return@respondBytesWriter
+                // ★ 正确设置流式 Content-Type
+                call.response.header("Content-Type", "text/event-stream")
                 body.use { input ->
                     val buffer = ByteArray(STREAM_BUF_SIZE)
                     var bytesRead: Int
-                    // 累积原始字节流，避免每块 decodeToString
                     val accumulatedBytes = ByteArrayOutputStream(STREAM_BUF_SIZE)
                     while (input.read(buffer).also { bytesRead = it } != -1) {
                         writeFully(buffer, 0, bytesRead)
                         flush()
                         GatewayForegroundService.trafficDownloadBytes += bytesRead.toLong()
-                        // 只累积原始字节，不解码
                         if (path.contains("chat/completions")) {
                             accumulatedBytes.write(buffer, 0, bytesRead)
                         }
