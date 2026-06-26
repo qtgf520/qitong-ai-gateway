@@ -123,24 +123,56 @@ class GatewayService(private val database: AppDatabase) {
 private val proxyJson = Json { ignoreUnknownKeys = true; prettyPrint = false }
 private val DEFAULT_CT = "application/json".toMediaType()
 private const val MAX_RETRIES = 5
-private const val HEALTH_CHECK_TIMEOUT = 5000L // 5秒超时测速
+private const val HEALTH_CHECK_TIMEOUT = 5000L
 private val failoverScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
 /** 模型健康状态 */
 private data class ModelHealth(
     val modelId: String,
     val providerId: Long,
-    val latencyMs: Long = Long.MAX_VALUE,  // 响应时长，越小越快
+    val latencyMs: Long = Long.MAX_VALUE,
     val lastCheckTime: Long = 0,
-    val isHealthy: Boolean = true
+    val isHealthy: Boolean = true,
+    val successCount: Int = 0      // ★ 连续成功次数
 )
 
-/** 模型健康缓存（协程安全） */
+/** 模型健康缓存 */
 private val healthCache = mutableMapOf<String, ModelHealth>()
 private var cacheTime: Long = 0
-private const val CACHE_TTL = 60_000L // 缓存有效期60秒
+private const val CACHE_TTL = 60_000L
 
-/** ★ 在后台测试所有已启用模型的速度，更新健康缓存 */
+/** ★ 最优模型ID（自动记住最快的模型） */
+@Volatile
+private var bestModelId: String? = null
+@Volatile
+private var bestModelLatency: Long = Long.MAX_VALUE
+private var bestModelSetTime: Long = 0
+private const val BEST_MODEL_TTL = 300_000L // 最优模型缓存5分钟
+
+/** 标记模型为成功，自动更新最优模型 */
+private fun markModelSuccess(modelId: String, latencyMs: Long) {
+    synchronized(healthCache) {
+        val existing = healthCache[modelId]
+        val successCount = (existing?.successCount ?: 0) + 1
+        healthCache[modelId] = ModelHealth(modelId, existing?.providerId ?: 0, latencyMs, System.currentTimeMillis(), true, successCount)
+    }
+    // 如果这个模型比当前最优模型快，或者最优模型未设置，更新最优模型
+    if (latencyMs < bestModelLatency || bestModelId == null) {
+        bestModelId = modelId
+        bestModelLatency = latencyMs
+        bestModelSetTime = System.currentTimeMillis()
+    }
+}
+
+/** 获取最优模型ID（如果缓存未过期） */
+private fun getBestModel(): String? {
+    if (bestModelId != null && System.currentTimeMillis() - bestModelSetTime < BEST_MODEL_TTL) {
+        return bestModelId
+    }
+    return null
+}
+
+/** 刷新健康缓存 */
 private suspend fun refreshHealthCache(database: AppDatabase) {
     val now = System.currentTimeMillis()
     if (now - cacheTime < CACHE_TTL) return // 缓存未过期
@@ -212,47 +244,26 @@ private fun sanitizeRequestBody(bodyStr: String): String {
         val json = proxyJson.parseToJsonElement(bodyStr).jsonObject
         val sb = StringBuilder(bodyStr)
         
-        // 1. 修正 temperature: 必须在 [0.0, 2.0) 之间
         sb.replace(Regex(""""temperature"\s*:\s*([\d.]+)""")) { match ->
             val value = match.groupValues[1].toDoubleOrNull()
-            if (value != null) {
-                val clamped = value.coerceIn(0.0, 1.999)
-                if (clamped != value) "\"temperature\":$clamped" else match.value
-            } else match.value
+            if (value != null) { val clamped = value.coerceIn(0.0, 1.999); if (clamped != value) "\"temperature\":$clamped" else match.value } else match.value
         }
-        
-        // 2. 修正 top_p: 必须在 [0.0, 1.0] 之间
         sb.replace(Regex(""""top_p"\s*:\s*([\d.]+)""")) { match ->
             val value = match.groupValues[1].toDoubleOrNull()
-            if (value != null) {
-                val clamped = value.coerceIn(0.0, 1.0)
-                if (clamped != value) "\"top_p\":$clamped" else match.value
-            } else match.value
+            if (value != null) { val clamped = value.coerceIn(0.0, 1.0); if (clamped != value) "\"top_p\":$clamped" else match.value } else match.value
         }
-        
-        // 3. 修正 presence_penalty / frequency_penalty: 必须在 [-2.0, 2.0] 之间
         sb.replace(Regex(""""(presence_penalty|frequency_penalty)"\s*:\s*([-\d.]+)""")) { match ->
             val value = match.groupValues[2].toDoubleOrNull()
-            if (value != null) {
-                val clamped = value.coerceIn(-2.0, 2.0)
-                if (clamped != value) "\"${match.groupValues[1]}\":$clamped" else match.value
-            } else match.value
+            if (value != null) { val clamped = value.coerceIn(-2.0, 2.0); if (clamped != value) "\"${match.groupValues[1]}\":$clamped" else match.value } else match.value
         }
-        
-        // 4. 修正 max_tokens: 必须是正整数，且不超过128000
         sb.replace(Regex(""""max_tokens"\s*:\s*(\d+)""")) { match ->
             val value = match.groupValues[1].toIntOrNull()
-            if (value != null) {
-                val clamped = value.coerceIn(1, 128000)
-                if (clamped != value) "\"max_tokens\":$clamped" else match.value
-            } else match.value
+            if (value != null) { val clamped = value.coerceIn(1, 128000); if (clamped != value) "\"max_tokens\":$clamped" else match.value } else match.value
         }
-        
         return sb.toString()
-    } catch (_: Exception) {
-        return bodyStr // 解析失败原样返回
-    }
+    } catch (_: Exception) { return bodyStr }
 }
+
 private suspend fun executeWithRetry(client: okhttp3.OkHttpClient, request: okhttp3.Request, retries: Int = MAX_RETRIES): okhttp3.Response {
     var lastError: Exception? = null
     for (attempt in 1..retries) {
@@ -388,8 +399,10 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
             // ★★ 按速度排序尝试模型
             val allEnabled = database.aiModelDao().getEnabledModelsList().filter { it.isEnabled }
             val attemptModels = if (autoFailover && allEnabled.isNotEmpty()) {
-                // 按健康缓存排序：首选最快的，不可用的放最后
-                getSortedModels(allEnabled, modelId)
+                // ★ 如果有记忆的最优模型，优先用
+                val bestModel = getBestModel()
+                val preferred = bestModel ?: modelId
+                getSortedModels(allEnabled, preferred)
             } else {
                 // 非故障转移：只尝试指定模型
                 listOfNotNull(allEnabled.find { it.modelId == modelId })
@@ -461,8 +474,7 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
 
 /**
  * 非流式转发：读取完整上游响应 → 回写客户端
- * 使用 respondBytesWriter 确保二进制安全（图片/视频/音频都支持）
- * Content-Type 直接透传上游 header，不额外设 Content-Length 避免冲突
+ * ★★ 如果上游返回 4xx/5xx（非成功），抛异常触发故障转移
  */
 private suspend fun pipeNormalResponse(
     call: ApplicationCall,
@@ -481,15 +493,12 @@ private suspend fun pipeNormalResponse(
             .url(url)
             .post(reqBody)
             .apply {
-                if (!provider.apiKey.isNullOrBlank()) {
-                    header("Authorization", "Bearer ${provider.apiKey}")
-                }
+                if (!provider.apiKey.isNullOrBlank()) header("Authorization", "Bearer ${provider.apiKey}")
             }
             .build()
 
         val httpClient = if (useProxy) UpstreamClient.getOkHttpClient() else UpstreamClient.getDirectClient()
         
-        // ★★ 整个阻塞 IO 操作包进 Dispatchers.IO
         var respBytes: ByteArray = byteArrayOf()
         var contentType: String = "application/json"
         var statusCode: HttpStatusCode = HttpStatusCode.OK
@@ -502,16 +511,25 @@ private suspend fun pipeNormalResponse(
                 contentType = resp.header("Content-Type") ?: "application/json"
                 statusCode = HttpStatusCode.fromValue(resp.code)
                 respCode = resp.code
+                
+                // ★★ 关键修复：上游返回 4xx/5xx，抛出异常触发故障转移！
+                if (!resp.isSuccessful) {
+                    val errBody = respBytes.decodeToString().take(200)
+                    throw Exception("Upstream ${resp.code}: $errBody")
+                }
             }
         }
 
-        // 在 CIO 线程上写响应
+        // 成功响应，写回客户端
         call.respondBytesWriter(contentType = ContentType.parse(contentType), status = statusCode) {
             writeFully(respBytes)
             flush()
         }
 
-        // 解析 usage（用 IO 线程）
+        // ★★ 记入最优模型（用请求时长作为延迟参考）
+        markModelSuccess(call.proxyModelId ?: "unknown", 0)
+
+        // 解析 usage
         if (path.contains("chat/completions") || path.contains("completions")) {
             withContext(Dispatchers.IO) {
                 try {
@@ -523,36 +541,24 @@ private suspend fun pipeNormalResponse(
                         val completionTokens = usage["completion_tokens"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0
                         val totalTokens = usage["total_tokens"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0
                         if (totalTokens > 0) {
-                            database.tokenUsageDao().insert(
-                                TokenUsage(
-                                    providerId = call.proxyProviderId!!,
-                                    modelId = call.proxyModelId!!,
-                                    promptTokens = promptTokens,
-                                    completionTokens = completionTokens,
-                                    totalTokens = totalTokens
-                                )
-                            )
+                            database.tokenUsageDao().insert(TokenUsage(
+                                providerId = call.proxyProviderId!!, modelId = call.proxyModelId!!,
+                                promptTokens = promptTokens, completionTokens = completionTokens, totalTokens = totalTokens
+                            ))
                         }
                     }
                 } catch (_: Exception) { }
             }
         }
 
-        // Debug 日志
         if (GatewayForegroundService.getDebugMode()) {
             val modelPreview = if (path.contains("chat/completions")) {
-                try {
-                    val respStr = respBytes.decodeToString()
-                    val m = proxyJson.parseToJsonElement(respStr).jsonObject["model"]?.jsonPrimitive?.content
-                    "model=$m"
-                } catch (_: Exception) { "" }
+                try { "model=${proxyJson.parseToJsonElement(respBytes.decodeToString()).jsonObject["model"]?.jsonPrimitive?.content}" } catch (_: Exception) { "" }
             } else ""
             GatewayForegroundService.addDebugLog("← $respCode /v1/$path (${respBytes.size}B) $modelPreview")
         }
     } catch (e: Exception) {
-        if (GatewayForegroundService.getDebugMode()) {
-            GatewayForegroundService.addDebugLog("✗ ERR /v1/$path: ${e.message?.take(80)}")
-        }
+        if (GatewayForegroundService.getDebugMode()) GatewayForegroundService.addDebugLog("✗ ERR /v1/$path: ${e.message?.take(80)}")
         throw e
     }
 }
@@ -604,6 +610,10 @@ private suspend fun pipeStreamResponse(
                 GatewayForegroundService.trafficDownloadBytes += stream.size.toLong()
             } else {
                 stream = response.body?.bytes() ?: "Unknown error".toByteArray()
+                // ★★ 流式错误也抛异常触发故障转移
+                val errBody = stream.decodeToString().take(200)
+                response.close()
+                throw Exception("Upstream stream ${respStatus}: $errBody")
             }
             response.close()
         } catch (e: Exception) {
