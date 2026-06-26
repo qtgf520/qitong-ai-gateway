@@ -206,7 +206,53 @@ private fun getSortedModels(models: List<AiModel>, preferredModelId: String?): L
     return if (preferred != null) listOf(preferred) + sortedOthers else sortedOthers
 }
 
-/** ★ 带重试的 HTTP 请求执行（阻塞调用已用 withContext(Dispatchers.IO) 包装） */
+/** ★ 修正请求体中的参数，确保符合 OpenAI 标准和各模型限制 */
+private fun sanitizeRequestBody(bodyStr: String): String {
+    try {
+        val json = proxyJson.parseToJsonElement(bodyStr).jsonObject
+        val sb = StringBuilder(bodyStr)
+        
+        // 1. 修正 temperature: 必须在 [0.0, 2.0) 之间
+        sb.replace(Regex(""""temperature"\s*:\s*([\d.]+)""")) { match ->
+            val value = match.groupValues[1].toDoubleOrNull()
+            if (value != null) {
+                val clamped = value.coerceIn(0.0, 1.999)
+                if (clamped != value) "\"temperature\":$clamped" else match.value
+            } else match.value
+        }
+        
+        // 2. 修正 top_p: 必须在 [0.0, 1.0] 之间
+        sb.replace(Regex(""""top_p"\s*:\s*([\d.]+)""")) { match ->
+            val value = match.groupValues[1].toDoubleOrNull()
+            if (value != null) {
+                val clamped = value.coerceIn(0.0, 1.0)
+                if (clamped != value) "\"top_p\":$clamped" else match.value
+            } else match.value
+        }
+        
+        // 3. 修正 presence_penalty / frequency_penalty: 必须在 [-2.0, 2.0] 之间
+        sb.replace(Regex(""""(presence_penalty|frequency_penalty)"\s*:\s*([-\d.]+)""")) { match ->
+            val value = match.groupValues[2].toDoubleOrNull()
+            if (value != null) {
+                val clamped = value.coerceIn(-2.0, 2.0)
+                if (clamped != value) "\"${match.groupValues[1]}\":$clamped" else match.value
+            } else match.value
+        }
+        
+        // 4. 修正 max_tokens: 必须是正整数，且不超过128000
+        sb.replace(Regex(""""max_tokens"\s*:\s*(\d+)""")) { match ->
+            val value = match.groupValues[1].toIntOrNull()
+            if (value != null) {
+                val clamped = value.coerceIn(1, 128000)
+                if (clamped != value) "\"max_tokens\":$clamped" else match.value
+            } else match.value
+        }
+        
+        return sb.toString()
+    } catch (_: Exception) {
+        return bodyStr // 解析失败原样返回
+    }
+}
 private suspend fun executeWithRetry(client: okhttp3.OkHttpClient, request: okhttp3.Request, retries: Int = MAX_RETRIES): okhttp3.Response {
     var lastError: Exception? = null
     for (attempt in 1..retries) {
@@ -369,9 +415,11 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
                     call.attributes.put(PROVIDER_ID_KEY, matchedModel.providerId)
                     val useProxy = matchedModel.useProxy
 
+                    // ★★ 修正请求体参数（temperature 越界等），再替换 model
+                    val sanitizedBody = sanitizeRequestBody(requestBodyStr)
                     val modifiedBody = if (autoFailover && matchedModel.modelId != modelId) {
-                        requestBodyStr.replaceFirst(Regex("\"model\"\\s*:\\s*\"[^\"]+\""), "\"model\":\"${matchedModel.modelId}\"")
-                    } else requestBodyStr
+                        sanitizedBody.replaceFirst(Regex("\"model\"\\s*:\\s*\"[^\"]+\""), "\"model\":\"${matchedModel.modelId}\"")
+                    } else sanitizedBody
                     val modifiedBytes = modifiedBody.toByteArray()
 
                     if (stream) {
