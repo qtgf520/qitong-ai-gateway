@@ -4,6 +4,7 @@ import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import com.qtwl.gateway.data.db.AppDatabase
+import com.qtwl.gateway.utils.TranslationManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -19,6 +20,7 @@ class GatewayApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        TranslationManager.init(this)  // ★ 初始化多语言
         createNotificationChannel()
     }
 

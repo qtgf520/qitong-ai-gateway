@@ -33,6 +33,9 @@ import com.qtwl.gateway.ui.theme.Error
 import com.qtwl.gateway.ui.theme.Online
 import com.qtwl.gateway.ui.theme.Warning
 import com.qtwl.gateway.ui.viewmodel.GatewayViewModel
+import com.qtwl.gateway.utils.AppLanguage
+import com.qtwl.gateway.utils.TranslationManager
+import com.qtwl.gateway.utils.tr
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -415,6 +418,85 @@ fun DataManagementScreen(
                         Text("重置所有数据")
                     }
                 }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // ★ 多语言设置卡片
+            var showLangSelector by remember { mutableStateOf(false) }
+            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Translate, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("🌐 " + tr("language_settings"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    // 自动跟随系统开关
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(tr("auto_follow_system"), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                            Text(
+                                if (TranslationManager.autoDetect) "当前: ${TranslationManager.currentLanguage.displayName}" 
+                                else "手动: ${TranslationManager.currentLanguage.displayName}",
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = TranslationManager.autoDetect,
+                            onCheckedChange = { enabled ->
+                                TranslationManager.setAutoDetect(enabled, context)
+                                showLangSelector = !enabled
+                            }
+                        )
+                    }
+                    
+                    if (!TranslationManager.autoDetect) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedButton(onClick = { showLangSelector = true }, modifier = Modifier.fillMaxWidth()) {
+                            Icon(Icons.Default.Language, contentDescription = null)
+                            Spacer(Modifier.width(4.dp))
+                            Text(TranslationManager.currentLanguage.displayName)
+                        }
+                    }
+                }
+            }
+
+            // 语言选择弹窗
+            if (showLangSelector) {
+                AlertDialog(
+                    onDismissRequest = { showLangSelector = false },
+                    title = { Text(tr("manual_select")) },
+                    text = {
+                        LazyColumn(modifier = Modifier.heightIn(max = 350.dp)) {
+                            items(AppLanguage.entries) { lang ->
+                                Card(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp).clickable {
+                                        TranslationManager.setLanguage(lang, context)
+                                        showLangSelector = false
+                                    },
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = if (lang == TranslationManager.currentLanguage) 
+                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.1f) 
+                                        else MaterialTheme.colorScheme.surface
+                                    )
+                                ) {
+                                    Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Text(lang.displayName, 
+                                            modifier = Modifier.weight(1f),
+                                            fontWeight = if (lang == TranslationManager.currentLanguage) FontWeight.Bold else FontWeight.Normal
+                                        )
+                                        if (lang == TranslationManager.currentLanguage) {
+                                            Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = { TextButton(onClick = { showLangSelector = false }) { Text("关闭") } }
+                )
             }
 
             Spacer(modifier = Modifier.height(8.dp))
