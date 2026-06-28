@@ -54,7 +54,7 @@ class GatewayForegroundService : Service() {
         notificationJob?.cancel()
         notificationJob = serviceScope.launch {
             while (isActive) {
-                delay(3000)
+                delay(1000)
                 updateNotification()
             }
         }
@@ -112,11 +112,14 @@ class GatewayForegroundService : Service() {
         val text = buildString {
             append("端口 $port")
             append("\n总输入: ${formatBytes(trafficUploadBytes)} | 总输出: ${formatBytes(trafficDownloadBytes)}")
+            // ★★ 始终显示模型名（不只在传输中）
+            if (nodeName.isNotBlank()) {
+                append("\n🧠 $nodeName")
+            }
             if (hasTraffic && isActive) {
-                val actNode = if (nodeName.isNotBlank()) " · $nodeName" else ""
-                append("\n🟢 传输中$actNode")
+                append("\n🟢 传输中")
             } else if (hasTraffic && !isActive) {
-                append("\n⚪ 空闲（累计 ${formatBytes(trafficUploadBytes)}/${formatBytes(trafficDownloadBytes)}）")
+                append("\n⚪ 空闲")
             }
             append("\n$proxyText")
         }
@@ -128,8 +131,9 @@ class GatewayForegroundService : Service() {
         val toggleWakePI = PendingIntent.getService(this, 2, toggleWakeIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 
+        val title = (if (wakeEnabled) "🟢 綦桐网关(保活中)" else "綦桐网关") + if (nodeName.isNotBlank()) " · $nodeName" else ""
         val notification = NotificationCompat.Builder(this, GatewayApplication.CHANNEL_ID)
-            .setContentTitle(if (wakeEnabled) "🟢 綦桐网关(保活中)" else "綦桐网关")
+            .setContentTitle(title)
             .setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setSmallIcon(android.R.drawable.ic_menu_share)
