@@ -14,6 +14,7 @@ import com.qtwl.gateway.data.db.BackupManager
 import com.qtwl.gateway.network.Socks5SocketFactory
 import com.qtwl.gateway.network.UpstreamClient
 import com.qtwl.gateway.service.GatewayForegroundService
+import com.qtwl.gateway.gateway.GatewayService
 import kotlinx.coroutines.async
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -1630,6 +1631,7 @@ fun clearChatError() {
 
                     val sorted = _pipelineStatus.value.sortedBy { it.latencyMs }
                     _pipelineStatus.value = sorted
+                    com.qtwl.gateway.gateway.pipelineSortedModelIds = sorted.map { it.modelId }
                     firstRound = false
                     if (_pipelineRunning.value) delay(30000)
                 }

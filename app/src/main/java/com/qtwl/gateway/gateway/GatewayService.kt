@@ -119,6 +119,11 @@ class GatewayService(private val database: AppDatabase) {
 // ================== 通用代理转发核心 ==================
 
 /** 智能故障转移：模型健康状态缓存 */
+
+/** 流水线测速结果排序（最快的在前），由 ViewModel 更新，供故障转移优先切换使用 */
+@Volatile
+var pipelineSortedModelIds: List<String> = emptyList()
+
 private val proxyJson = Json { ignoreUnknownKeys = true; prettyPrint = false }
 private val DEFAULT_CT = "application/json".toMediaType()
 private const val MAX_RETRIES = 5
@@ -430,14 +435,22 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
             val allEnabled = database.aiModelDao().getEnabledModelsList().filter { it.isEnabled }
             val attemptModels = if (autoFailover && allEnabled.isNotEmpty()) {
                 val primary = allEnabled.find { it.modelId == modelId }
-                val others = allEnabled.filter { it.modelId != modelId }
                 val sessionKey = getSessionKey(call)
                 val lastGoodModel = sessionModelCache[sessionKey]
-                if (lastGoodModel != null && lastGoodModel != modelId && allEnabled.any { it.modelId == lastGoodModel }) {
-                    val rest = others.filter { it.modelId != lastGoodModel }
-                    listOfNotNull(primary) + listOfNotNull(allEnabled.find { it.modelId == lastGoodModel }) + rest
+
+                // 优先使用流水线测速排序结果（最快的排最前）
+                val pipelineOrder = if (pipelineSortedModelIds.isNotEmpty()) {
+                    pipelineSortedModelIds.mapNotNull { id -> allEnabled.find { it.modelId == id } }
                 } else {
+                    val others = allEnabled.filter { it.modelId != modelId }
                     listOfNotNull(primary) + others
+                }
+
+                if (lastGoodModel != null && lastGoodModel != modelId && pipelineOrder.any { it.modelId == lastGoodModel }) {
+                    val rest = pipelineOrder.filter { it.modelId != lastGoodModel && it.modelId != modelId }
+                    listOfNotNull(primary) + listOfNotNull(pipelineOrder.find { it.modelId == lastGoodModel }) + rest
+                } else {
+                    pipelineOrder
                 }
             } else {
                 listOfNotNull(allEnabled.find { it.modelId == modelId })
