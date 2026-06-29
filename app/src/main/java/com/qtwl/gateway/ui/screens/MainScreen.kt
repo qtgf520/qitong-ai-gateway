@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.items
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -287,31 +288,133 @@ fun HomeScreen(viewModel: GatewayViewModel) {
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // ★★ 自动故障转移开关 ★★
+        // ★★ 自动故障转移开关 + 流水线测速看板 ★★
         val autoFailover by viewModel.autoFailover.collectAsState()
+        val pipelineStatus by viewModel.pipelineStatus.collectAsState()
+        val pipelineRunning by viewModel.pipelineRunning.collectAsState()
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.surfaceVariant
             )
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("🔄 自动故障转移", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                    Text(
-                        text = if (autoFailover) "开启：请求失败自动切换其他可用模型" else "关闭：只使用指定模型",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+            Column(modifier = Modifier.padding(16.dp)) {
+                // 开关行
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("🔄 自动故障转移", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                        Text(
+                            text = if (autoFailover) "开启：请求失败自动切换其他可用模型" else "关闭：只使用指定模型",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = autoFailover,
+                        onCheckedChange = {
+                            viewModel.toggleAutoFailover()
+                            if (!it) viewModel.stopPipelineTest()
+                        }
                     )
                 }
-                Switch(
-                    checked = autoFailover,
-                    onCheckedChange = { viewModel.toggleAutoFailover() }
-                )
+
+                // 流水线测速看板（仅开启时显示）
+                if (autoFailover) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    HorizontalDivider()
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // 标题 + 启停按钮
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "🏃 模型接力测速",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        TextButton(
+                            onClick = {
+                                if (pipelineRunning) viewModel.stopPipelineTest()
+                                else viewModel.startPipelineTest()
+                            }
+                        ) {
+                            Text(
+                                if (pipelineRunning) "⏹ 停止" else "▶️ 启动",
+                                style = MaterialTheme.typography.labelMedium
+                            )
+                        }
+                    }
+
+                    // 测速列表（自动滚动）
+                    if (pipelineStatus.isNotEmpty()) {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 200.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            items(pipelineStatus) { item ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .then(
+                                            if (item.isCurrent) Modifier.background(
+                                                MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+                                                MaterialTheme.shapes.small
+                                            ) else Modifier
+                                        )
+                                        .padding(horizontal = 4.dp, vertical = 2.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        modifier = Modifier.weight(1f),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        if (item.isCurrent) {
+                                            Text("▶ ", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
+                                        }
+                                        Text(
+                                            text = item.modelName,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = if (item.isCurrent) FontWeight.Bold else FontWeight.Normal,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+                                    Text(
+                                        text = item.status,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.Medium,
+                                        color = when {
+                                            item.status.startsWith("✅") -> Online
+                                            item.status.startsWith("❌") -> Error
+                                            item.status.startsWith("⏳") -> MaterialTheme.colorScheme.primary
+                                            item.isCurrent -> MaterialTheme.colorScheme.primary
+                                            else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    } else if (!pipelineRunning) {
+                        Text(
+                            text = "点击「▶️ 启动」对所有启用模型进行接力测速",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        )
+                    }
+                }
             }
         }
 

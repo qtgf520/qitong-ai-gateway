@@ -16,6 +16,7 @@ import com.qtwl.gateway.network.UpstreamClient
 import com.qtwl.gateway.service.GatewayForegroundService
 import kotlinx.coroutines.async
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -1518,6 +1519,113 @@ fun clearChatError() {
     }
     fun getDebugLogs(): List<String> = GatewayForegroundService.getDebugLogs()
     fun clearDebugLogs() { GatewayForegroundService.clearDebugLogs() }
+
+    // ==================== 流水线接力测速 ====================
+
+    /** 流水线测速状态条目 */
+    data class PipelineTestItem(
+        val modelId: String,
+        val modelName: String,
+        val status: String,
+        val latencyMs: Long = 0,
+        val isCurrent: Boolean = false
+    )
+
+    private val _pipelineStatus = MutableStateFlow<List<PipelineTestItem>>(emptyList())
+    val pipelineStatus: StateFlow<List<PipelineTestItem>> = _pipelineStatus.asStateFlow()
+
+    private val _pipelineRunning = MutableStateFlow(false)
+    val pipelineRunning: StateFlow<Boolean> = _pipelineRunning.asStateFlow()
+
+    private var pipelineJob: kotlinx.coroutines.Job? = null
+    private val DEFAULT_CT = "application/json".toMediaType()
+
+    /** 启动流水线测速（全自动循环模式，每20秒刷新一轮） */
+    fun startPipelineTest() {
+        if (_pipelineRunning.value) return
+        pipelineJob?.cancel()
+        pipelineJob = viewModelScope.launch {
+            _pipelineRunning.value = true
+            try {
+                while (_pipelineRunning.value) {
+                    val enabledList = database.aiModelDao().getEnabledModelsList().filter { it.isEnabled }
+                    if (enabledList.isEmpty()) { _pipelineRunning.value = false; return@launch }
+
+                    _pipelineStatus.value = enabledList.map { model ->
+                        PipelineTestItem(
+                            modelId = model.modelId,
+                            modelName = if (model.customAlias.isNotBlank()) model.customAlias else model.displayName,
+                            status = "等待中"
+                        )
+                    }
+
+                    for ((idx, model) in enabledList.withIndex()) {
+                        if (!_pipelineRunning.value) break
+
+                        val cur = _pipelineStatus.value.toMutableList()
+                        cur[idx] = cur[idx].copy(status = "⏳ 测速中...", isCurrent = true)
+                        for (i in cur.indices) { if (i != idx) cur[i] = cur[i].copy(isCurrent = false) }
+                        _pipelineStatus.value = cur
+
+                        val provider = database.providerDao().getProviderById(model.providerId)
+                        if (provider == null || !provider.isEnabled) {
+                            val sk = _pipelineStatus.value.toMutableList()
+                            sk[idx] = sk[idx].copy(status = "⏭️ 跳过", isCurrent = false)
+                            _pipelineStatus.value = sk; continue
+                        }
+
+                        val startTime = System.currentTimeMillis()
+                        var success = false; var latency = 0L; var errorMsg = ""
+                        try {
+                            withContext(Dispatchers.IO) {
+                                val resolvedUrl = provider.resolvedBaseUrl.trimEnd('/')
+                                val testBody = """{"model":"${model.modelId}","messages":[{"role":"user","content":"Say just OK"}],"max_tokens":5,"stream":false}"""
+                                val req = okhttp3.Request.Builder()
+                                    .url("$resolvedUrl/v1/chat/completions")
+                                    .post(testBody.toRequestBody(DEFAULT_CT))
+                                    .apply { if (!provider.apiKey.isNullOrBlank()) header("Authorization", "Bearer ${provider.apiKey}") }
+                                    .build()
+                                val client = OkHttpClient.Builder()
+                                    .connectTimeout(8000, TimeUnit.MILLISECONDS)
+                                    .readTimeout(8000, TimeUnit.MILLISECONDS)
+                                    .build()
+                                val resp = client.newCall(req).execute()
+                                latency = System.currentTimeMillis() - startTime
+                                if (resp.isSuccessful) {
+                                    val bodyStr = resp.body?.string() ?: ""
+                                    try {
+                                        val respJson = json.parseToJsonElement(bodyStr).jsonObject
+                                        val content = respJson["choices"]?.jsonArray?.firstOrNull()?.jsonObject?.get("message")?.jsonObject?.get("content")?.jsonPrimitive?.content
+                                        success = content != null && content.isNotBlank()
+                                    } catch (_: Exception) { success = false }
+                                    if (!success) errorMsg = "回复为空"
+                                } else { errorMsg = "HTTP ${resp.code}" }
+                                resp.close()
+                            }
+                        } catch (e: Exception) { errorMsg = e.message?.take(60) ?: "超时" }
+
+                        val rl = _pipelineStatus.value.toMutableList()
+                        rl[idx] = rl[idx].copy(
+                            status = if (success) "✅ ${latency}ms" else "❌ $errorMsg",
+                            latencyMs = if (success) latency else Long.MAX_VALUE, isCurrent = false
+                        )
+                        _pipelineStatus.value = rl
+                    }
+
+                    val sorted = _pipelineStatus.value.sortedBy { it.latencyMs }
+                    _pipelineStatus.value = sorted
+
+                    if (_pipelineRunning.value) delay(20000)
+                }
+            } catch (_: Exception) { }
+            _pipelineRunning.value = false
+        }
+    }
+
+    fun stopPipelineTest() {
+        _pipelineRunning.value = false
+        pipelineJob?.cancel()
+    }
 
     // ★ 自动故障转移
     private val _autoFailover = MutableStateFlow(GatewayForegroundService.getAutoFailover())
