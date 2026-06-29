@@ -13,8 +13,8 @@ android {
         applicationId = "com.qtwl.gateway"
         minSdk = 24
         targetSdk = 35
-versionCode = 41
-versionName = "3.3.2"
+versionCode = 42
+versionName = "3.3.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -58,7 +58,7 @@ versionName = "3.3.2"
     }
 }
 
-// Force use of ARM64 binaries for AAPT2 in Proot environment
+// Force use of ARM64 binaries for AAPT2 in aarch64 environment
 configurations.all {
     resolutionStrategy.eachDependency {
         if (requested.group == "com.android.tools.build" && requested.name == "aapt2") {

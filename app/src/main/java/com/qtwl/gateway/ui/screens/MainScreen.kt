@@ -28,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.platform.LocalContext
@@ -40,6 +41,8 @@ import com.qtwl.gateway.ui.theme.Offline
 import com.qtwl.gateway.ui.theme.Online
 import com.qtwl.gateway.ui.theme.Warning
 import com.qtwl.gateway.ui.viewmodel.GatewayViewModel
+import com.qtwl.gateway.utils.TranslationManager
+import com.qtwl.gateway.utils.tr
 
 /**
  * 主屏幕 —— 带底部导航的容器
@@ -498,13 +501,18 @@ private fun ProviderCard(
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.Top
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                // 左侧：名称 + 状态标签，允许标题自动换行
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text(
                         text = provider.name,
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f, fill = false)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Surface(
@@ -519,33 +527,36 @@ private fun ProviderCard(
                         )
                     }
                 }
-                // 操作按钮
+                // 右侧：操作按钮，固定宽度不会被挤
                 Row {
-                    IconButton(onClick = onToggleEnabled) {
+                    IconButton(onClick = onToggleEnabled, modifier = Modifier.size(36.dp)) {
                         Text(
                             if (provider.isEnabled) "🔴" else "🟢",
                             style = MaterialTheme.typography.titleSmall
                         )
                     }
-                    IconButton(onClick = onSync) {
+                    IconButton(onClick = onSync, modifier = Modifier.size(36.dp)) {
                         Icon(
                             Icons.Default.Sync,
                             contentDescription = "同步模型",
-                            tint = MaterialTheme.colorScheme.primary
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
                         )
                     }
-                    IconButton(onClick = onEdit) {
+                    IconButton(onClick = onEdit, modifier = Modifier.size(36.dp)) {
                         Icon(
                             Icons.Default.Edit,
                             contentDescription = "编辑",
-                            tint = MaterialTheme.colorScheme.onSurface
+                            tint = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.size(20.dp)
                         )
                     }
-                    IconButton(onClick = onDelete) {
+                    IconButton(onClick = onDelete, modifier = Modifier.size(36.dp)) {
                         Icon(
                             Icons.Default.Delete,
                             contentDescription = "删除",
-                            tint = Error
+                            tint = Error,
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                 }
