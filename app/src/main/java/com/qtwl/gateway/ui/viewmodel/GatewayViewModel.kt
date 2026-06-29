@@ -1522,12 +1522,12 @@ fun clearChatError() {
 
     // ==================== 流水线接力测速 ====================
 
-        /** 流水线测速状态条目 */
+    /** 流水线测速状态条目 */
     data class PipelineTestItem(
         val modelId: String,
         val modelName: String,
-        val status: String = "⏳ 等待中",
-        val latencyMs: Long = Long.MAX_VALUE,
+        val status: String,
+        val latencyMs: Long = 0,
         val isCurrent: Boolean = false
     )
 
@@ -1540,11 +1540,7 @@ fun clearChatError() {
     private var pipelineJob: kotlinx.coroutines.Job? = null
     private val DEFAULT_CT = "application/json".toMediaType()
 
-    /** 启动流水线测速（智能循环模式）
-     * - 第1轮：按默认顺序全测完
-     * - 之后轮次：按速度排行测，新模型自动加入
-     * - 每轮结束等30秒再下一轮
-     */
+    /** 启动流水线测速（全自动循环模式，每20秒刷新一轮） */
     fun startPipelineTest() {
         if (_pipelineRunning.value) return
         pipelineJob?.cancel()
@@ -1556,7 +1552,7 @@ fun clearChatError() {
                     val enabledList = database.aiModelDao().getEnabledModelsList().filter { it.isEnabled }
                     if (enabledList.isEmpty()) { _pipelineRunning.value = false; return@launch }
 
-                    // 初始化/更新列表：保持旧测速结果，新模型加入等待中
+                    // 保留旧测速结果，新模型加入等待中
                     val oldStatus = _pipelineStatus.value
                     val oldMap = oldStatus.associateBy { it.modelId }
                     _pipelineStatus.value = enabledList.map { model ->
@@ -1565,9 +1561,7 @@ fun clearChatError() {
                         else PipelineTestItem(
                             modelId = model.modelId,
                             modelName = if (model.customAlias.isNotBlank()) model.customAlias else model.displayName,
-                            status = "⤵ 新加入",
-                            latencyMs = Long.MAX_VALUE,
-                            isCurrent = false
+                            status = "等待中"
                         )
                     }
 
@@ -1579,9 +1573,10 @@ fun clearChatError() {
                     }
 
                     for (model in sortedList) {
-                        if (_pipelineRunning.value == false) break
+                        if (!_pipelineRunning.value) break
                         val realIdx = _pipelineStatus.value.indexOfFirst { it.modelId == model.modelId }
                         if (realIdx < 0) continue
+                        if (!_pipelineRunning.value) break
 
                         val cur = _pipelineStatus.value.toMutableList()
                         cur[realIdx] = cur[realIdx].copy(status = "⏳ 测速中...", isCurrent = true)
@@ -1589,90 +1584,53 @@ fun clearChatError() {
                         _pipelineStatus.value = cur
 
                         val provider = database.providerDao().getProviderById(model.providerId)
-                        if (provider == null || provider.isEnabled == false) {
+                        if (provider == null || !provider.isEnabled) {
                             val sk = _pipelineStatus.value.toMutableList()
-                            sk[realIdx] = sk[realIdx].copy(status = "⏭️ 跳过", latencyMs = Long.MAX_VALUE, isCurrent = false)
+                            sk[realIdx] = sk[realIdx].copy(status = "23edFe0f 8df38fc7", latencyMs = Long.MAX_VALUE, isCurrent = false)
                             _pipelineStatus.value = sk; continue
                         }
 
-                        val testBody = buildJsonObject {
-                            put("model", model.modelId)
-                            put("messages", JsonArray(listOf(buildJsonObject {
-                                put("role", "user")
-                                put("content", "Say just OK")
-                            })))
-                            put("max_tokens", 5)
-                            put("stream", false)
-                        }
-
-                        val baseUrl = provider.baseUrl.trimEnd('/')
-                        val portStr = if (provider.port.isNotBlank()) ":" + provider.port else ""
-                        val apiUrl = when (provider.type) {
-                            "Anthropic" -> baseUrl + portStr + "/v1/messages"
-                            "Google Gemini" -> {
-                                val key = provider.apiKey ?: ""
-                                baseUrl + portStr + "/v1beta/models/" + model.modelId + ":generateContent?key=" + key
-                            }
-                            "Ollama" -> baseUrl + portStr + "/api/chat"
-                            else -> baseUrl + portStr + "/v1/chat/completions"
-                        }
-
-                        val client = OkHttpClient.Builder()
-                            .connectTimeout(8, TimeUnit.SECONDS)
-                            .readTimeout(8, TimeUnit.SECONDS)
-                            .writeTimeout(8, TimeUnit.SECONDS)
-                            .build()
-
+                        val startTime = System.currentTimeMillis()
                         var success = false; var latency = 0L; var errorMsg = ""
                         try {
-                            val startTime = System.currentTimeMillis()
-                            val httpBody = json.encodeToString(testBody).toRequestBody(DEFAULT_CT)
-                            val httpRequest = okhttp3.Request.Builder()
-                                .url(apiUrl)
-                                .addHeader("Authorization", "Bearer " + (provider.apiKey ?: ""))
-                                .addHeader("Content-Type", "application/json")
-                                .post(httpBody)
-                                .build()
-
-                            val response = kotlinx.coroutines.withContext(Dispatchers.IO) {
-                                client.newCall(httpRequest).execute()
-                            }
-
-                            if (response.isSuccessful) {
-                                val bodyStr = response.body?.string() ?: ""
-                                if (bodyStr.isNotBlank() && bodyStr.contains("choices")) {
-                                    try {
-                                        val obj = json.parseToJsonElement(bodyStr).jsonObject
-                                        val choices = obj["choices"]?.jsonArray
-                                        if (choices != null && choices.isNotEmpty()) {
-                                            val msg = choices[0].jsonObject["message"]?.jsonObject
-                                            val content = msg?.get("content")
-                                            if (content != null && content is JsonPrimitive && content.content.isNotBlank()) success = true
-                                        }
-                                    } catch (_: Exception) {
-                                        if (bodyStr.contains("OK") || bodyStr.contains("ok")) success = true
-                                    }
-                                } else if (bodyStr.isNotBlank()) success = true
+                            withContext(Dispatchers.IO) {
+                                val resolvedUrl = provider.resolvedBaseUrl.trimEnd('/')
+                                val testBody = """{"model":"${model.modelId}","messages":[{"role":"user","content":"Say just OK"}],"max_tokens":5,"stream":false}"""
+                                val req = okhttp3.Request.Builder()
+                                    .url("$resolvedUrl/v1/chat/completions")
+                                    .post(testBody.toRequestBody(DEFAULT_CT))
+                                    .apply { if (!provider.apiKey.isNullOrBlank()) header("Authorization", "Bearer ${provider.apiKey}") }
+                                    .build()
+                                val client = OkHttpClient.Builder()
+                                    .connectTimeout(8000, TimeUnit.MILLISECONDS)
+                                    .readTimeout(8000, TimeUnit.MILLISECONDS)
+                                    .build()
+                                val resp = client.newCall(req).execute()
                                 latency = System.currentTimeMillis() - startTime
-                            } else errorMsg = "HTTP " + response.code
+                                if (resp.isSuccessful) {
+                                    val bodyStr = resp.body?.string() ?: ""
+                                    try {
+                                        val respJson = json.parseToJsonElement(bodyStr).jsonObject
+                                        val content = respJson["choices"]?.jsonArray?.firstOrNull()?.jsonObject?.get("message")?.jsonObject?.get("content")?.jsonPrimitive?.content
+                                        success = content != null && content.isNotBlank()
+                                    } catch (_: Exception) { success = false }
+                                    if (!success) errorMsg = "回复为空"
+                                } else { errorMsg = "HTTP ${resp.code}" }
+                                resp.close()
+                            }
                         } catch (e: Exception) { errorMsg = e.message?.take(60) ?: "超时" }
 
                         val rl = _pipelineStatus.value.toMutableList()
                         rl[realIdx] = rl[realIdx].copy(
-                            status = if (success) "✅ " + latency + "ms" else "❌ " + errorMsg,
-                            latencyMs = if (success) latency else Long.MAX_VALUE,
-                            isCurrent = false
+                            status = if (success) "✅ ${latency}ms" else "❌ $errorMsg",
+                            latencyMs = if (success) latency else Long.MAX_VALUE, isCurrent = false
                         )
                         _pipelineStatus.value = rl
                     }
 
-                    // 按速度排序展示
                     val sorted = _pipelineStatus.value.sortedBy { it.latencyMs }
                     _pipelineStatus.value = sorted
-
                     firstRound = false
-
-                    // 每轮结束等30秒
                     if (_pipelineRunning.value) delay(30000)
                 }
             } catch (_: Exception) { }
