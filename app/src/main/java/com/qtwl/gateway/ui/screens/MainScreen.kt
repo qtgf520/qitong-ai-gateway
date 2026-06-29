@@ -3,6 +3,7 @@ package com.qtwl.gateway.ui.screens
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -361,7 +362,7 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                                 .heightIn(max = 200.dp),
                             verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            items(pipelineStatus) { item ->
+                            itemsIndexed(pipelineStatus) { index, item ->
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -379,6 +380,12 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                                         modifier = Modifier.weight(1f),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
+                                        Text(
+                                            text = "#${index + 1} ",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+                                        )
                                         if (item.isCurrent) {
                                             Text("▶ ", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
                                         }
