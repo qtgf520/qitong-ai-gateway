@@ -532,7 +532,9 @@ val allEnabled = database.aiModelDao().getEnabledModelsList().filter { it.isEnab
                     val useProxy = matchedModel.useProxy
 
                     val sanitizedBody = sanitizeRequestBody(requestBodyStr)
-                    val modifiedBody = if (autoFailover && matchedModel.modelId != modelId) {
+                    // ★★ qtai-sj 或故障转移切模型时，都要替换 body 里的 model 字段 ★★
+                    val needReplaceModel = modelId == "qtai-sj" || (autoFailover && matchedModel.modelId != modelId)
+                    val modifiedBody = if (needReplaceModel) {
                         sanitizedBody.replaceFirst(Regex("\"model\"\\s*:\\s*\"[^\"]+\""), "\"model\":\"${matchedModel.modelId}\"")
                     } else sanitizedBody
                     val modifiedBytes = modifiedBody.toByteArray()

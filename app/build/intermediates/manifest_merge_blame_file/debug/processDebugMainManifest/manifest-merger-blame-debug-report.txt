@@ -1,8 +1,8 @@
 1<?xml version="1.0" encoding="utf-8"?>
 2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
 3    package="com.qtwl.gateway"
-4    android:versionCode="44"
-5    android:versionName="3.3.5" >
+4    android:versionCode="45"
+5    android:versionName="3.3.6" >
 6
 7    <uses-sdk
 8        android:minSdkVersion="24"
