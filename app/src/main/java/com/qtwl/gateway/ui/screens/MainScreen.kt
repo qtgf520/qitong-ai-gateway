@@ -323,7 +323,7 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                     )
                 }
 
-                // 流水线测速看板（仅开启时显示）
+                // 流水线测速看板
                 if (autoFailover) {
                     Spacer(modifier = Modifier.height(8.dp))
                     HorizontalDivider()
@@ -353,74 +353,86 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                             )
                         }
                     }
+                }
 
-                    // 测速列表（自动滚动）
-                    if (pipelineStatus.isNotEmpty()) {
-                        LazyColumn(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(max = 200.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            itemsIndexed(pipelineStatus) { index, item ->
+                // ★★★ 排行榜始终显示（只要有测速数据），按最快→最慢排序 ★★★
+                if (pipelineStatus.isNotEmpty()) {
+                    // 取已排序的结果
+                    val sortedItems = remember(pipelineStatus) {
+                        pipelineStatus.sortedBy { it.latencyMs }
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "📊 速度排行",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 200.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        itemsIndexed(sortedItems) { index, item ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .then(
+                                        if (item.isCurrent) Modifier.background(
+                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+                                            MaterialTheme.shapes.small
+                                        ) else Modifier
+                                    )
+                                    .padding(horizontal = 4.dp, vertical = 2.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                                 Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .then(
-                                            if (item.isCurrent) Modifier.background(
-                                                MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
-                                                MaterialTheme.shapes.small
-                                            ) else Modifier
-                                        )
-                                        .padding(horizontal = 4.dp, vertical = 2.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    modifier = Modifier.weight(1f),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Row(
-                                        modifier = Modifier.weight(1f),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = "#${index + 1} ",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
-                                        )
-                                        if (item.isCurrent) {
-                                            Text("▶ ", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
-                                        }
-                                        Text(
-                                            text = item.modelName,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            fontWeight = if (item.isCurrent) FontWeight.Bold else FontWeight.Normal,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                            modifier = Modifier.weight(1f)
-                                        )
+                                    Text(
+                                        text = "#${index + 1} ",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+                                    )
+                                    if (item.isCurrent) {
+                                        Text("▶ ", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
                                     }
                                     Text(
-                                        text = item.status,
+                                        text = item.modelName,
                                         style = MaterialTheme.typography.bodySmall,
-                                        fontWeight = FontWeight.Medium,
-                                        color = when {
-                                            item.status.startsWith("✅") -> Online
-                                            item.status.startsWith("❌") -> Error
-                                            item.status.startsWith("⏳") -> MaterialTheme.colorScheme.primary
-                                            item.isCurrent -> MaterialTheme.colorScheme.primary
-                                            else -> MaterialTheme.colorScheme.onSurfaceVariant
-                                        }
+                                        fontWeight = if (item.isCurrent) FontWeight.Bold else FontWeight.Normal,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f)
                                     )
                                 }
+                                Text(
+                                    text = item.status,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.Medium,
+                                    color = when {
+                                        item.status.startsWith("✅") -> Online
+                                        item.status.startsWith("❌") -> Error
+                                        item.status.startsWith("⏳") -> MaterialTheme.colorScheme.primary
+                                        item.isCurrent -> MaterialTheme.colorScheme.primary
+                                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                    }
+                                )
                             }
                         }
-                    } else if (!pipelineRunning) {
-                        Text(
-                            text = "点击「▶️ 启动」对所有启用模型进行接力测速",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(vertical = 8.dp)
-                        )
                     }
+                } else if (autoFailover && !pipelineRunning) {
+                    Text(
+                        text = "点击「▶️ 启动」对所有启用模型进行接力测速",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    )
                 }
             }
         }

@@ -438,19 +438,20 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
                 val sessionKey = getSessionKey(call)
                 val lastGoodModel = sessionModelCache[sessionKey]
 
-                // 优先使用流水线测速排序结果（最快的排最前）
-                val pipelineOrder = if (pipelineSortedModelIds.isNotEmpty()) {
+                // ★ 用户请求的模型永远优先，失败了才按排行榜切
+                val pipelineSorted = if (pipelineSortedModelIds.isNotEmpty()) {
                     pipelineSortedModelIds.mapNotNull { id -> allEnabled.find { it.modelId == id } }
                 } else {
-                    val others = allEnabled.filter { it.modelId != modelId }
-                    listOfNotNull(primary) + others
+                    allEnabled
                 }
+                // 用户选的放第一位，后面按排行榜排序
+                val ordered = listOfNotNull(primary) + pipelineSorted.filter { it.modelId != modelId }
 
-                if (lastGoodModel != null && lastGoodModel != modelId && pipelineOrder.any { it.modelId == lastGoodModel }) {
-                    val rest = pipelineOrder.filter { it.modelId != lastGoodModel && it.modelId != modelId }
-                    listOfNotNull(primary) + listOfNotNull(pipelineOrder.find { it.modelId == lastGoodModel }) + rest
+                if (lastGoodModel != null && lastGoodModel != modelId && ordered.any { it.modelId == lastGoodModel }) {
+                    val rest = ordered.filter { it.modelId != lastGoodModel }
+                    listOfNotNull(primary) + listOfNotNull(ordered.find { it.modelId == lastGoodModel }) + rest.filter { it.modelId != modelId }
                 } else {
-                    pipelineOrder
+                    ordered
                 }
             } else {
                 listOfNotNull(allEnabled.find { it.modelId == modelId })
