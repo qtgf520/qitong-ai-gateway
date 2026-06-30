@@ -26,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.qtwl.gateway.data.model.AiModel
 import com.qtwl.gateway.data.model.ChatMessage
 import com.qtwl.gateway.data.model.Conversation
 import com.qtwl.gateway.ui.theme.Error
@@ -446,26 +447,89 @@ fun ChatScreen(viewModel: GatewayViewModel) {
             onDismissRequest = { showModelSelector = false },
             title = { Text("选择模型", fontWeight = FontWeight.Bold) },
             text = {
-                if (enabledModels.isEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(150.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "暂无可用模型\n请先在「模型」页面启用模型",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 400.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    // ★★ 虚拟模型：qtai-sj（测速流水线模式）★★
+                    item {
+                        val isQtAiSjSelected = selectedModel?.modelId == "qtai-sj"
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    viewModel.selectModel(
+                                        AiModel(
+                                            id = -1,
+                                            modelId = "qtai-sj",
+                                            displayName = "⚡ 綦桐AI测速（自动选最快）",
+                                            providerId = 0,
+                                            isEnabled = true
+                                        )
+                                    )
+                                    showModelSelector = false
+                                },
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isQtAiSjSelected)
+                                    MaterialTheme.colorScheme.primaryContainer
+                                else
+                                    MaterialTheme.colorScheme.surface
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "⚡",
+                                    fontSize = 24.sp,
+                                    modifier = Modifier.padding(end = 12.dp)
+                                )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "綦桐AI测速",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = "自动按速度排行切换最快模型",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                if (isQtAiSjSelected) {
+                                    Text("●", color = Online, style = MaterialTheme.typography.titleSmall)
+                                }
+                            }
+                        }
                     }
-                } else {
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 400.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
+
+                    // 分隔线
+                    item {
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                    }
+
+                    // 普通模型列表
+                    if (enabledModels.isEmpty()) {
+                        item {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(100.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "暂无可用模型\n请先在「模型」页面启用模型",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    } else {
                         items(enabledModels, key = { it.id }) { model ->
                             val isSelected = selectedModel?.id == model.id
                             Card(
@@ -491,7 +555,7 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                                     Text(
                                         text = if (isSelected) "●" else "○",
                                         color = if (isSelected) Online
-                                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        else MaterialTheme.colorScheme.onSurfaceVariant,
                                         style = MaterialTheme.typography.titleSmall
                                     )
                                     Spacer(modifier = Modifier.width(12.dp))

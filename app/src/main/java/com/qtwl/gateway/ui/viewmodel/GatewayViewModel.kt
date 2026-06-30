@@ -914,21 +914,30 @@ fun refreshTokenStats() {
     fun updateInputText(text: String) {
         _inputText.value = text
     }
-
-    /** 选择模型（选中即启用，取消选中即暂停） */
-    fun selectModel(model: AiModel?) {
-        _selectedModel.value = model
-        // 选中模型时，自动启用该模型
-        if (model != null && !model.isEnabled) {
-            viewModelScope.launch {
-                try {
-                    database.aiModelDao().update(model.copy(isEnabled = true))
-                } catch (e: Exception) {
-                    _snackbarMessage.value = "启用模型失败: ${e.message}"
-                }
+/** 选择模型（选中即启用，取消选中即暂停） */
+fun selectModel(model: AiModel?) {
+    _selectedModel.value = model
+    // 选中模型时，自动启用该模型
+    if (model != null && !model.isEnabled) {
+        viewModelScope.launch {
+            try {
+                database.aiModelDao().update(model.copy(isEnabled = true))
+            } catch (e: Exception) {
+                _snackbarMessage.value = "启用模型失败: ${e.message}"
             }
         }
     }
+
+    // ★★ qtai-sj 模式：选择后自动启动流水线测速 ★★
+    if (model != null && model.modelId == "qtai-sj") {
+        _snackbarMessage.value = "⚡ 已选择「綦桐AI测速」模式，启动流水线测速..."
+        // 重置流水线状态，确保从第一轮开始
+        _pipelineStatus.value = emptyList()
+        _pipelineRunning.value = true
+        startPipelineTest()
+    }
+}
+
 
     /** 切换模型启用/暂停状态 */
     fun toggleModelEnabled(model: AiModel) {
@@ -996,12 +1005,16 @@ fun toggleModelProxy(model: AiModel) {
 }
 
     /** 获取模型的显示名称（优先使用自定义别名） */
-    fun getDisplayModelName(model: AiModel): String {
-        return if (model.customAlias.isNotBlank()) {
-            "${model.displayName} (${model.customAlias})"
-        } else {
-            model.displayName
-        }
+fun getDisplayModelName(model: AiModel): String {
+    // ★★ qtai-sj 虚拟模型特殊显示
+    if (model.modelId == "qtai-sj") {
+        return "⚡ 綦桐AI测速"
+    }
+    return if (model.customAlias.isNotBlank()) {
+        "${model.displayName} (${model.customAlias})"
+    } else {
+        model.displayName
+    }
     }
 
     /** 创建新对话 */
