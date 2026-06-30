@@ -46,8 +46,8 @@ fun StatsScreen(viewModel: GatewayViewModel) {
     val providers by viewModel.providers.collectAsState()
     val snackbarMessage by viewModel.snackbarMessage.collectAsState()
     // 网关流量统计
-    val gwUpload = com.qtwl.gateway.service.GatewayForegroundService.trafficUploadBytes
-    val gwDownload = com.qtwl.gateway.service.GatewayForegroundService.trafficDownloadBytes
+    val gwUpload = com.qtwl.gateway.service.GatewayForegroundService.trafficUploadBytes.get()
+val gwDownload = com.qtwl.gateway.service.GatewayForegroundService.trafficDownloadBytes.get()
 
     val snackbarHostState = remember { SnackbarHostState() }
 

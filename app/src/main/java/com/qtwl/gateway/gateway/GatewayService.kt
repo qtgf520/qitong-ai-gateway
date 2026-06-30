@@ -483,7 +483,7 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
                 // ★★ 切换模型前先快速测试连通性（跟测速一样），不通就跳过
                 if (idx > 0) {
                     try {
-                        val testBody = """{"model":"${matchedModel.modelId}","messages":[{"role":"user","content":"Say just OK"}],"max_tokens":3,"stream":false}"""
+                        val testBody = """{"model":"${matchedModel.modelId}","messages":[{"role":"user","content":"hi"}],"max_tokens":1,"stream":false}"""
                         val testUrl = provider.resolvedBaseUrl.trimEnd('/') + "/v1/chat/completions"
                         val testReq = okhttp3.Request.Builder()
                             .url(testUrl)
@@ -516,7 +516,7 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
                 }
 
                 try {
-                    GatewayForegroundService.trafficUploadBytes += rawBytes.size.toLong()
+                    GatewayForegroundService.trafficUploadBytes.addAndGet(rawBytes.size.toLong())
                     call.attributes.put(MODEL_ID_KEY, matchedModel.modelId)
                     call.attributes.put(PROVIDER_ID_KEY, matchedModel.providerId)
                     GatewayForegroundService.activeNodeName = matchedModel.modelId
@@ -561,7 +561,7 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
         call.respondText(contentType = ContentType.Application.Json, status = status, text = body)
         return
     }
-    GatewayForegroundService.trafficUploadBytes += rawBytes.size.toLong()
+    GatewayForegroundService.trafficUploadBytes.addAndGet(rawBytes.size.toLong())
     pipeNormalResponse(call, defaultProvider, rawBytes, "/v1/$effectivePath", database)
 }
 
@@ -580,6 +580,7 @@ private suspend fun pipeNormalResponse(
     try {
         val resolvedUrl = provider.resolvedBaseUrl.trimEnd('/')
         val url = resolvedUrl + path
+        val pipeStartTime = System.currentTimeMillis()
 
         val reqBody = rawBody.toRequestBody(DEFAULT_CT)
         val request = okhttp3.Request.Builder()
@@ -600,7 +601,7 @@ private suspend fun pipeNormalResponse(
             val response = executeWithRetry(httpClient, request)
             response.use { resp ->
                 respBytes = resp.body?.bytes() ?: byteArrayOf()
-                GatewayForegroundService.trafficDownloadBytes += respBytes.size.toLong()
+                GatewayForegroundService.trafficDownloadBytes.addAndGet(respBytes.size.toLong())
                 contentType = resp.header("Content-Type") ?: "application/json"
                 statusCode = HttpStatusCode.fromValue(resp.code)
                 respCode = resp.code
@@ -619,8 +620,8 @@ private suspend fun pipeNormalResponse(
             flush()
         }
 
-        // ★★ 记入最优模型（用请求时长作为延迟参考）
-        markModelSuccess(call.proxyModelId ?: "unknown", 0)
+        // ★★ 记入最优模型（用真实请求耗时作为延迟参考）
+        markModelSuccess(call.proxyModelId ?: "unknown", System.currentTimeMillis() - pipeStartTime)
 
         // 解析 usage
         if (path.contains("chat/completions") || path.contains("completions")) {
@@ -717,7 +718,7 @@ private suspend fun pipeStreamResponse(
                 
                 writeFully(buffer, 0, bytesRead)
                 flush()
-                GatewayForegroundService.trafficDownloadBytes += bytesRead.toLong()
+                GatewayForegroundService.trafficDownloadBytes.addAndGet(bytesRead.toLong())
                 if (path.contains("chat/completions")) {
                     accumulatedBytes.write(buffer, 0, bytesRead)
                 }
@@ -728,7 +729,7 @@ private suspend fun pipeStreamResponse(
                 withContext(Dispatchers.IO) {
                     try {
                         val fullStr = accumulatedBytes.toString(Charsets.UTF_8.name())
-                        val usageMatch = Regex(""""usage"\s*:\s*\{[^}]+\}""").find(fullStr)
+                        val usageMatch = Regex(""""usage"\s*:\s*\{[^{}]+\}""").find(fullStr)
                         if (usageMatch != null) {
                             val usageStr = usageMatch.value
                             val pt = Regex(""""prompt_tokens"\s*:\s*(\d+)""").find(usageStr)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0

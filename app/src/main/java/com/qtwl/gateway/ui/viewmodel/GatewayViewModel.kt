@@ -48,6 +48,25 @@ import java.util.concurrent.TimeUnit
  * 网关应用的主 ViewModel —— 管理全部业务状态
  * 包括：服务商管理、模型同步、聊天对话、会话管理、Token用量统计
  */
+
+// ==================== 包级全局变量（Activity重建不丢失）====================
+/** 流水线测速状态条目 */
+data class PipelineTestItem(
+    val modelId: String,
+    val modelName: String,
+    val status: String,
+    val latencyMs: Long = 0,
+    val isCurrent: Boolean = false
+)
+
+private val _pipelineStatus = MutableStateFlow<List<PipelineTestItem>>(emptyList())
+val pipelineStatus: StateFlow<List<PipelineTestItem>> = _pipelineStatus.asStateFlow()
+
+private val _pipelineRunning = MutableStateFlow(false)
+val pipelineRunning: StateFlow<Boolean> = _pipelineRunning.asStateFlow()
+
+private var pipelineJob: kotlinx.coroutines.Job? = null
+
 class GatewayViewModel(
     private val database: AppDatabase
 ) : ViewModel() {
@@ -1535,23 +1554,6 @@ fun clearChatError() {
     fun clearDebugLogs() { GatewayForegroundService.clearDebugLogs() }
 
     // ==================== 流水线接力测速 ====================
-
-    /** 流水线测速状态条目 */
-    data class PipelineTestItem(
-        val modelId: String,
-        val modelName: String,
-        val status: String,
-        val latencyMs: Long = 0,
-        val isCurrent: Boolean = false
-    )
-
-    private val _pipelineStatus = MutableStateFlow<List<PipelineTestItem>>(emptyList())
-    val pipelineStatus: StateFlow<List<PipelineTestItem>> = _pipelineStatus.asStateFlow()
-
-    private val _pipelineRunning = MutableStateFlow(false)
-    val pipelineRunning: StateFlow<Boolean> = _pipelineRunning.asStateFlow()
-
-    private var pipelineJob: kotlinx.coroutines.Job? = null
     private val DEFAULT_CT = "application/json".toMediaType()
 
     /** 启动流水线测速（全自动循环模式，每20秒刷新一轮） */

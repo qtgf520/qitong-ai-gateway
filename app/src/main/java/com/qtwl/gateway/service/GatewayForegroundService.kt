@@ -93,25 +93,27 @@ class GatewayForegroundService : Service() {
         }
 
         // ★ 动态流量指示灯 — 累计模式，永不归零！仅通过时间戳判断活跃/空闲
-        val hasTraffic = trafficUploadBytes > 0 || trafficDownloadBytes > 0
+        val upBytes = trafficUploadBytes.get()
+        val downBytes = trafficDownloadBytes.get()
+        val hasTraffic = upBytes > 0 || downBytes > 0
         val now = System.currentTimeMillis()
         val idleSeconds = if (lastActivityTime > 0) (now - lastActivityTime) / 1000 else -1
         val isActive = idleSeconds >= 0 && idleSeconds < 30 // 30秒内无流量视为空闲
         val nodeName = activeNodeName
 
         // 更新最后活跃时间（只在有流量时更新）
-        if (trafficUploadBytes > lastUploadBytes || trafficDownloadBytes > lastDownloadBytes) {
+        if (upBytes > lastUploadBytes || downBytes > lastDownloadBytes) {
             lastActivityTime = now
             idleCount = 0
         } else if (hasTraffic) {
             idleCount++
         }
-        lastUploadBytes = trafficUploadBytes
-        lastDownloadBytes = trafficDownloadBytes
+        lastUploadBytes = upBytes
+        lastDownloadBytes = downBytes
 
         val text = buildString {
             append("端口 $port")
-            append("\n总输入: ${formatBytes(trafficUploadBytes)} | 总输出: ${formatBytes(trafficDownloadBytes)}")
+            append("\n总输入: ${formatBytes(upBytes)} | 总输出: ${formatBytes(downBytes)}")
             // ★★ 始终显示模型名（不只在传输中）
             if (nodeName.isNotBlank()) {
                 append("\n🧠 $nodeName")
@@ -179,9 +181,9 @@ class GatewayForegroundService : Service() {
 
         // 运行时流量统计（由gateway更新）
         @Volatile var tokenPromptInput: Long = 0L
-        @Volatile var tokenCompletionOutput: Long = 0L
-        @Volatile var trafficUploadBytes: Long = 0L
-        @Volatile var trafficDownloadBytes: Long = 0L
+@Volatile var tokenCompletionOutput: Long = 0L
+val trafficUploadBytes = java.util.concurrent.atomic.AtomicLong(0L)
+val trafficDownloadBytes = java.util.concurrent.atomic.AtomicLong(0L)
         @Volatile var isServiceRunning: Boolean = false  // 由 start/stop 同步更新
 
         @Volatile var activeNodeName: String = ""
@@ -198,8 +200,8 @@ class GatewayForegroundService : Service() {
             synchronized(debugLogBuffer) {
                 val time = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
                 // 带上当前流量统计
-                val up = trafficUploadBytes
-                val down = trafficDownloadBytes
+                val up = trafficUploadBytes.get()
+                val down = trafficDownloadBytes.get()
                 val trafficInfo = if (up > 0 || down > 0) " ↑${formatBytesStatic(up)} ↓${formatBytesStatic(down)}" else ""
                 debugLogBuffer.add("[$time$trafficInfo] $msg")
                 if (debugLogBuffer.size > MAX_DEBUG_LOG) {

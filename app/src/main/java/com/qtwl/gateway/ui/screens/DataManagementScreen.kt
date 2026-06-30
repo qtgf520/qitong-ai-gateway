@@ -1009,12 +1009,12 @@ fun AboutScreen(viewModel: GatewayViewModel = viewModel(factory = GatewayViewMod
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("↑ 上传:", style = MaterialTheme.typography.bodyMedium)
-                        Text(formatTraffic(GatewayForegroundService.trafficUploadBytes), style = MaterialTheme.typography.bodyMedium, color = Online)
+                        Text(formatTraffic(GatewayForegroundService.trafficUploadBytes.get()), style = MaterialTheme.typography.bodyMedium, color = Online)
                     }
                     Spacer(modifier = Modifier.height(4.dp))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("↓ 下载:", style = MaterialTheme.typography.bodyMedium)
-                        Text(formatTraffic(GatewayForegroundService.trafficDownloadBytes), style = MaterialTheme.typography.bodyMedium, color = Online)
+                        Text(formatTraffic(GatewayForegroundService.trafficDownloadBytes.get()), style = MaterialTheme.typography.bodyMedium, color = Online)
                     }
                 }
             }

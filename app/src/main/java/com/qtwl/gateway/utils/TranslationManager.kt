@@ -77,6 +77,12 @@ object TranslationManager {
 
     private var initialized = false
 
+    private const val KEY_CUSTOM_TITLE = "custom_app_title"
+
+    @Volatile
+    var customAppTitle: String? = null
+        private set
+
     /** 初始化：从 SharedPreferences 读取设置 */
     fun init(context: Context) {
         if (initialized) return
@@ -90,6 +96,8 @@ object TranslationManager {
         } else {
             AppLanguage.detectFromSystem()
         }
+        // 读取自定义标题
+        customAppTitle = prefs.getString(KEY_CUSTOM_TITLE, null)?.takeIf { it.isNotBlank() }
         initialized = true
     }
 
@@ -124,6 +132,16 @@ object TranslationManager {
         }
         context.resources.updateConfiguration(config, context.resources.displayMetrics)
     }
+
+    /** 设置自定义标题 */
+    fun setCustomAppTitle(title: String?, context: Context) {
+        customAppTitle = title?.takeIf { it.isNotBlank() }
+        val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putString(KEY_CUSTOM_TITLE, customAppTitle).apply()
+    }
+
+    /** 获取当前显示的 APP 标题（优先自定义，其次多语言） */
+    fun getAppTitle(): String = customAppTitle ?: get("app_name")
 
     /** 获取翻译文本 */
     operator fun get(key: String): String = translations[key]?.get(currentLanguage) ?: key

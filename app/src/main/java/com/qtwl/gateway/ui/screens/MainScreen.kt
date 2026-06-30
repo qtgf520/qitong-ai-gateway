@@ -43,6 +43,8 @@ import com.qtwl.gateway.ui.theme.Offline
 import com.qtwl.gateway.ui.theme.Online
 import com.qtwl.gateway.ui.theme.Warning
 import com.qtwl.gateway.ui.viewmodel.GatewayViewModel
+import com.qtwl.gateway.ui.viewmodel.pipelineStatus
+import com.qtwl.gateway.ui.viewmodel.pipelineRunning
 import com.qtwl.gateway.utils.TranslationManager
 import com.qtwl.gateway.utils.tr
 
@@ -291,8 +293,8 @@ fun HomeScreen(viewModel: GatewayViewModel) {
 
         // ★★ 自动故障转移开关 + 流水线测速看板 ★★
         val autoFailover by viewModel.autoFailover.collectAsState()
-        val pipelineStatus by viewModel.pipelineStatus.collectAsState()
-        val pipelineRunning by viewModel.pipelineRunning.collectAsState()
+        val pStatus by pipelineStatus.collectAsState()
+        val pRunning by pipelineRunning.collectAsState()
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
@@ -343,12 +345,12 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                         )
                         TextButton(
                             onClick = {
-                                if (pipelineRunning) viewModel.stopPipelineTest()
+                                if (pRunning) viewModel.stopPipelineTest()
                                 else viewModel.startPipelineTest()
                             }
                         ) {
                             Text(
-                                if (pipelineRunning) "⏹ 停止" else "▶️ 启动",
+                                if (pRunning) "⏹ 停止" else "▶️ 启动",
                                 style = MaterialTheme.typography.labelMedium
                             )
                         }
@@ -356,10 +358,10 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                 }
 
                 // ★★★ 排行榜始终显示（只要有测速数据），按最快→最慢排序 ★★★
-                if (pipelineStatus.isNotEmpty()) {
+                if (pStatus.isNotEmpty()) {
                     // 取已排序的结果
-                    val sortedItems = remember(pipelineStatus) {
-                        pipelineStatus.sortedBy { it.latencyMs }
+                    val sortedItems = remember(pStatus) {
+                        pStatus.sortedBy { it.latencyMs }
                     }
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
@@ -426,7 +428,7 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                             }
                         }
                     }
-                } else if (autoFailover && !pipelineRunning) {
+                } else if (autoFailover && !pRunning) {
                     Text(
                         text = "点击「▶️ 启动」对所有启用模型进行接力测速",
                         style = MaterialTheme.typography.bodySmall,

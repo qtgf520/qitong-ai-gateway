@@ -1,9 +1,9 @@
 -- Merging decision tree log ---
 manifest
-ADDED from /data/user/0/com.ai.assistance.operit/files/workspace/app621/app/src/main/AndroidManifest.xml:2:1-48:12
-INJECTED from /data/user/0/com.ai.assistance.operit/files/workspace/app621/app/src/main/AndroidManifest.xml:2:1-48:12
-INJECTED from /data/user/0/com.ai.assistance.operit/files/workspace/app621/app/src/main/AndroidManifest.xml:2:1-48:12
-INJECTED from /data/user/0/com.ai.assistance.operit/files/workspace/app621/app/src/main/AndroidManifest.xml:2:1-48:12
+ADDED from /data/user/0/com.ai.assistance.operit/files/workspace/app621/app/src/main/AndroidManifest.xml:2:1-49:12
+INJECTED from /data/user/0/com.ai.assistance.operit/files/workspace/app621/app/src/main/AndroidManifest.xml:2:1-49:12
+INJECTED from /data/user/0/com.ai.assistance.operit/files/workspace/app621/app/src/main/AndroidManifest.xml:2:1-49:12
+INJECTED from /data/user/0/com.ai.assistance.operit/files/workspace/app621/app/src/main/AndroidManifest.xml:2:1-49:12
 MERGED from [androidx.compose.material3:material3-android:1.4.0] /root/.gradle/caches/9.1.0/transforms/782e705b70a5881693fb90e9cb2b4609/transformed/material3/AndroidManifest.xml:17:1-22:12
 MERGED from [androidx.compose.material:material-android:1.10.2] /root/.gradle/caches/9.1.0/transforms/c356f55f348c670e94dcf5db2e5496e8/transformed/material/AndroidManifest.xml:2:1-7:12
 MERGED from [androidx.compose.material:material-ripple-android:1.10.2] /root/.gradle/caches/9.1.0/transforms/0310d3aacad94a1ea57ec6bb2b844cb9/transformed/material-ripple/AndroidManifest.xml:2:1-7:12
@@ -107,8 +107,8 @@ ADDED from /data/user/0/com.ai.assistance.operit/files/workspace/app621/app/src/
 	android:name
 		ADDED from /data/user/0/com.ai.assistance.operit/files/workspace/app621/app/src/main/AndroidManifest.xml:14:22-74
 application
-ADDED from /data/user/0/com.ai.assistance.operit/files/workspace/app621/app/src/main/AndroidManifest.xml:16:5-46:19
-INJECTED from /data/user/0/com.ai.assistance.operit/files/workspace/app621/app/src/main/AndroidManifest.xml:16:5-46:19
+ADDED from /data/user/0/com.ai.assistance.operit/files/workspace/app621/app/src/main/AndroidManifest.xml:16:5-47:19
+INJECTED from /data/user/0/com.ai.assistance.operit/files/workspace/app621/app/src/main/AndroidManifest.xml:16:5-47:19
 MERGED from [androidx.compose.ui:ui-tooling-android:1.10.2] /root/.gradle/caches/9.1.0/transforms/d8a2f3a20c6e83108d87397ef55820d6/transformed/ui-tooling/AndroidManifest.xml:22:5-26:19
 MERGED from [androidx.compose.ui:ui-tooling-android:1.10.2] /root/.gradle/caches/9.1.0/transforms/d8a2f3a20c6e83108d87397ef55820d6/transformed/ui-tooling/AndroidManifest.xml:22:5-26:19
 MERGED from [androidx.emoji2:emoji2:1.4.0] /root/.gradle/caches/9.1.0/transforms/3e9c10715df0505fd4130585740755da/transformed/emoji2-1.4.0/AndroidManifest.xml:23:5-33:19
@@ -156,33 +156,35 @@ MERGED from [androidx.startup:startup-runtime:1.1.1] /root/.gradle/caches/9.1.0/
 	android:name
 		ADDED from /data/user/0/com.ai.assistance.operit/files/workspace/app621/app/src/main/AndroidManifest.xml:17:9-43
 activity#com.qtwl.gateway.MainActivity
-ADDED from /data/user/0/com.ai.assistance.operit/files/workspace/app621/app/src/main/AndroidManifest.xml:29:9-38:20
+ADDED from /data/user/0/com.ai.assistance.operit/files/workspace/app621/app/src/main/AndroidManifest.xml:29:9-39:20
 	android:label
-		ADDED from /data/user/0/com.ai.assistance.operit/files/workspace/app621/app/src/main/AndroidManifest.xml:32:13-45
+		ADDED from /data/user/0/com.ai.assistance.operit/files/workspace/app621/app/src/main/AndroidManifest.xml:33:13-45
+	android:launchMode
+		ADDED from /data/user/0/com.ai.assistance.operit/files/workspace/app621/app/src/main/AndroidManifest.xml:32:13-44
 	android:exported
 		ADDED from /data/user/0/com.ai.assistance.operit/files/workspace/app621/app/src/main/AndroidManifest.xml:31:13-36
 	android:theme
-		ADDED from /data/user/0/com.ai.assistance.operit/files/workspace/app621/app/src/main/AndroidManifest.xml:33:13-55
+		ADDED from /data/user/0/com.ai.assistance.operit/files/workspace/app621/app/src/main/AndroidManifest.xml:34:13-55
 	android:name
 		ADDED from /data/user/0/com.ai.assistance.operit/files/workspace/app621/app/src/main/AndroidManifest.xml:30:13-41
 intent-filter#action:name:android.intent.action.MAIN+category:name:android.intent.category.LAUNCHER
-ADDED from /data/user/0/com.ai.assistance.operit/files/workspace/app621/app/src/main/AndroidManifest.xml:34:13-37:29
+ADDED from /data/user/0/com.ai.assistance.operit/files/workspace/app621/app/src/main/AndroidManifest.xml:35:13-38:29
 action#android.intent.action.MAIN
-ADDED from /data/user/0/com.ai.assistance.operit/files/workspace/app621/app/src/main/AndroidManifest.xml:35:17-69
+ADDED from /data/user/0/com.ai.assistance.operit/files/workspace/app621/app/src/main/AndroidManifest.xml:36:17-69
 	android:name
-		ADDED from /data/user/0/com.ai.assistance.operit/files/workspace/app621/app/src/main/AndroidManifest.xml:35:25-66
+		ADDED from /data/user/0/com.ai.assistance.operit/files/workspace/app621/app/src/main/AndroidManifest.xml:36:25-66
 category#android.intent.category.LAUNCHER
-ADDED from /data/user/0/com.ai.assistance.operit/files/workspace/app621/app/src/main/AndroidManifest.xml:36:17-77
+ADDED from /data/user/0/com.ai.assistance.operit/files/workspace/app621/app/src/main/AndroidManifest.xml:37:17-77
 	android:name
-		ADDED from /data/user/0/com.ai.assistance.operit/files/workspace/app621/app/src/main/AndroidManifest.xml:36:27-74
+		ADDED from /data/user/0/com.ai.assistance.operit/files/workspace/app621/app/src/main/AndroidManifest.xml:37:27-74
 service#com.qtwl.gateway.service.GatewayForegroundService
-ADDED from /data/user/0/com.ai.assistance.operit/files/workspace/app621/app/src/main/AndroidManifest.xml:41:9-44:58
+ADDED from /data/user/0/com.ai.assistance.operit/files/workspace/app621/app/src/main/AndroidManifest.xml:42:9-45:58
 	android:exported
-		ADDED from /data/user/0/com.ai.assistance.operit/files/workspace/app621/app/src/main/AndroidManifest.xml:43:13-37
+		ADDED from /data/user/0/com.ai.assistance.operit/files/workspace/app621/app/src/main/AndroidManifest.xml:44:13-37
 	android:foregroundServiceType
-		ADDED from /data/user/0/com.ai.assistance.operit/files/workspace/app621/app/src/main/AndroidManifest.xml:44:13-55
+		ADDED from /data/user/0/com.ai.assistance.operit/files/workspace/app621/app/src/main/AndroidManifest.xml:45:13-55
 	android:name
-		ADDED from /data/user/0/com.ai.assistance.operit/files/workspace/app621/app/src/main/AndroidManifest.xml:42:13-61
+		ADDED from /data/user/0/com.ai.assistance.operit/files/workspace/app621/app/src/main/AndroidManifest.xml:43:13-61
 uses-sdk
 INJECTED from /data/user/0/com.ai.assistance.operit/files/workspace/app621/app/src/main/AndroidManifest.xml reason: use-sdk injection requested
 INJECTED from /data/user/0/com.ai.assistance.operit/files/workspace/app621/app/src/main/AndroidManifest.xml
