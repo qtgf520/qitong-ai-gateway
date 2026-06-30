@@ -441,20 +441,18 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
             if (autoFailover) {
                 refreshHealthCache(database)
             }
-
-            val allEnabled = database.aiModelDao().getEnabledModelsList().filter { it.isEnabled }
-            val attemptModels = if (autoFailover && allEnabled.isNotEmpty()) {
-                // ★★ qtai-sj 模式：直接走流水线排行榜，不用"用户优先"
+val allEnabled = database.aiModelDao().getEnabledModelsList().filter { it.isEnabled }
+            val attemptModels: List<AiModel> = if (allEnabled.isNotEmpty()) {
+                // ★★ qtai-sj 模式：不管autoFailover开关，永远走排行榜 ★★
                 if (modelId == "qtai-sj") {
-                    // 直接用排行榜排序（最快的在前）
                     val sorted = if (pipelineSortedModelIds.isNotEmpty()) {
                         pipelineSortedModelIds.mapNotNull { id -> allEnabled.find { it.modelId == id } }
                     } else {
                         allEnabled
                     }
                     sorted.ifEmpty { allEnabled }
-                } else {
-                    // ★★ 其他模型：用户权威模式（用户选的放第一，后面按排行榜排序）
+                } else if (autoFailover) {
+                    // ★★ 其他模型 + 故障转移开启：用户权威模式
                     val primary = allEnabled.find { it.modelId == modelId }
                     val sessionKey = getSessionKey(call)
                     val lastGoodModel = sessionModelCache[sessionKey]
@@ -464,7 +462,6 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
                     } else {
                         allEnabled
                     }
-                    // 用户选的放第一位，后面按排行榜排序
                     val ordered = listOfNotNull(primary) + pipelineSorted.filter { it.modelId != modelId }
 
                     if (lastGoodModel != null && lastGoodModel != modelId && ordered.any { it.modelId == lastGoodModel }) {
@@ -473,9 +470,11 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
                     } else {
                         ordered
                     }
+                } else {
+                    listOfNotNull(allEnabled.find { it.modelId == modelId })
                 }
             } else {
-                listOfNotNull(allEnabled.find { it.modelId == modelId })
+                emptyList()
             }
 
             var lastError: String? = null

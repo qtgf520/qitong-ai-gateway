@@ -946,15 +946,6 @@ fun selectModel(model: AiModel?) {
             }
         }
     }
-
-    // ★★ qtai-sj 模式：选择后自动启动流水线测速 ★★
-    if (model != null && model.modelId == "qtai-sj") {
-        _snackbarMessage.value = "⚡ 已选择「綦桐AI测速」模式，启动流水线测速..."
-        // 重置流水线状态，确保从第一轮开始
-        _pipelineStatus.value = emptyList()
-        _pipelineRunning.value = true
-        startPipelineTest()
-    }
 }
 
 
