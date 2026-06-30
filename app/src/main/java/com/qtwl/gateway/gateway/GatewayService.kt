@@ -33,6 +33,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.net.SocketTimeoutException
 import java.net.ConnectException
 import java.util.UUID
+import java.util.concurrent.TimeUnit
 import kotlinx.serialization.json.JsonNull
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -467,6 +468,41 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
                 if (!matchedModel.isEnabled) continue
                 val provider = database.providerDao().getProviderById(matchedModel.providerId)
                 if (provider == null || !provider.isEnabled) continue
+
+                // ★★ 切换模型前先快速测试连通性（跟测速一样），不通就跳过
+                if (idx > 0) {
+                    try {
+                        val testBody = """{"model":"${matchedModel.modelId}","messages":[{"role":"user","content":"Say just OK"}],"max_tokens":3,"stream":false}"""
+                        val testUrl = provider.resolvedBaseUrl.trimEnd('/') + "/v1/chat/completions"
+                        val testReq = okhttp3.Request.Builder()
+                            .url(testUrl)
+                            .post(testBody.toRequestBody(DEFAULT_CT))
+                            .apply { if (!provider.apiKey.isNullOrBlank()) header("Authorization", "Bearer ${provider.apiKey}") }
+                            .build()
+                        val testClient = okhttp3.OkHttpClient.Builder()
+                            .connectTimeout(5, TimeUnit.SECONDS)
+                            .readTimeout(5, TimeUnit.SECONDS)
+                            .build()
+                        val testResp = withContext(Dispatchers.IO) { testClient.newCall(testReq).execute() }
+                        val testOk = testResp.isSuccessful
+                        val testBodyStr = testResp.body?.string() ?: ""
+                        testResp.close()
+                        if (!testOk || testBodyStr.isBlank()) {
+                            failCount++
+                            lastError = "${matchedModel.modelId}: 预检测失败"
+                            synchronized(healthCache) { healthCache[matchedModel.modelId] = ModelHealth(matchedModel.modelId, matchedModel.providerId, Long.MAX_VALUE, System.currentTimeMillis(), false) }
+                            if (GatewayForegroundService.getDebugMode()) GatewayForegroundService.addDebugLog("✗ 预检测 ${matchedModel.modelId}: 不通→跳过")
+                            continue
+                        }
+                        if (GatewayForegroundService.getDebugMode()) GatewayForegroundService.addDebugLog("✓ 预检测 ${matchedModel.modelId}: 通过→转发请求")
+                    } catch (e: Exception) {
+                        failCount++
+                        lastError = "${matchedModel.modelId}: 预检测异常 ${e.message?.take(40)}"
+                        synchronized(healthCache) { healthCache[matchedModel.modelId] = ModelHealth(matchedModel.modelId, matchedModel.providerId, Long.MAX_VALUE, System.currentTimeMillis(), false) }
+                        if (GatewayForegroundService.getDebugMode()) GatewayForegroundService.addDebugLog("✗ 预检测 ${matchedModel.modelId}: ${e.message?.take(40)}→跳过")
+                        continue
+                    }
+                }
 
                 try {
                     GatewayForegroundService.trafficUploadBytes += rawBytes.size.toLong()
