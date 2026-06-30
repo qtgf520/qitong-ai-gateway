@@ -1,7 +1,7 @@
 # 綦桐AI网关 | QiTong AI Gateway
 
 > **包名 / Package：** `com.qtwl.gateway`  
-> **最新版本 / Latest：** v3.3.0 (versionCode=39)  
+> **最新版本 / Latest：** v3.3.7 (versionCode=46)  
 > **开源协议 / License：** Apache 2.0  
 > **语言 / Languages：** 🌐 15 languages (CN/EN/JP/KR/FR/DE/ES/RU/PT/VN/TH/AR/HI/ID)
 
@@ -16,6 +16,8 @@
 
 | 功能 | 说明 |
 |:-----|:------|
+| 🚀 **綦桐AI测速 (qtai-sj)** | 虚拟模型，三端同步，自动走排行榜最快模型 |
+| 🎯 **qtai-sj 独立于故障转移** | 不受 autoFailover 开关限制，永远走排行榜 |
 | 🚀 **网关代理** | 本地 Ktor Server（默认 8889 端口），转发 `/v1/*` 所有请求 |
 | 🔄 **智能故障转移** | 自动测速所有模型，失败时自动切换到最快可用模型 |
 | 🧠 **最优模型记忆** | 响应最快的模型自动记住（5分钟缓存），下次直接走最优 |
@@ -67,6 +69,8 @@ git clone https://github.com/qtgf520/qitong-ai-gateway.git
 
 | Feature | Description |
 |:--------|:------------|
+| 🚀 **qtai-sj Speed Mode** | Virtual model, auto-picks fastest model from pipeline ranking |
+| 🎯 **qtai-sj independent** | Works regardless of auto-failover switch, always uses ranking |
 | 🚀 **Gateway Proxy** | Local Ktor Server (default port 8889), proxies all `/v1/*` requests |
 | 🔄 **Smart Failover** | Auto speed-test all models, switch to fastest on failure |
 | 🧠 **Best Model Memory** | Remembers fastest model (5min cache), auto-prioritize next time |
@@ -114,6 +118,8 @@ See [CHANGELOG.md](CHANGELOG.md) for full changelog.
 
 | Version | Key Features |
 |:--------|:-------------|
+| v3.3.7 | 🐛 qtai-sj聊天室发消息请求修复，本地网关自动分配 |
+| v3.3.6 | 🐛 markModelSuccess传真实延迟，traffic统计AtomicLong，qtai-sj虚拟模型 |
 | v3.3.0 | 🌐 Multi-language system (15 languages), language settings UI |
 | v3.2.3 | 🧠 Best model memory, 4xx/5xx triggers failover |
 | v3.2.2 | 🛡️ Auto-fix temperature/top_p/penalty params |
