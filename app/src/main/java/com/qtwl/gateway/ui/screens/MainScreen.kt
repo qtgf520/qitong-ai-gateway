@@ -1099,14 +1099,18 @@ fun ModelsScreen(viewModel: GatewayViewModel) {
     var searchQuery by remember { mutableStateOf("") }
 
     // 搜索过滤
-    val filteredModels = remember(models, searchQuery) {
-        if (searchQuery.isBlank()) models
-        else models.filter { 
-            it.displayName.contains(searchQuery, ignoreCase = true) ||
-            it.modelId.contains(searchQuery, ignoreCase = true) ||
-            it.customAlias.contains(searchQuery, ignoreCase = true)
-        }
+val filteredModels = remember(models, searchQuery) {
+    val fromDb = if (searchQuery.isBlank()) models
+    else models.filter {
+        it.displayName.contains(searchQuery, ignoreCase = true) ||
+        it.modelId.contains(searchQuery, ignoreCase = true) ||
+        it.customAlias.contains(searchQuery, ignoreCase = true)
     }
+    // ★★ qtai-sj 虚拟模型始终显示在列表最前面 ★★
+    listOfNotNull(
+        AiModel(id = -1, modelId = "qtai-sj", displayName = "⚡ 綦桐AI测速", providerId = 0, isEnabled = true)
+    ) + fromDb
+}
 
     // 按服务商分组
     val modelsByProvider = remember(filteredModels, providers) {
