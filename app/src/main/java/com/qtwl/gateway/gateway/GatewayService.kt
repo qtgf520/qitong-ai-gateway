@@ -487,7 +487,7 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
                         val testOk = testResp.isSuccessful
                         val testBodyStr = testResp.body?.string() ?: ""
                         testResp.close()
-                        if (!testOk || testBodyStr.isBlank()) {
+                        if (!testOk) {
                             failCount++
                             lastError = "${matchedModel.modelId}: 预检测失败"
                             synchronized(healthCache) { healthCache[matchedModel.modelId] = ModelHealth(matchedModel.modelId, matchedModel.providerId, Long.MAX_VALUE, System.currentTimeMillis(), false) }
