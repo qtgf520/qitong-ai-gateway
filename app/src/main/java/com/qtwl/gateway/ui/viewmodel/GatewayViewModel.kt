@@ -1133,9 +1133,14 @@ fun getDisplayModelName(model: AiModel): String {
                 // 更新对话时间
                 database.conversationDao().touchConversation(conversation.id)
 
-                // 2. 获取服务商信息
-                val provider = database.providerDao().getProviderById(model.providerId)
-                if (provider == null || !provider.isEnabled) {
+// 2. 获取服务商信息
+                    val provider = if (model.modelId == "qtai-sj") {
+                        // qtai-sj模式：找第一个已启用的服务商
+                        database.providerDao().getAllProvidersList().firstOrNull { it.isEnabled }
+                    } else {
+                        database.providerDao().getProviderById(model.providerId)
+                    }
+                    if (provider == null || !provider.isEnabled) {
                     _chatError.value = "⚠️ 服务商不可用或已禁用"
                     _isSending.value = false
                     return@launch
