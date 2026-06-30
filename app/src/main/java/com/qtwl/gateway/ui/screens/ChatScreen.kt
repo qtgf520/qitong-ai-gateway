@@ -453,21 +453,16 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                         .heightIn(max = 400.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    // ★★ 虚拟模型：qtai-sj（测速流水线模式）★★
-                    item {
+                    // 普通模型列表（qtai-sj 放在最前面，跟正常模型一样）
+                    // ★★ qtai-sj 虚拟模型（当作正常模型选项）★★
+                    item(key = "qtai-sj") {
                         val isQtAiSjSelected = selectedModel?.modelId == "qtai-sj"
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
                                     viewModel.selectModel(
-                                        AiModel(
-                                            id = -1,
-                                            modelId = "qtai-sj",
-                                            displayName = "⚡ 綦桐AI测速（自动选最快）",
-                                            providerId = 0,
-                                            isEnabled = true
-                                        )
+                                        AiModel(id = -1, modelId = "qtai-sj", displayName = "⚡ 綦桐AI测速", providerId = 0, isEnabled = true)
                                     )
                                     showModelSelector = false
                                 },
@@ -479,47 +474,39 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                             )
                         ) {
                             Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(12.dp),
+                                modifier = Modifier.fillMaxWidth().padding(12.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = "⚡",
-                                    fontSize = 24.sp,
-                                    modifier = Modifier.padding(end = 12.dp)
+                                    text = if (isQtAiSjSelected) "●" else "○",
+                                    color = if (isQtAiSjSelected) Online else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    style = MaterialTheme.typography.titleSmall
                                 )
+                                Spacer(modifier = Modifier.width(12.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = "綦桐AI测速",
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.Bold
+                                        text = "⚡ 綦桐AI测速",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        fontWeight = if (isQtAiSjSelected) FontWeight.Bold else FontWeight.Normal
                                     )
                                     Text(
-                                        text = "自动按速度排行切换最快模型",
+                                        text = "qtai-sj · 自动选最快模型",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
-                                }
-                                if (isQtAiSjSelected) {
-                                    Text("●", color = Online, style = MaterialTheme.typography.titleSmall)
                                 }
                             }
                         }
                     }
 
                     // 分隔线
-                    item {
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-                    }
+                    item { HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp)) }
 
-                    // 普通模型列表
+                    // 数据库模型列表
                     if (enabledModels.isEmpty()) {
                         item {
                             Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(100.dp),
+                                modifier = Modifier.fillMaxWidth().height(100.dp),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
@@ -533,29 +520,23 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                         items(enabledModels, key = { it.id }) { model ->
                             val isSelected = selectedModel?.id == model.id
                             Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        viewModel.selectModel(model)
-                                        showModelSelector = false
-                                    },
+                                modifier = Modifier.fillMaxWidth().clickable {
+                                    viewModel.selectModel(model)
+                                    showModelSelector = false
+                                },
                                 colors = CardDefaults.cardColors(
                                     containerColor = if (isSelected)
                                         MaterialTheme.colorScheme.primaryContainer
-                                    else
-                                        MaterialTheme.colorScheme.surface
+                                    else MaterialTheme.colorScheme.surface
                                 )
                             ) {
                                 Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(12.dp),
+                                    modifier = Modifier.fillMaxWidth().padding(12.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
                                         text = if (isSelected) "●" else "○",
-                                        color = if (isSelected) Online
-                                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        color = if (isSelected) Online else MaterialTheme.colorScheme.onSurfaceVariant,
                                         style = MaterialTheme.typography.titleSmall
                                     )
                                     Spacer(modifier = Modifier.width(12.dp))

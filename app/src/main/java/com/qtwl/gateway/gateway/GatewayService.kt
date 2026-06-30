@@ -82,9 +82,18 @@ class GatewayService(private val database: AppDatabase) {
                                 put("custom_alias", JsonPrimitive(model.customAlias))
                             }
                         }
+                        // ★★ 加入 qtai-sj 虚拟模型（第三方APP也能选）★★
+                        val finalList = modelList + buildJsonObject {
+                            put("id", JsonPrimitive("qtai-sj"))
+                            put("object", JsonPrimitive("model"))
+                            put("owned_by", JsonPrimitive("qitong"))
+                            put("model_id", JsonPrimitive("qtai-sj"))
+                            put("display_name", JsonPrimitive("⚡ 綦桐AI测速"))
+                            put("custom_alias", JsonPrimitive(""))
+                        }
                         val response = buildJsonObject {
                             put("object", JsonPrimitive("list"))
-                            put("data", JsonArray(modelList))
+                            put("data", JsonArray(finalList))
                         }
                         call.respondText(
                             contentType = ContentType.Application.Json,

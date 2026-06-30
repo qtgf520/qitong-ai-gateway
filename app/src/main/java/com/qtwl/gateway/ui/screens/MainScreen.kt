@@ -1114,11 +1114,11 @@ val filteredModels = remember(models, searchQuery) {
 
     // 按服务商分组
     val modelsByProvider = remember(filteredModels, providers) {
-        val providerMap = providers.associateBy { it.id }
-        filteredModels.groupBy { model ->
-            providerMap[model.providerId]?.name ?: "未知服务商(ID:${model.providerId})"
-        }
+    val providerMap = providers.associateBy { it.id }
+    filteredModels.groupBy { model ->
+        providerMap[model.providerId]?.name ?: if (model.modelId == "qtai-sj") "⚡ 最佳模型同步" else "未知服务商(ID:${model.providerId})"
     }
+}
 
     if (models.isEmpty()) {
         Box(
