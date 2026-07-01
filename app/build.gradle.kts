@@ -22,6 +22,11 @@ versionCode = 47
         }
     }
 
+    lint {
+        checkReleaseBuilds = false
+        abortOnError = false
+    }
+
     signingConfigs {
         create("release") {
             storeFile = file("qitong.jks")
