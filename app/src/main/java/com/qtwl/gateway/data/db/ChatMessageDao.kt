@@ -33,6 +33,9 @@ interface ChatMessageDao {
     @Query("UPDATE chat_messages SET content = :content, is_streaming = 0, completion_tokens = :completionTokens, total_tokens = :totalTokens WHERE id = :id")
     suspend fun finalizeStreamingMessage(id: Long, content: String, completionTokens: Int, totalTokens: Int)
 
+    @Query("UPDATE chat_messages SET content = :content WHERE id = :id")
+    suspend fun updateContent(id: Long, content: String)
+
     @Query("UPDATE chat_messages SET is_streaming = 1 WHERE id = :id")
     suspend fun markStreaming(id: Long)
 

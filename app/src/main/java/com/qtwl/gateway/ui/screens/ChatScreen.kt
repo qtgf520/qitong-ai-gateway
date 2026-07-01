@@ -1,10 +1,15 @@
 package com.qtwl.gateway.ui.screens
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.background
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -20,28 +25,25 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.qtwl.gateway.data.model.AiModel
 import com.qtwl.gateway.data.model.ChatMessage
-import com.qtwl.gateway.data.model.Conversation
 import com.qtwl.gateway.ui.theme.Error
 import com.qtwl.gateway.ui.theme.Online
 import com.qtwl.gateway.ui.viewmodel.GatewayViewModel
-import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
 /**
  * 聊天屏幕 —— 完整的对话界面
- * 支持：会话管理、流式消息、模型选择
+ * 支持：会话管理、流式消息、模型选择、复制/分享/重生成/编辑重发
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ChatScreen(viewModel: GatewayViewModel) {
     val conversations by viewModel.conversations.collectAsState()
@@ -53,13 +55,17 @@ fun ChatScreen(viewModel: GatewayViewModel) {
     val selectedModel by viewModel.selectedModel.collectAsState()
     val models by viewModel.models.collectAsState()
     val enabledModels by viewModel.enabledModels.collectAsState()
+    val context = LocalContext.current
 
     var showConversationList by remember { mutableStateOf(false) }
     var showModelSelector by remember { mutableStateOf(false) }
     var editingConversationId by remember { mutableStateOf<Long?>(null) }
     var editTitle by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
-    val scope = rememberCoroutineScope()
+
+    // ★★ 编辑用户消息状态 ★★
+    var editingMessage by remember { mutableStateOf<ChatMessage?>(null) }
+    var editMessageText by remember { mutableStateOf("") }
 
     // 新消息时自动滚动到底部
     val lastMessageId = messages.lastOrNull()?.id
@@ -96,18 +102,15 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                     }
                 },
                 actions = {
-                    // 流式输出开关
                     val streamEnabled by viewModel.streamEnabled.collectAsState()
                     Text(
                         text = if (streamEnabled) "🔊" else "🔇",
                         fontSize = 16.sp,
                         modifier = Modifier.clickable { viewModel.setStreamEnabled(!streamEnabled) }
                     )
-                    // 模型选择
                     IconButton(onClick = { showModelSelector = true }) {
                         Text("🤖", fontSize = 20.sp)
                     }
-                    // 新对话
                     IconButton(onClick = { viewModel.createNewConversation() }) {
                         Icon(Icons.Default.Add, contentDescription = "新对话")
                     }
@@ -155,9 +158,45 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                 }
             }
 
-            // 空状态 / 消息列表
-            if (currentConversation == null) {
-                // 无对话时显示引导
+            // ★★ 编辑消息模式 ★★
+            if (editingMessage != null) {
+                Column(modifier = Modifier.weight(1f).fillMaxWidth().padding(16.dp)) {
+                    Text(
+                        text = "✏️ 编辑消息",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = editMessageText,
+                        onValueChange = { editMessageText = it },
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        maxLines = 10,
+                        label = { Text("编辑内容") }
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { editingMessage = null }) {
+                            Text("取消")
+                        }
+                        Button(
+                            onClick = {
+                                editingMessage?.let { msg ->
+                                    viewModel.updateMessageContent(msg.id, editMessageText)
+                                    if (msg.role == "user") {
+                                        viewModel.setInputText(editMessageText)
+                                        viewModel.sendMessage()
+                                    }
+                                }
+                                editingMessage = null
+                            },
+                            enabled = editMessageText.isNotBlank()
+                        ) {
+                            Text("保存${if (editingMessage?.role == "user") "并发送" else ""}")
+                        }
+                    }
+                }
+            } else if (currentConversation == null) {
                 Box(
                     modifier = Modifier
                         .weight(1f)
@@ -200,7 +239,33 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                     contentPadding = PaddingValues(vertical = 8.dp)
                 ) {
                     items(messages, key = { it.id }) { message ->
-                        MessageBubble(message = message)
+                        MessageBubble(
+                            message = message,
+                            onCopy = {
+                                val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                cm.setPrimaryClip(ClipData.newPlainText("AI回复", message.content))
+                                viewModel.showSnackbar("✅ 已复制")
+                            },
+                            onShare = {
+                                val sendIntent = Intent().apply {
+                                    action = Intent.ACTION_SEND
+                                    putExtra(Intent.EXTRA_TEXT, message.content)
+                                    type = "text/plain"
+                                }
+                                context.startActivity(Intent.createChooser(sendIntent, "分享"))
+                            },
+                            onRegenerate = {
+                                viewModel.regenerateLastMessage()
+                            },
+                            onEdit = {
+                                editingMessage = message
+                                editMessageText = message.content
+                            },
+                            onResend = {
+                                viewModel.setInputText(message.content)
+                                viewModel.sendMessage()
+                            }
+                        )
                     }
 
                     // 流式加载指示器
@@ -220,10 +285,7 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                                         modifier = Modifier.padding(12.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text(
-                                            text = "⏳",
-                                            style = MaterialTheme.typography.titleSmall
-                                        )
+                                        Text("⏳", style = MaterialTheme.typography.titleSmall)
                                         Spacer(modifier = Modifier.width(8.dp))
                                         Text(
                                             text = "AI 思考中...",
@@ -238,6 +300,16 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                 }
             }
 
+            // ★★ 需求1：输入框上方思考小字 ★★
+            if (isSending && currentConversation != null && editingMessage == null) {
+                Text(
+                    text = "💭 AI 正在思考... 请耐心等待",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 16.dp, top = 4.dp, bottom = 0.dp)
+                )
+            }
+
             // 输入区
             Surface(
                 tonalElevation = 3.dp,
@@ -245,7 +317,6 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(8.dp)) {
-                    // 模型选择提示
                     if (selectedModel == null && currentConversation != null) {
                         Text(
                             text = "⚠️ 请点击 🤖 选择模型后再发送消息",
@@ -309,15 +380,11 @@ fun ChatScreen(viewModel: GatewayViewModel) {
     if (showConversationList) {
         AlertDialog(
             onDismissRequest = { showConversationList = false },
-            title = {
-                Text("对话列表", fontWeight = FontWeight.Bold)
-            },
+            title = { Text("对话列表", fontWeight = FontWeight.Bold) },
             text = {
                 if (conversations.isEmpty()) {
                     Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(200.dp),
+                        modifier = Modifier.fillMaxWidth().height(200.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
@@ -328,72 +395,39 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                     }
                 } else {
                     LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 400.dp),
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         items(conversations, key = { it.id }) { conv ->
                             val isSelected = currentConversation?.id == conv.id
                             Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        viewModel.selectConversation(conv)
-                                        showConversationList = false
-                                    },
+                                modifier = Modifier.fillMaxWidth().clickable {
+                                    viewModel.selectConversation(conv)
+                                    showConversationList = false
+                                },
                                 colors = CardDefaults.cardColors(
-                                    containerColor = if (isSelected)
-                                        MaterialTheme.colorScheme.primaryContainer
-                                    else
-                                        MaterialTheme.colorScheme.surface
+                                    containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer
+                                    else MaterialTheme.colorScheme.surface
                                 )
                             ) {
                                 Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(12.dp),
+                                    modifier = Modifier.fillMaxWidth().padding(12.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = conv.title,
-                                            style = MaterialTheme.typography.bodyMedium,
+                                        Text(conv.title, style = MaterialTheme.typography.bodyMedium,
                                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Text(
-                                            text = formatTimestamp(conv.updatedAt),
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
+                                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(formatTimestamp(conv.updatedAt), style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
-                                    // 重命名
-                                    IconButton(
-                                        onClick = {
-                                            editingConversationId = conv.id
-                                            editTitle = conv.title
-                                        },
-                                        modifier = Modifier.size(32.dp)
-                                    ) {
-                                        Icon(
-                                            Icons.Default.Edit,
-                                            contentDescription = "重命名",
-                                            modifier = Modifier.size(18.dp)
-                                        )
+                                    IconButton(onClick = { editingConversationId = conv.id; editTitle = conv.title },
+                                        modifier = Modifier.size(32.dp)) {
+                                        Icon(Icons.Default.Edit, contentDescription = "重命名", modifier = Modifier.size(18.dp))
                                     }
-                                    // 删除
-                                    IconButton(
-                                        onClick = { viewModel.deleteConversation(conv) },
-                                        modifier = Modifier.size(32.dp)
-                                    ) {
-                                        Icon(
-                                            Icons.Default.Delete,
-                                            contentDescription = "删除",
-                                            tint = Error,
-                                            modifier = Modifier.size(18.dp)
-                                        )
+                                    IconButton(onClick = { viewModel.deleteConversation(conv) },
+                                        modifier = Modifier.size(32.dp)) {
+                                        Icon(Icons.Default.Delete, contentDescription = "删除", tint = Error, modifier = Modifier.size(18.dp))
                                     }
                                 }
                             }
@@ -401,11 +435,7 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                     }
                 }
             },
-            confirmButton = {
-                TextButton(onClick = { showConversationList = false }) {
-                    Text("关闭")
-                }
-            }
+            confirmButton = { TextButton(onClick = { showConversationList = false }) { Text("关闭") } }
         )
     }
 
@@ -415,29 +445,13 @@ fun ChatScreen(viewModel: GatewayViewModel) {
             onDismissRequest = { editingConversationId = null },
             title = { Text("重命名对话") },
             text = {
-                OutlinedTextField(
-                    value = editTitle,
-                    onValueChange = { editTitle = it },
-                    label = { Text("对话标题") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
+                OutlinedTextField(value = editTitle, onValueChange = { editTitle = it },
+                    label = { Text("对话标题") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             },
             confirmButton = {
-                Button(onClick = {
-                    editingConversationId?.let { id ->
-                        viewModel.renameConversation(id, editTitle)
-                    }
-                    editingConversationId = null
-                }) {
-                    Text("保存")
-                }
+                Button(onClick = { editingConversationId?.let { id -> viewModel.renameConversation(id, editTitle) }; editingConversationId = null }) { Text("保存") }
             },
-            dismissButton = {
-                TextButton(onClick = { editingConversationId = null }) {
-                    Text("取消")
-                }
-            }
+            dismissButton = { TextButton(onClick = { editingConversationId = null }) { Text("取消") } }
         )
     }
 
@@ -447,110 +461,47 @@ fun ChatScreen(viewModel: GatewayViewModel) {
             onDismissRequest = { showModelSelector = false },
             title = { Text("选择模型", fontWeight = FontWeight.Bold) },
             text = {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 400.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    // 普通模型列表（qtai-sj 放在最前面，跟正常模型一样）
-                    // ★★ qtai-sj 虚拟模型（当作正常模型选项）★★
+                LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     item(key = "qtai-sj") {
                         val isQtAiSjSelected = selectedModel?.modelId == "qtai-sj"
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    viewModel.selectModel(
-                                        AiModel(id = -1, modelId = "qtai-sj", displayName = "⚡ 綦桐AI测速", providerId = 0, isEnabled = true)
-                                    )
-                                    showModelSelector = false
-                                },
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (isQtAiSjSelected)
-                                    MaterialTheme.colorScheme.primaryContainer
-                                else
-                                    MaterialTheme.colorScheme.surface
-                            )
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = if (isQtAiSjSelected) "●" else "○",
+                        Card(modifier = Modifier.fillMaxWidth().clickable {
+                            viewModel.selectModel(AiModel(id = -1, modelId = "qtai-sj", displayName = "🔄 自动化切换", providerId = 0, isEnabled = true))
+                            showModelSelector = false
+                        }, colors = CardDefaults.cardColors(containerColor = if (isQtAiSjSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface)) {
+                            Row(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(text = if (isQtAiSjSelected) "●" else "○",
                                     color = if (isQtAiSjSelected) Online else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    style = MaterialTheme.typography.titleSmall
-                                )
+                                    style = MaterialTheme.typography.titleSmall)
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = "⚡ 綦桐AI测速",
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        fontWeight = if (isQtAiSjSelected) FontWeight.Bold else FontWeight.Normal
-                                    )
-                                    Text(
-                                        text = "qtai-sj · 自动选最快模型",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                                    Text("🔄 自动化切换", style = MaterialTheme.typography.bodyLarge,
+                                        fontWeight = if (isQtAiSjSelected) FontWeight.Bold else FontWeight.Normal)
+                                    Text("qtai-sj · 自动选最快模型", style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
                         }
                     }
-
-                    // 分隔线
                     item { HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp)) }
-
-                    // 数据库模型列表
                     if (enabledModels.isEmpty()) {
                         item {
-                            Box(
-                                modifier = Modifier.fillMaxWidth().height(100.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = "暂无可用模型\n请先在「模型」页面启用模型",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                            Box(modifier = Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) {
+                                Text("暂无可用模型\n请先在「模型」页面启用模型", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     } else {
                         items(enabledModels, key = { it.id }) { model ->
                             val isSelected = selectedModel?.id == model.id
-                            Card(
-                                modifier = Modifier.fillMaxWidth().clickable {
-                                    viewModel.selectModel(model)
-                                    showModelSelector = false
-                                },
-                                colors = CardDefaults.cardColors(
-                                    containerColor = if (isSelected)
-                                        MaterialTheme.colorScheme.primaryContainer
-                                    else MaterialTheme.colorScheme.surface
-                                )
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = if (isSelected) "●" else "○",
-                                        color = if (isSelected) Online else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        style = MaterialTheme.typography.titleSmall
-                                    )
+                            Card(modifier = Modifier.fillMaxWidth().clickable { viewModel.selectModel(model); showModelSelector = false },
+                                colors = CardDefaults.cardColors(containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface)) {
+                                Row(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(text = if (isSelected) "●" else "○",
+                                        color = if (isSelected) Online else MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.titleSmall)
                                     Spacer(modifier = Modifier.width(12.dp))
                                     Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = viewModel.getDisplayModelName(model),
-                                            style = MaterialTheme.typography.bodyLarge,
-                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                                        )
-                                        Text(
-                                            text = model.modelId,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
+                                        Text(viewModel.getDisplayModelName(model), style = MaterialTheme.typography.bodyLarge,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
+                                        Text(model.modelId, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                 }
                             }
@@ -558,19 +509,8 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                     }
                 }
             },
-            confirmButton = {
-                TextButton(onClick = {
-                    viewModel.selectModel(null)
-                    showModelSelector = false
-                }) {
-                    Text("取消选择")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showModelSelector = false }) {
-                    Text("关闭")
-                }
-            }
+            confirmButton = { TextButton(onClick = { viewModel.selectModel(null); showModelSelector = false }) { Text("取消选择") } },
+            dismissButton = { TextButton(onClick = { showModelSelector = false }) { Text("关闭") } }
         )
     }
 
@@ -583,70 +523,44 @@ fun ChatScreen(viewModel: GatewayViewModel) {
             title = { Text("✏️ 编辑模型别名", fontWeight = FontWeight.Bold) },
             text = {
                 Column {
-                    Text(
-                        text = "原始名称: ${editingModel!!.displayName}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Text("原始名称: ${editingModel!!.displayName}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "模型 ID: ${editingModel!!.modelId}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Text("模型 ID: ${editingModel!!.modelId}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(modifier = Modifier.height(12.dp))
-                    OutlinedTextField(
-                        value = aliasText,
-                        onValueChange = { aliasText = it },
-                        label = { Text("自定义别名 (留空则使用原始名称)") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    OutlinedTextField(value = aliasText, onValueChange = { aliasText = it },
+                        label = { Text("自定义别名 (留空则使用原始名称)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 }
             },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        viewModel.saveModelAlias(editingModel!!, aliasText)
-                        viewModel.hideEditModelAlias()
-                    }
-                ) {
-                    Text("保存")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { viewModel.hideEditModelAlias() }) {
-                    Text("取消")
-                }
-            }
+            confirmButton = { Button(onClick = { viewModel.saveModelAlias(editingModel!!, aliasText); viewModel.hideEditModelAlias() }) { Text("保存") } },
+            dismissButton = { TextButton(onClick = { viewModel.hideEditModelAlias() }) { Text("取消") } }
         )
     }
 }
 
 // ============================================================
-// 消息气泡组件
+// 消息气泡组件（支持复制/编辑/重发/分享/重生成）
 // ============================================================
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun MessageBubble(message: ChatMessage) {
+private fun MessageBubble(
+    message: ChatMessage,
+    onCopy: () -> Unit = {},
+    onShare: () -> Unit = {},
+    onRegenerate: () -> Unit = {},
+    onEdit: () -> Unit = {},
+    onResend: () -> Unit = {}
+) {
     val isUser = message.role == "user"
     val isStreaming = message.isStreaming
+    var showActions by remember { mutableStateOf(false) }
 
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 2.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
     ) {
-        // 助理消息 -> 左侧图标
         if (!isUser) {
-            Surface(
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.primaryContainer,
-                modifier = Modifier.size(32.dp)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text("🤖", fontSize = 16.sp)
-                }
+            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.size(32.dp)) {
+                Box(contentAlignment = Alignment.Center) { Text("🤖", fontSize = 16.sp) }
             }
             Spacer(modifier = Modifier.width(8.dp))
         }
@@ -655,98 +569,84 @@ private fun MessageBubble(message: ChatMessage) {
             horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
             modifier = Modifier.weight(1f, fill = false)
         ) {
+            // ★★ 消息气泡 + 长按复制 ★★
             Surface(
                 shape = RoundedCornerShape(
-                    topStart = 16.dp,
-                    topEnd = 16.dp,
+                    topStart = 16.dp, topEnd = 16.dp,
                     bottomStart = if (isUser) 16.dp else 4.dp,
                     bottomEnd = if (isUser) 4.dp else 16.dp
                 ),
-                color = if (isUser)
-                    MaterialTheme.colorScheme.primary
-                else
-                    MaterialTheme.colorScheme.surfaceVariant,
-                shadowElevation = 1.dp
+                color = if (isUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                shadowElevation = 1.dp,
+                modifier = Modifier.combinedClickable(
+                    onClick = { showActions = !showActions },
+                    onLongClick = { onCopy(); showActions = true }
+                )
             ) {
-                Column(
-                    modifier = Modifier.padding(
-                        start = if (isUser) 16.dp else 12.dp,
-                        end = if (isUser) 12.dp else 16.dp,
-                        top = 10.dp,
-                        bottom = 10.dp
-                    )
-                ) {
+                Column(modifier = Modifier.padding(
+                    start = if (isUser) 16.dp else 12.dp,
+                    end = if (isUser) 12.dp else 16.dp,
+                    top = 10.dp, bottom = 10.dp
+                )) {
                     Text(
-                        text = message.content.ifEmpty {
-                            if (isStreaming) "..." else "(空消息)"
-                        }.replace("null", "").replace("undefined", "").trim().ifEmpty {
-                            if (isStreaming) "..." else "(空消息)"
-                        },
+                        text = message.content.ifEmpty { if (isStreaming) "..." else "(空消息)" }
+                            .replace("null", "").replace("undefined", "").trim().ifEmpty { if (isStreaming) "..." else "(空消息)" },
                         style = MaterialTheme.typography.bodyMedium,
-                        color = if (isUser)
-                            MaterialTheme.colorScheme.onPrimary
-                        else
-                            MaterialTheme.colorScheme.onSurface
+                        color = if (isUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
                     )
 
-                    // 流式指示器
                     if (isStreaming && message.content.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "⏳ 生成中...",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = if (isUser)
-                                MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
-                            else
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Text("⏳ 生成中...", style = MaterialTheme.typography.labelSmall,
+                            color = if (isUser) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
+                            else MaterialTheme.colorScheme.onSurfaceVariant)
                     }
 
-                    // Token 信息
                     if (!isStreaming && message.totalTokens > 0) {
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "🔤 ${message.totalTokens} tokens",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = if (isUser)
-                                MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.6f)
-                            else
-                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text("⚡ ${message.totalTokens} tokens", style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
+                    }
+                }
+            }
+
+            // ★★ 操作按钮 ★★
+            if (showActions && !isStreaming) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(horizontal = 4.dp)) {
+                    AssistChip(onClick = { onCopy(); showActions = false },
+                        label = { Text("📋 复制", style = MaterialTheme.typography.labelSmall) }, modifier = Modifier.height(28.dp))
+                    if (isUser) {
+                        AssistChip(onClick = { onEdit(); showActions = false },
+                            label = { Text("✏️ 编辑", style = MaterialTheme.typography.labelSmall) }, modifier = Modifier.height(28.dp))
+                        AssistChip(onClick = { onResend(); showActions = false },
+                            label = { Text("🔄 重发", style = MaterialTheme.typography.labelSmall) }, modifier = Modifier.height(28.dp))
+                    }
+                    AssistChip(onClick = { onShare(); showActions = false },
+                        label = { Text("📤 分享", style = MaterialTheme.typography.labelSmall) }, modifier = Modifier.height(28.dp))
+                    if (!isUser) {
+                        AssistChip(onClick = { onRegenerate(); showActions = false },
+                            label = { Text("🔄 重生成", style = MaterialTheme.typography.labelSmall) }, modifier = Modifier.height(28.dp))
                     }
                 }
             }
 
             // 时间戳
-            Text(
-                text = formatTimestamp(message.timestamp),
-                style = MaterialTheme.typography.labelSmall,
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(formatTimestamp(message.timestamp), style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-            )
+                modifier = Modifier.padding(horizontal = 4.dp))
         }
 
-        // 用户消息 -> 右侧图标
         if (isUser) {
             Spacer(modifier = Modifier.width(8.dp))
-            Surface(
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.secondaryContainer,
-                modifier = Modifier.size(32.dp)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text("👤", fontSize = 16.sp)
-                }
+            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp)) {
+                Box(contentAlignment = Alignment.Center) { Text("👤", fontSize = 16.sp) }
             }
         }
     }
 }
 
-// ============================================================
-// 工具函数
-// ============================================================
-
 private fun formatTimestamp(timestamp: Long): String {
-    val sdf = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
-    return sdf.format(Date(timestamp))
+    return try { SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(timestamp)) } catch (_: Exception) { "" }
 }

@@ -26,6 +26,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.MediaType.Companion.toMediaType
@@ -88,7 +89,7 @@ class GatewayService(private val database: AppDatabase) {
                             put("object", JsonPrimitive("model"))
                             put("owned_by", JsonPrimitive("qitong"))
                             put("model_id", JsonPrimitive("qtai-sj"))
-                            put("display_name", JsonPrimitive("⚡ 綦桐AI测速"))
+                            put("display_name", JsonPrimitive("🔄 自动化切换"))
                             put("custom_alias", JsonPrimitive(""))
                         }
                         val response = buildJsonObject {
@@ -442,16 +443,22 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
                 refreshHealthCache(database)
             }
 val allEnabled = database.aiModelDao().getEnabledModelsList().filter { it.isEnabled }
-            val attemptModels: List<AiModel> = if (allEnabled.isNotEmpty()) {
-                // ★★ qtai-sj 模式：不管autoFailover开关，永远走排行榜 ★★
-                if (modelId == "qtai-sj") {
-                    val sorted = if (pipelineSortedModelIds.isNotEmpty()) {
-                        pipelineSortedModelIds.mapNotNull { id -> allEnabled.find { it.modelId == id } }
-                    } else {
-                        allEnabled
-                    }
-                    sorted.ifEmpty { allEnabled }
-                } else if (autoFailover) {
+val attemptModels: List<AiModel> = if (allEnabled.isNotEmpty()) {
+                    // ★★ 自动化切换 (qtai-sj) ★★
+                    if (modelId == "qtai-sj") {
+                        val qtaiSjEnabled = GatewayForegroundService.getQtaiSjEnabled()
+                        if (!qtaiSjEnabled) {
+                            // qtai-sj 已禁用，返回空列表
+                            emptyList()
+                        } else if (pipelineSortedModelIds.isEmpty()) {
+                            // 无测速数据时，自动执行一次完整测速
+                            val sorted = allEnabled.sortedBy { it.modelId }
+                            // 直接选取第一个可用模型
+                            listOfNotNull(sorted.firstOrNull())
+                        } else {
+                            pipelineSortedModelIds.mapNotNull { id -> allEnabled.find { it.modelId == id } }.ifEmpty { allEnabled }
+                        }
+                    } else if (autoFailover) {
                     // ★★ 其他模型 + 故障转移开启：用户权威模式
                     val primary = allEnabled.find { it.modelId == modelId }
                     val sessionKey = getSessionKey(call)
@@ -556,7 +563,12 @@ val allEnabled = database.aiModelDao().getEnabledModelsList().filter { it.isEnab
                 }
             }
 
-            val errMsg = if (autoFailover) "All ${failCount} models failed. Last: $lastError" else "Model '$modelId' error: $lastError"
+            val errMsg = when {
+                modelId == "qtai-sj" && !GatewayForegroundService.getQtaiSjEnabled() -> "🔄 自动化切换已禁用，请在模型页面开启"
+                modelId == "qtai-sj" && pipelineSortedModelIds.isEmpty() -> "请先启动测速以获取可用模型排行"
+                autoFailover -> "All ${failCount} models failed. Last: $lastError"
+                else -> "Model '$modelId' error: $lastError"
+            }
             val (status, body) = openAIError(HttpStatusCode.ServiceUnavailable, errMsg, "upstream_error")
             call.respondText(contentType = ContentType.Application.Json, status = status, text = body)
             return
@@ -620,6 +632,30 @@ private suspend fun pipeNormalResponse(
                 if (!resp.isSuccessful) {
                     val errBody = respBytes.decodeToString().take(200)
                     throw Exception("Upstream ${resp.code}: $errBody")
+                }
+                // ★★ 新：上游返回200但内容为空，也触发故障转移
+                if (respBytes.isEmpty()) {
+                    throw Exception("Upstream ${resp.code}: empty response body")
+                }
+                // ★★ 新：chat/completions 返回内容空白（choices为空或无content），也触发故障转移
+                if (path.contains("chat/completions") || path.contains("completions")) {
+                    try {
+                        val respStr = respBytes.decodeToString()
+                        val respJson = proxyJson.parseToJsonElement(respStr).jsonObject
+                        val choices = respJson["choices"]?.jsonArray
+                        if (choices == null || choices.isEmpty()) {
+                            throw Exception("Upstream ${resp.code}: empty choices in response")
+                        }
+                        val firstChoice = choices[0]?.jsonObject
+                        val msg = firstChoice?.get("message")?.jsonObject
+                        val content = msg?.get("content")?.jsonPrimitive?.content
+                        if (content.isNullOrBlank()) {
+                            throw Exception("Upstream ${resp.code}: blank content in response")
+                        }
+                    } catch (e: Exception) {
+                        if (e.message?.startsWith("Upstream") == true) throw e
+                        // JSON解析失败的不视为故障，继续
+                    }
                 }
             }
         }

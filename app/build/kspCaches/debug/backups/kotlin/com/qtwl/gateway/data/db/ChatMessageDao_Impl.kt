@@ -394,6 +394,22 @@ public class ChatMessageDao_Impl(
     }
   }
 
+  public override suspend fun updateContent(id: Long, content: String) {
+    val _sql: String = "UPDATE chat_messages SET content = ? WHERE id = ?"
+    return performSuspending(__db, false, true) { _connection ->
+      val _stmt: SQLiteStatement = _connection.prepare(_sql)
+      try {
+        var _argIndex: Int = 1
+        _stmt.bindText(_argIndex, content)
+        _argIndex = 2
+        _stmt.bindLong(_argIndex, id)
+        _stmt.step()
+      } finally {
+        _stmt.close()
+      }
+    }
+  }
+
   public override suspend fun markStreaming(id: Long) {
     val _sql: String = "UPDATE chat_messages SET is_streaming = 1 WHERE id = ?"
     return performSuspending(__db, false, true) { _connection ->

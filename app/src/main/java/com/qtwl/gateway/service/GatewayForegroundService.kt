@@ -175,6 +175,7 @@ class GatewayForegroundService : Service() {
         private const val KEY_DEBUG_MODE = "debug_mode"
         private const val KEY_AUTO_FAILOVER = "auto_failover"
         private const val KEY_FAILOVER_MODEL = "failover_model"
+        private const val KEY_QTAI_SJ_ENABLED = "qtai_sj_enabled"
         private const val EXTRA_TOGGLE_WAKE = "toggle_wake"
         private const val DEFAULT_PORT = 8889
         private const val DEFAULT_PROXY_PORT = 7890
@@ -227,6 +228,11 @@ val trafficDownloadBytes = java.util.concurrent.atomic.AtomicLong(0L)
             GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).edit().putBoolean(KEY_AUTO_FAILOVER, enabled).apply()
         }
         fun getAutoFailover(): Boolean = GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).getBoolean(KEY_AUTO_FAILOVER, false)
+
+        fun saveQtaiSjEnabled(enabled: Boolean) {
+            GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).edit().putBoolean(KEY_QTAI_SJ_ENABLED, enabled).apply()
+        }
+        fun getQtaiSjEnabled(): Boolean = GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).getBoolean(KEY_QTAI_SJ_ENABLED, true)
 
         fun saveFailoverModel(modelId: String) {
             GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).edit().putString(KEY_FAILOVER_MODEL, modelId).apply()

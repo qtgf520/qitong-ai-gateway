@@ -320,7 +320,6 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                         checked = autoFailover,
                         onCheckedChange = {
                             viewModel.toggleAutoFailover()
-                            if (!it) viewModel.stopPipelineTest()
                         }
                     )
                 }
@@ -343,7 +342,9 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
                         )
+                        val qtaiSjEnabled by viewModel.qtaiSjEnabled.collectAsState()
                         TextButton(
+                            enabled = qtaiSjEnabled,
                             onClick = {
                                 if (pRunning) viewModel.stopPipelineTest()
                                 else viewModel.startPipelineTest()
@@ -1108,7 +1109,7 @@ val filteredModels = remember(models, searchQuery) {
     }
     // ★★ qtai-sj 虚拟模型始终显示在列表最前面 ★★
     listOfNotNull(
-        AiModel(id = -1, modelId = "qtai-sj", displayName = "⚡ 綦桐AI测速", providerId = 0, isEnabled = true)
+        AiModel(id = -1, modelId = "qtai-sj", displayName = "🔄 自动化切换", providerId = 0, isEnabled = true)
     ) + fromDb
 }
 
@@ -1116,7 +1117,7 @@ val filteredModels = remember(models, searchQuery) {
     val modelsByProvider = remember(filteredModels, providers) {
     val providerMap = providers.associateBy { it.id }
     filteredModels.groupBy { model ->
-        providerMap[model.providerId]?.name ?: if (model.modelId == "qtai-sj") "⚡ 最佳模型同步" else "未知服务商(ID:${model.providerId})"
+        providerMap[model.providerId]?.name ?: if (model.modelId == "qtai-sj") "🔄 自动化切换" else "未知服务商(ID:${model.providerId})"
     }
 }
 
@@ -1299,68 +1300,82 @@ private fun ModelCard(model: AiModel, viewModel: GatewayViewModel) {
                 )
             }
 
-            // 测试按钮
-            IconButton(
-                onClick = { viewModel.testModelSpeed(model) },
-                modifier = Modifier.size(36.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.PlayArrow,
-                    contentDescription = "测试",
-                    modifier = Modifier.size(18.dp),
-                    tint = MaterialTheme.colorScheme.primary
+            // ★★ qtai-sj：隐藏不适用的按钮（测试、编辑别名、代理模式、同步状态）★★
+            if (model.modelId != "qtai-sj") {
+                // 测试按钮
+                IconButton(
+                    onClick = { viewModel.testModelSpeed(model) },
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = "测试",
+                        modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+                // 编辑别名按钮
+                IconButton(
+                    onClick = { viewModel.showEditModelAlias(model) },
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Edit,
+                        contentDescription = "编辑别名",
+                        modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+// ★★ qtai-sj：启用/禁用开关绑定自动化切换状态 ★★
+            if (model.modelId == "qtai-sj") {
+                val qtaiSjEnabled by viewModel.qtaiSjEnabled.collectAsState()
+                Switch(
+                    checked = qtaiSjEnabled,
+                    onCheckedChange = { viewModel.toggleQtaiSj() }
+                )
+            } else {
+                // 启用/禁用开关
+                Switch(
+                    checked = model.isEnabled,
+                    onCheckedChange = { viewModel.toggleModelEnabled(model) }
                 )
             }
-            // 编辑别名按钮
-            IconButton(
-                onClick = { viewModel.showEditModelAlias(model) },
-                modifier = Modifier.size(36.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Edit,
-                    contentDescription = "编辑别名",
-                    modifier = Modifier.size(18.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
 
-            // 启用/禁用开关
-Switch(
-    checked = model.isEnabled,
-    onCheckedChange = { viewModel.toggleModelEnabled(model) }
-)
+                        if (model.modelId != "qtai-sj") {
+                // ★ 代理模式按钮（走代理/直连）
+                IconButton(
+                    onClick = { viewModel.toggleModelProxy(model) },
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Text(
+                        text = if (model.useProxy) "🔄" else "🔗",
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                }
 
-// ★ 代理模式按钮（走代理/直连）
-IconButton(
-    onClick = { viewModel.toggleModelProxy(model) },
-    modifier = Modifier.size(36.dp)
-) {
-    Text(
-        text = if (model.useProxy) "🔄" else "🔗",
-        style = MaterialTheme.typography.labelLarge
-    )
-}
-
-// 同步状态标签
-            Surface(
-                color = when (model.syncStatus) {
-                    "Synced" -> Online.copy(alpha = 0.15f)
-                    "Pending" -> Warning.copy(alpha = 0.15f)
-                    "Failed" -> Error.copy(alpha = 0.15f)
-                    else -> Offline.copy(alpha = 0.15f)
-                },
-                shape = MaterialTheme.shapes.small
-            ) {
-                Text(
-                    text = when (model.syncStatus) {
-                        "Synced" -> "✅ 已同步"
-                        "Pending" -> "⏳ 待同步"
-                        "Failed" -> "❌ 失败"
-                        else -> model.syncStatus
+                // 同步状态标签
+                Surface(
+                    color = when (model.syncStatus) {
+                        "Synced" -> Online.copy(alpha = 0.15f)
+                        "Pending" -> Warning.copy(alpha = 0.15f)
+                        "Failed" -> Error.copy(alpha = 0.15f)
+                        else -> Offline.copy(alpha = 0.15f)
                     },
-                    style = MaterialTheme.typography.labelSmall,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                )
+                    shape = MaterialTheme.shapes.small
+                ) {
+                    Text(
+                        text = when (model.syncStatus) {
+                            "Synced" -> "✅ 已同步"
+                            "Pending" -> "⏳ 待同步"
+                            "Failed" -> "❌ 失败"
+                            else -> model.syncStatus
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                    )
+                }
             }
         }
     }

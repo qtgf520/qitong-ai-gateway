@@ -318,6 +318,10 @@ fun refreshTokenStats() {
         loadProxyListFromPrefs()
         // 同步真实服务运行状态
         _serviceRunning.value = GatewayForegroundService.isServiceRunning
+        // ★★ 初始化时检查自动故障转移是否已开启，若是则自动启动接力测速 ★★
+        if (GatewayForegroundService.getAutoFailover()) {
+            startPipelineTest()
+        }
     }
 
     // ========== 服务生命周期控制 ==========
@@ -933,6 +937,56 @@ fun refreshTokenStats() {
     fun updateInputText(text: String) {
         _inputText.value = text
     }
+
+    /** 设置输入框文本（用于重发/编辑） */
+    fun setInputText(text: String) {
+        _inputText.value = text
+    }
+
+    /** 显示Snackbar信息 */
+    fun showSnackbar(msg: String) {
+        _snackbarMessage.value = msg
+    }
+
+    /** 更新消息内容（用于编辑消息后保存） */
+    fun updateMessageContent(id: Long, content: String) {
+        viewModelScope.launch {
+            try {
+                database.chatMessageDao().updateContent(id, content)
+                // 刷新本地消息列表
+                val current = _currentMessages.value.toMutableList()
+                val idx = current.indexOfFirst { it.id == id }
+                if (idx >= 0) {
+                    current[idx] = current[idx].copy(content = content)
+                    _currentMessages.value = current
+                }
+            } catch (e: Exception) {
+                _snackbarMessage.value = "更新失败: ${e.message}"
+            }
+        }
+    }
+
+    /** 重生成最后一条AI消息 */
+    fun regenerateLastMessage() {
+        viewModelScope.launch {
+            val msgs = _currentMessages.value
+            if (msgs.size < 2) return@launch
+            // 找到最后一条AI消息
+            val lastAiIdx = msgs.lastIndexOf(msgs.lastOrNull { it.role == "assistant" })
+            if (lastAiIdx < 0) return@launch
+            // 删除最后一条AI消息
+            val lastAi = msgs[lastAiIdx]
+            try {
+                database.chatMessageDao().deleteById(lastAi.id)
+            } catch (_: Exception) { }
+            // 从消息列表中移除
+            val newMsgs = msgs.toMutableList()
+            newMsgs.removeAt(lastAiIdx)
+            _currentMessages.value = newMsgs
+            // 重新发送（复用最后一条用户消息）
+            sendMessage()
+        }
+    }
 /** 选择模型（选中即启用，取消选中即暂停） */
 fun selectModel(model: AiModel?) {
     _selectedModel.value = model
@@ -1018,7 +1072,7 @@ fun toggleModelProxy(model: AiModel) {
 fun getDisplayModelName(model: AiModel): String {
     // ★★ qtai-sj 虚拟模型特殊显示
     if (model.modelId == "qtai-sj") {
-        return "⚡ 綦桐AI测速"
+        return "🔄 自动化切换"
     }
     return if (model.customAlias.isNotBlank()) {
         "${model.displayName} (${model.customAlias})"
@@ -1126,8 +1180,16 @@ fun getDisplayModelName(model: AiModel): String {
 
 // 2. 获取服务商信息
                     val provider = if (model.modelId == "qtai-sj") {
-                        // qtai-sj模式：找第一个已启用的服务商
-                        database.providerDao().getAllProvidersList().firstOrNull { it.isEnabled }
+                        // ★★ qtai-sj：通过本地网关转发，让网关自动选最优模型 ★★
+                        Provider(
+                            id = -1,
+                            name = "本地网关",
+                            type = "OpenAI Compatible",
+                            baseUrl = "http://localhost:${_gatewayPort.value}",
+                            port = "",
+                            apiKey = "qtai-sj",
+                            isEnabled = true
+                        )
                     } else {
                         database.providerDao().getProviderById(model.providerId)
                     }
@@ -1233,8 +1295,28 @@ fun getDisplayModelName(model: AiModel): String {
                     )
                 }
             } catch (e: Exception) {
-                _chatError.value = "❌ 发送失败: ${e.message}"
-            } finally {
+            _chatError.value = "❌ 发送失败: ${e.message}"
+            // ★★ 规则5：失败自动兜底—用测速最优模型重试一次
+            val currentModel = _selectedModel.value
+            if (currentModel != null) {
+                val sortedIds = com.qtwl.gateway.gateway.pipelineSortedModelIds
+                if (sortedIds.isNotEmpty() && (currentModel.modelId != sortedIds.first())) {
+                    val bestModelId = sortedIds.first()
+                    // 通过 enabledModels 列表查找最优模型
+                    val enabledList = database.aiModelDao().getEnabledModelsList()
+                    val bestModel = enabledList.find { it.modelId == bestModelId }
+                    if (bestModel != null) {
+                        _chatError.value = "↻ ${currentModel.displayName} 失败，自动切换到 ${bestModel.displayName} 重试..."
+                        _selectedModel.value = bestModel
+                        delay(500)
+                        // 递归重试（只重试一次，防止死循环）
+                        _isSending.value = false
+                        sendMessage()
+                        return@launch
+                    }
+                }
+            }
+        } finally {
                 _isSending.value = false
             }
         }
@@ -1664,7 +1746,24 @@ fun clearChatError() {
         val newMode = !_autoFailover.value
         _autoFailover.value = newMode
         GatewayForegroundService.saveAutoFailover(newMode)
+        // ★ 联动：故障转移开启 → 自动开启模型接力测速；关闭 → 关闭接力测速
+        if (newMode) {
+            startPipelineTest()
+        } else {
+            stopPipelineTest()
+        }
         _snackbarMessage.value = if (newMode) "🔄 自动故障转移已开启，请求失败自动切换模型" else "🔄 自动故障转移已关闭"
+    }
+
+    // ★ 自动化切换（qtai-sj）独立开关
+    private val _qtaiSjEnabled = MutableStateFlow(GatewayForegroundService.getQtaiSjEnabled())
+    val qtaiSjEnabled: StateFlow<Boolean> = _qtaiSjEnabled.asStateFlow()
+
+    fun toggleQtaiSj() {
+        val newMode = !_qtaiSjEnabled.value
+        _qtaiSjEnabled.value = newMode
+        GatewayForegroundService.saveQtaiSjEnabled(newMode)
+        _snackbarMessage.value = if (newMode) "🔄 自动化切换已开启" else "🔄 自动化切换已关闭"
     }
 
     // ========== Factory ==========
