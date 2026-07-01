@@ -29,3 +29,4 @@ api_models_response.json
 ksp_*.xml
 room_*.xml
 setup_android_env.sh
+app/build/

@@ -196,6 +196,15 @@ class GatewayViewModel(
     private val _isSending = MutableStateFlow(false)
     val isSending: StateFlow<Boolean> = _isSending.asStateFlow()
 
+    /** ★★ 当前发送协程任务，用于停止生成 ★★ */
+    private var sendJob: kotlinx.coroutines.Job? = null
+
+    /** 停止当前正在生成的AI回复（只取消协程，不复位 _isSending——等 onClosed/onFailure 结束才恢复） */
+fun cancelSend() {
+    sendJob?.cancel()
+    // _isSending 保持不变，让 UI 继续显示停止按钮，直到流真正结束
+}
+
     /** 错误信息 */
     private val _chatError = MutableStateFlow<String?>(null)
     val chatError: StateFlow<String?> = _chatError.asStateFlow()
@@ -1153,7 +1162,9 @@ fun getDisplayModelName(model: AiModel): String {
             return
         }
 
-        viewModelScope.launch {
+        // ★★ 取消旧任务，启动新生成任务 ★★
+        sendJob?.cancel()
+        sendJob = viewModelScope.launch {
             _isSending.value = true
             _chatError.value = null
 
@@ -1181,16 +1192,26 @@ fun getDisplayModelName(model: AiModel): String {
 
 // 2. 获取服务商信息
                 val provider = if (model.modelId == "qtai-sj") {
-                    // ★★ qtai-sj 直连通道：用测速排行最快模型直连上游，不走网关 ★★
-                    val sortedIds = com.qtwl.gateway.gateway.pipelineSortedModelIds
-                    if (sortedIds.isNotEmpty()) {
-                        val bestId = sortedIds.first()
+                    // ★★ qtai-sj 直连通道：先检查强制模型，再用测速排行，跟网关逻辑一致 ★★
+                    val forcedModelId = GatewayForegroundService.getForcedModel()
+                    if (forcedModelId.isNotBlank()) {
+                        // 有强制选择的模型
                         val bestModels = database.aiModelDao().getEnabledModelsList()
-                        val bestModel = bestModels.find { it.modelId == bestId }
-                        if (bestModel != null) {
-                            database.providerDao().getProviderById(bestModel.providerId)
+                        val forcedModel = bestModels.find { it.modelId == forcedModelId }
+                        if (forcedModel != null) {
+                            database.providerDao().getProviderById(forcedModel.providerId)
                         } else null
-                    } else null
+                    } else {
+                        val sortedIds = com.qtwl.gateway.gateway.pipelineSortedModelIds
+                        if (sortedIds.isNotEmpty()) {
+                            val bestId = sortedIds.first()
+                            val bestModels = database.aiModelDao().getEnabledModelsList()
+                            val bestModel = bestModels.find { it.modelId == bestId }
+                            if (bestModel != null) {
+                                database.providerDao().getProviderById(bestModel.providerId)
+                            } else null
+                        } else null
+                    }
                 } else {
                     database.providerDao().getProviderById(model.providerId)
                 }
@@ -1200,10 +1221,14 @@ fun getDisplayModelName(model: AiModel): String {
                     return@launch
                 }
 
-                // ★★ qtai-sj 用测速最优模型的实际ID，其他模型用自己的ID ★★
+                // ★★ qtai-sj 用强制模型ID或测速最优模型的实际ID ★★
                 val actualModelId = if (model.modelId == "qtai-sj") {
-                    val sortedIds = com.qtwl.gateway.gateway.pipelineSortedModelIds
-                    if (sortedIds.isNotEmpty()) sortedIds.first() else model.modelId
+                    val forcedModelId = GatewayForegroundService.getForcedModel()
+                    if (forcedModelId.isNotBlank()) forcedModelId
+                    else {
+                        val sortedIds = com.qtwl.gateway.gateway.pipelineSortedModelIds
+                        if (sortedIds.isNotEmpty()) sortedIds.first() else model.modelId
+                    }
                 } else model.modelId
 
                 // 3. 构造请求体
@@ -1291,21 +1316,35 @@ fun getDisplayModelName(model: AiModel): String {
                                 viewModelScope.launch(Dispatchers.Main) {
                                     _chatError.value = errMsg
                                 }
+                                // ★★ 恢复 isSending（不管成功失败，流结束了）★★
+                                _isSending.value = false
                             }
 
                             override fun onClosed(eventSource: okhttp3.sse.EventSource) {
                                 // 流结束——保存最终结果
                                 viewModelScope.launch {
-                                    finalizeAssistantMessage(
-                                        assistantMsgId = assistantMsgId,
-                                        conversation = conversation,
-                                        content = contentBuilder.toString(),
-                                        promptTokens = totalPromptTokens,
-                                        completionTokens = totalCompletionTokens,
-                                        providerId = model.providerId,
-                                        modelId = model.modelId
-                                    )
+                                    if (model.modelId == "qtai-sj") {
+                                        // ★★ qtai-sj 走路由器通道，不写 TokenUsage，不碰 provider ★★
+                                        finalizeRouterMessage(
+                                            assistantMsgId = assistantMsgId,
+                                            conversation = conversation,
+                                            content = contentBuilder.toString()
+                                        )
+                                    } else {
+                                        // 真模型走完整记账
+                                        finalizeAssistantMessage(
+                                            assistantMsgId = assistantMsgId,
+                                            conversation = conversation,
+                                            content = contentBuilder.toString(),
+                                            promptTokens = totalPromptTokens,
+                                            completionTokens = totalCompletionTokens,
+                                            providerId = model.providerId,
+                                            modelId = model.modelId
+                                        )
+                                    }
                                 }
+                                // ★★ 恢复 isSending（流正常结束）★★
+                                _isSending.value = false
                             }
                         }
                     )
@@ -1333,8 +1372,9 @@ fun getDisplayModelName(model: AiModel): String {
                 }
             }
         } finally {
-                _isSending.value = false
-            }
+    // ★★ 不移除 _isSending——由 onClosed/onFailure 异步回调来恢复 ★★
+    // 只有当协程被取消（点停止按钮）且流尚未正常结束时不重置
+}
         }
     }
 
@@ -1352,6 +1392,41 @@ fun getDisplayModelName(model: AiModel): String {
         val saved = conversation.copy(id = id)
         _currentConversation.value = saved
         return saved
+    }
+
+    /** 路由器专用收尾——只标记消息完成，不记账不写 TokenUsage */
+    private suspend fun finalizeRouterMessage(
+        assistantMsgId: Long,
+        conversation: Conversation,
+        content: String
+    ) {
+        // 更新消息内容（token 全部为 0，路由器不消耗 token）
+        database.chatMessageDao().finalizeStreamingMessage(
+            id = assistantMsgId,
+            content = content,
+            completionTokens = 0,
+            totalTokens = 0
+        )
+
+        // 更新对话时间戳
+        database.conversationDao().touchConversation(conversation.id)
+
+        // 自动更新标题
+        if (conversation.title == "新对话" && content.isNotBlank()) {
+            val userMessages = database.chatMessageDao()
+                .getMessagesByConversationList(conversation.id)
+            val firstUserMsg = userMessages.firstOrNull { it.role == "user" }
+            if (firstUserMsg != null) {
+                val title = firstUserMsg.content.take(30).replace("\n", " ")
+                database.conversationDao().updateTitle(conversation.id, title)
+                _currentConversation.value = conversation.copy(title = title)
+            }
+        }
+
+        // 刷新消息列表
+        val messages = database.chatMessageDao()
+            .getMessagesByConversationList(conversation.id)
+        _currentMessages.value = messages
     }
 
     /** 最终确认助手消息 */
