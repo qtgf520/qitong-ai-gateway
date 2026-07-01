@@ -1180,30 +1180,36 @@ fun getDisplayModelName(model: AiModel): String {
                 database.conversationDao().touchConversation(conversation.id)
 
 // 2. 获取服务商信息
-                    val provider = if (model.modelId == "qtai-sj") {
-                        // ★★ qtai-sj：通过本地网关转发，让网关自动选最优模型 ★★
-                        Provider(
-                            id = -1,
-                            name = "本地网关",
-                            type = "OpenAI Compatible",
-                            baseUrl = "http://localhost:${_gatewayPort.value}",
-                            port = "",
-                            apiKey = "qtai-sj",
-                            isEnabled = true
-                        )
-                    } else {
-                        database.providerDao().getProviderById(model.providerId)
-                    }
-                    if (provider == null || !provider.isEnabled) {
-                    _chatError.value = "⚠️ 服务商不可用或已禁用"
+                val provider = if (model.modelId == "qtai-sj") {
+                    // ★★ qtai-sj 直连通道：用测速排行最快模型直连上游，不走网关 ★★
+                    val sortedIds = com.qtwl.gateway.gateway.pipelineSortedModelIds
+                    if (sortedIds.isNotEmpty()) {
+                        val bestId = sortedIds.first()
+                        val bestModels = database.aiModelDao().getEnabledModelsList()
+                        val bestModel = bestModels.find { it.modelId == bestId }
+                        if (bestModel != null) {
+                            database.providerDao().getProviderById(bestModel.providerId)
+                        } else null
+                    } else null
+                } else {
+                    database.providerDao().getProviderById(model.providerId)
+                }
+                if (provider == null || !provider.isEnabled) {
+                    _chatError.value = if (model.modelId == "qtai-sj") "⚠️ 请先启动测速获取可用模型排行" else "⚠️ 服务商不可用或已禁用"
                     _isSending.value = false
                     return@launch
                 }
 
+                // ★★ qtai-sj 用测速最优模型的实际ID，其他模型用自己的ID ★★
+                val actualModelId = if (model.modelId == "qtai-sj") {
+                    val sortedIds = com.qtwl.gateway.gateway.pipelineSortedModelIds
+                    if (sortedIds.isNotEmpty()) sortedIds.first() else model.modelId
+                } else model.modelId
+
                 // 3. 构造请求体
                 val messagesJson = buildMessagesJson(_currentMessages.value)
                 val requestBody = buildJsonObject {
-                    put("model", JsonPrimitive(model.modelId))
+                    put("model", JsonPrimitive(actualModelId))
                     put("messages", messagesJson)
                     put("stream", JsonPrimitive(true))
                 }.toString()
@@ -1213,8 +1219,8 @@ fun getDisplayModelName(model: AiModel): String {
                     conversationId = conversation.id,
                     role = "assistant",
                     content = "",
-                    modelId = model.modelId,
-                    providerId = model.providerId,
+                    modelId = actualModelId,
+                    providerId = provider.id,
                     isStreaming = true
                 )
                 val assistantMsgId = database.chatMessageDao().insert(assistantMsg)
@@ -1251,14 +1257,19 @@ fun getDisplayModelName(model: AiModel): String {
                                     val content = delta?.get("content")?.jsonPrimitive?.content
                                     if (content != null && content != "null" && content != "undefined") {
                                         contentBuilder.append(content)
-                                        // 实时更新 UI
-                                        val updatedMsg = streamingMsg.copy(
-                                            content = contentBuilder.toString(),
-                                            isStreaming = true
-                                        )
-                                        val msgs = _currentMessages.value.toMutableList()
-                                        msgs[msgs.lastIndex] = updatedMsg
-                                        _currentMessages.value = msgs
+                                        // ★★ 修复：切回 Main 线程更新 StateFlow，防止秒回复并发 crash ★★
+                                        val displayContent = contentBuilder.toString()
+                                        viewModelScope.launch(Dispatchers.Main) {
+                                            val updatedMsg = streamingMsg.copy(
+                                                content = displayContent,
+                                                isStreaming = true
+                                            )
+                                            val msgs = _currentMessages.value.toMutableList()
+                                            if (msgs.isNotEmpty()) {
+                                                msgs[msgs.lastIndex] = updatedMsg
+                                                _currentMessages.value = msgs
+                                            }
+                                        }
                                     }
 
                                     // 提取 token 使用信息
@@ -1275,7 +1286,11 @@ fun getDisplayModelName(model: AiModel): String {
                                 t: Throwable?,
                                 response: okhttp3.Response?
                             ) {
-                                _chatError.value = "❌ 请求失败: ${t?.message ?: "未知错误"}"
+                                // ★★ 修复：切回 Main 线程更新 StateFlow ★★
+                                val errMsg = "❌ 请求失败: ${t?.message ?: "未知错误"}"
+                                viewModelScope.launch(Dispatchers.Main) {
+                                    _chatError.value = errMsg
+                                }
                             }
 
                             override fun onClosed(eventSource: okhttp3.sse.EventSource) {
