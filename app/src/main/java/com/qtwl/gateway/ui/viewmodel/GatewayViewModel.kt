@@ -14,6 +14,7 @@ import com.qtwl.gateway.data.db.BackupManager
 import com.qtwl.gateway.network.Socks5SocketFactory
 import com.qtwl.gateway.network.UpstreamClient
 import com.qtwl.gateway.service.GatewayForegroundService
+import com.qtwl.gateway.service.LiveSession
 import com.qtwl.gateway.gateway.GatewayService
 import kotlinx.coroutines.async
 import kotlinx.coroutines.Dispatchers
@@ -1518,35 +1519,60 @@ fun getDisplayModelName(model: AiModel): String {
         }
     }
 
-    /** 模型测速 - 握手测试 */
+    /** 模型测速 - 握手测试（增强版：解析返回内容，空白回复=失败） */
     fun testModelSpeed(model: AiModel) {
         viewModelScope.launch {
             try {
                 _snackbarMessage.value = "⏳ 正在测试 ${model.displayName}..."
                 withContext(Dispatchers.IO) {
-                    val provider = database.providerDao().getProviderById(model.providerId) ?: return@withContext
+                    val provider = database.providerDao().getProviderById(model.providerId) ?: run {
+                        _snackbarMessage.value = "❌ ${model.displayName}: 未找到关联服务商"
+                        return@withContext
+                    }
                     val resolvedUrl = provider.resolvedBaseUrl
                     val client = okhttp3.OkHttpClient.Builder()
                         .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
                         .readTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
                         .build()
-                    val requestBody = """{"model":"${model.modelId}","messages":[{"role":"user","content":"hi"}],"max_tokens":1}"""
+                    val body = """{"model":"${model.modelId}","messages":[{"role":"user","content":"hi"}],"max_tokens":1}"""
                         .toByteArray()
                         .toRequestBody("application/json".toMediaType())
                     val startTime = System.currentTimeMillis()
                     val request = okhttp3.Request.Builder()
                         .url("$resolvedUrl/v1/chat/completions")
-                        .post(requestBody)
+                        .post(body)
                         .apply { provider.apiKey?.let { header("Authorization", "Bearer $it") } }
                         .build()
                     val response = client.newCall(request).execute()
                     val latency = System.currentTimeMillis() - startTime
+                    val bodyStr = response.body?.string() ?: ""
+                    
                     val result = if (response.isSuccessful) {
-                        "✅ ${model.displayName}: ${latency}ms ✅"
+                        // ★★ 解析返回内容，确认真的有回复 ★★
+                        var success = false
+                        var errorMsg = ""
+                        try {
+                            val respJson = json.parseToJsonElement(bodyStr).jsonObject
+                            val choices = respJson["choices"]?.jsonArray
+                            if (choices != null && choices.isNotEmpty()) {
+                                val first = choices[0]?.jsonObject
+                                val msg = first?.get("message")?.jsonObject
+                                val content = msg?.get("content")?.jsonPrimitive?.content
+                                success = content != null && content.isNotBlank()
+                                if (!success) errorMsg = "回复为空"
+                            } else {
+                                errorMsg = "choices为空"
+                            }
+                        } catch (_: Exception) { 
+                            errorMsg = "解析失败" 
+                        }
+                        if (success) "✅ ${model.displayName}: ${latency}ms"
+                        else "❌ ${model.displayName}: $errorMsg"
                     } else {
-                        "❌ ${model.displayName}: HTTP ${response.code} ${response.body?.string()?.take(100) ?: ""}"
+                        "❌ ${model.displayName}: HTTP ${response.code} ${bodyStr.take(80)}"
                     }
                     _snackbarMessage.value = result
+                    response.close()
                 }
             } catch (e: Exception) {
                 _snackbarMessage.value = "❌ ${model.displayName} 测试失败: ${e.localizedMessage ?: e.message}"
@@ -1703,12 +1729,20 @@ fun clearChatError() {
                                 latency = System.currentTimeMillis() - startTime
                                 if (resp.isSuccessful) {
                                     val bodyStr = resp.body?.string() ?: ""
+                                    // ★★ 解析返回内容，确认真的有回复 ★★
                                     try {
                                         val respJson = json.parseToJsonElement(bodyStr).jsonObject
-                                        val content = respJson["choices"]?.jsonArray?.firstOrNull()?.jsonObject?.get("message")?.jsonObject?.get("content")?.jsonPrimitive?.content
-                                        success = content != null && content.isNotBlank()
-                                    } catch (_: Exception) { success = false }
-                                    if (!success) errorMsg = "回复为空"
+                                        val choices = respJson["choices"]?.jsonArray
+                                        if (choices != null && choices.isNotEmpty()) {
+                                            val first = choices[0]?.jsonObject
+                                            val msg = first?.get("message")?.jsonObject
+                                            val content = msg?.get("content")?.jsonPrimitive?.content
+                                            success = content != null && content.isNotBlank()
+                                            if (!success) errorMsg = "回复为空"
+                                        } else {
+                                            errorMsg = "choices为空"
+                                        }
+                                    } catch (_: Exception) { errorMsg = "解析失败" }
                                 } else { errorMsg = "HTTP ${resp.code}" }
                                 resp.close()
                             }
@@ -1763,7 +1797,46 @@ fun clearChatError() {
         val newMode = !_qtaiSjEnabled.value
         _qtaiSjEnabled.value = newMode
         GatewayForegroundService.saveQtaiSjEnabled(newMode)
+        if (newMode) {
+            // 开启自动化切换时，清除强制切换，回到自动排行
+            GatewayForegroundService.saveForcedModel("")
+        }
         _snackbarMessage.value = if (newMode) "🔄 自动化切换已开启" else "🔄 自动化切换已关闭"
+    }
+
+    // ★ 手动强制切换模型（点排行榜上的模型）
+    private val _forcedModelId = MutableStateFlow(GatewayForegroundService.getForcedModel())
+    val forcedModelId: StateFlow<String> = _forcedModelId.asStateFlow()
+
+    fun forceModel(modelId: String) {
+        val currentForced = _forcedModelId.value
+        if (currentForced == modelId) {
+            // 点击同一个模型 → 取消强制，回到自动排行
+            _forcedModelId.value = ""
+            GatewayForegroundService.saveForcedModel("")
+            _snackbarMessage.value = "↩️ 已取消强制切换，回到自动排行模式"
+        } else {
+            // 强制切换到该模型
+            _forcedModelId.value = modelId
+            GatewayForegroundService.saveForcedModel(modelId)
+            // 从排行榜找模型名称
+            val modelName = _pipelineStatus.value.find { it.modelId == modelId }?.modelName ?: modelId
+            _snackbarMessage.value = "🎯 已强制切换到: $modelName"
+        }
+    }
+
+    fun clearForcedModel() {
+        _forcedModelId.value = ""
+        GatewayForegroundService.saveForcedModel("")
+    }
+
+    // ★★ 实时会话列表（从全局读）★★
+    var liveSessions: List<LiveSession>
+        get() = GatewayForegroundService.liveSessions
+        private set(value) { /* 只读 */ }
+    
+    fun clearLiveSessions() {
+        GatewayForegroundService.clearLiveSessions()
     }
 
     // ========== Factory ==========

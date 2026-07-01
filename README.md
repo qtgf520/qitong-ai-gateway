@@ -1,9 +1,10 @@
 # 綦桐AI网关 | QiTong AI Gateway
 
 > **包名 / Package：** `com.qtwl.gateway`  
-> **最新版本 / Latest：** v3.3.7 (versionCode=46)  
+> **最新版本 / Latest：** v3.4.1 (versionCode=48)  
 > **开源协议 / License：** Apache 2.0  
 > **语言 / Languages：** 🌐 15 languages (CN/EN/JP/KR/FR/DE/ES/RU/PT/VN/TH/AR/HI/ID)
+> **官方QQ群 / QQ Group：** [1007488535](https://qm.qq.com/q/1007488535) 💬
 
 ---
 
@@ -118,7 +119,8 @@ See [CHANGELOG.md](CHANGELOG.md) for full changelog.
 
 | Version | Key Features |
 |:--------|:-------------|
-| v3.3.7 | 🐛 qtai-sj聊天室发消息请求修复，本地网关自动分配 |
+| v3.4.1 | 🎯 手动强制切换模型, 📡实时会话跑马灯, 歌词式会话流, 测速空回复修复, QQ群1007488535 |
+| v3.4.0 | 🐛 qtai-sj聊天室发消息请求修复，本地网关自动分配 |
 | v3.3.6 | 🐛 markModelSuccess传真实延迟，traffic统计AtomicLong，qtai-sj虚拟模型 |
 | v3.3.0 | 🌐 Multi-language system (15 languages), language settings UI |
 | v3.2.3 | 🧠 Best model memory, 4xx/5xx triggers failover |
@@ -158,5 +160,6 @@ limitations under the License.
 
 <p align="center">
   <b>綦桐AI网关</b> · <a href="https://github.com/qtgf520/qitong-ai-gateway/releases">Releases</a> · <a href="CHANGELOG.md">Changelog</a><br>
+  📬 官方QQ群：<a href="https://qm.qq.com/q/1007488535">1007488535</a> 💬<br>
   © 2026 <a href="https://github.com/qtgf520">綦桐</a> · Apache 2.0
 </p>

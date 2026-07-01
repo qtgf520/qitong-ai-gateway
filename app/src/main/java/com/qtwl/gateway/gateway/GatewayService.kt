@@ -6,6 +6,7 @@ import com.qtwl.gateway.data.model.Provider
 import com.qtwl.gateway.data.model.TokenUsage
 import com.qtwl.gateway.network.UpstreamClient
 import com.qtwl.gateway.service.GatewayForegroundService
+import com.qtwl.gateway.service.LiveSession
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
@@ -450,13 +451,29 @@ val attemptModels: List<AiModel> = if (allEnabled.isNotEmpty()) {
                         if (!qtaiSjEnabled) {
                             // qtai-sj 已禁用，返回空列表
                             emptyList()
-                        } else if (pipelineSortedModelIds.isEmpty()) {
-                            // 无测速数据时，自动执行一次完整测速
-                            val sorted = allEnabled.sortedBy { it.modelId }
-                            // 直接选取第一个可用模型
-                            listOfNotNull(sorted.firstOrNull())
                         } else {
-                            pipelineSortedModelIds.mapNotNull { id -> allEnabled.find { it.modelId == id } }.ifEmpty { allEnabled }
+                            // ★★ 检查是否有手动强制切换的模型 ★★
+                            val forcedModelId = GatewayForegroundService.getForcedModel()
+                            if (forcedModelId.isNotBlank()) {
+                                val forced = allEnabled.find { it.modelId == forcedModelId }
+                                if (forced != null) {
+                                    listOf(forced) // 强制只使用这个模型
+                                } else {
+                                    // 强制模型不存在了，回退到自动
+                                    if (pipelineSortedModelIds.isEmpty()) {
+                                        listOfNotNull(allEnabled.sortedBy { it.modelId }.firstOrNull())
+                                    } else {
+                                        pipelineSortedModelIds.mapNotNull { id -> allEnabled.find { it.modelId == id } }.ifEmpty { allEnabled }
+                                    }
+                                }
+                            } else if (pipelineSortedModelIds.isEmpty()) {
+                                // 无测速数据时，自动执行一次完整测速
+                                val sorted = allEnabled.sortedBy { it.modelId }
+                                // 直接选取第一个可用模型
+                                listOfNotNull(sorted.firstOrNull())
+                            } else {
+                                pipelineSortedModelIds.mapNotNull { id -> allEnabled.find { it.modelId == id } }.ifEmpty { allEnabled }
+                            }
                         }
                     } else if (autoFailover) {
                     // ★★ 其他模型 + 故障转移开启：用户权威模式
@@ -486,6 +503,28 @@ val attemptModels: List<AiModel> = if (allEnabled.isNotEmpty()) {
 
             var lastError: String? = null
             var failCount = 0
+            
+            // ★★ 请求一来就创建实时会话（歌词式）★★
+            val rawModelName = requestJson?.get("model")?.jsonPrimitive?.content ?: "unknown"
+            // 提取用户消息（普通人能看懂）
+            val userMsg = try {
+                val msgs = requestJson?.get("messages")?.jsonArray
+                if (msgs != null && msgs.isNotEmpty()) {
+                    val lastUser = msgs.lastOrNull {
+                        it?.jsonObject?.get("role")?.jsonPrimitive?.content == "user"
+                    }
+                    lastUser?.jsonObject?.get("content")?.jsonPrimitive?.content?.take(40) ?: ""
+                } else ""
+            } catch (_: Exception) { "" }
+            val displayPreview = if (userMsg.isNotBlank()) userMsg else requestBodyStr.take(30).replace("\n", " ").trim()
+            val session = LiveSession(
+                modelName = rawModelName,
+                requestPreview = displayPreview,
+                status = "📤 发送",
+                responsePreview = ""
+            )
+            GatewayForegroundService.addLiveSession(session)
+            
             for ((idx, matchedModel) in attemptModels.withIndex()) {
                 if (idx > 0 && GatewayForegroundService.getDebugMode()) {
                     GatewayForegroundService.addDebugLog("↻ 故障转移 #$idx → ${matchedModel.modelId}")
@@ -554,6 +593,9 @@ val attemptModels: List<AiModel> = if (allEnabled.isNotEmpty()) {
                     
                     // ★★ 记录会话成功模型
                     recordSessionModel(call, matchedModel.modelId)
+                    
+                    // ★★ 更新会话状态为 📥 回复 ★★
+                    GatewayForegroundService.updateLiveSession(session.id, "📥 回复", "等待回复中...")
                     return
                 } catch (e: Exception) {
                     failCount++

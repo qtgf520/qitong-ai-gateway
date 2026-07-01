@@ -20,6 +20,16 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
+// ★★ 实时会话条目（歌词式，不持久化）★★
+data class LiveSession(
+    val id: Long = System.nanoTime(),
+    val modelName: String,
+    val requestPreview: String,
+    val status: String = "📤 发送",   // 📤 发送 | 💭 思考 | 📥 回复
+    val responsePreview: String = "",
+    val timestamp: Long = System.currentTimeMillis()
+)
+
 /**
  * 前台服务 —— 保持网关在后台持续运行，动态通知栏显示Token和流量
  */
@@ -176,6 +186,7 @@ class GatewayForegroundService : Service() {
         private const val KEY_AUTO_FAILOVER = "auto_failover"
         private const val KEY_FAILOVER_MODEL = "failover_model"
         private const val KEY_QTAI_SJ_ENABLED = "qtai_sj_enabled"
+        private const val KEY_FORCED_MODEL = "forced_model"
         private const val EXTRA_TOGGLE_WAKE = "toggle_wake"
         private const val DEFAULT_PORT = 8889
         private const val DEFAULT_PROXY_PORT = 7890
@@ -196,6 +207,37 @@ val trafficDownloadBytes = java.util.concurrent.atomic.AtomicLong(0L)
         // ★ Debug 日志（环形缓冲区，保留最近20条）
         @Volatile var debugLogBuffer = mutableListOf<String>()
         private const val MAX_DEBUG_LOG = 20
+        
+        // ★★ 实时会话条目（最近10条，不持久化）★★
+        private val _liveSessions = mutableListOf<LiveSession>()
+        private const val MAX_LIVE_SESSIONS = 10
+        val liveSessions: List<LiveSession> get() = synchronized(_liveSessions) { _liveSessions.toList() }
+        
+        fun addLiveSession(session: LiveSession) {
+            synchronized(_liveSessions) {
+                _liveSessions.add(0, session)
+                if (_liveSessions.size > MAX_LIVE_SESSIONS) {
+                    _liveSessions.removeAt(_liveSessions.size - 1)
+                }
+            }
+        }
+        
+        fun updateLiveSession(id: Long, status: String, responsePreview: String = "") {
+            synchronized(_liveSessions) {
+                val idx = _liveSessions.indexOfFirst { it.id == id }
+                if (idx >= 0) {
+                    val old = _liveSessions[idx]
+                    _liveSessions[idx] = old.copy(
+                        status = status,
+                        responsePreview = if (responsePreview.isNotBlank()) responsePreview else old.responsePreview
+                    )
+                }
+            }
+        }
+        
+        fun clearLiveSessions() {
+            synchronized(_liveSessions) { _liveSessions.clear() }
+        }
 
         fun addDebugLog(msg: String) {
             synchronized(debugLogBuffer) {
@@ -233,6 +275,11 @@ val trafficDownloadBytes = java.util.concurrent.atomic.AtomicLong(0L)
             GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).edit().putBoolean(KEY_QTAI_SJ_ENABLED, enabled).apply()
         }
         fun getQtaiSjEnabled(): Boolean = GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).getBoolean(KEY_QTAI_SJ_ENABLED, true)
+
+        fun saveForcedModel(modelId: String) {
+            GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).edit().putString(KEY_FORCED_MODEL, modelId).apply()
+        }
+        fun getForcedModel(): String = GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).getString(KEY_FORCED_MODEL, "") ?: ""
 
         fun saveFailoverModel(modelId: String) {
             GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).edit().putString(KEY_FAILOVER_MODEL, modelId).apply()

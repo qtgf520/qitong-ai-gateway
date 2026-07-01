@@ -12,6 +12,13 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
@@ -45,8 +52,10 @@ import com.qtwl.gateway.ui.theme.Warning
 import com.qtwl.gateway.ui.viewmodel.GatewayViewModel
 import com.qtwl.gateway.ui.viewmodel.pipelineStatus
 import com.qtwl.gateway.ui.viewmodel.pipelineRunning
+import com.qtwl.gateway.service.LiveSession
 import com.qtwl.gateway.utils.TranslationManager
 import com.qtwl.gateway.utils.tr
+import kotlinx.coroutines.delay
 
 /**
  * 主屏幕 —— 带底部导航的容器
@@ -358,84 +367,175 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                     }
                 }
 
-                // ★★★ 排行榜始终显示（只要有测速数据），按最快→最慢排序 ★★★
-                if (pStatus.isNotEmpty()) {
-                    // 取已排序的结果
-                    val sortedItems = remember(pStatus) {
-                        pStatus.sortedBy { it.latencyMs }
-                    }
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "📊 速度排行",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 200.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        itemsIndexed(sortedItems) { index, item ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .then(
-                                        if (item.isCurrent) Modifier.background(
-                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
-                                            MaterialTheme.shapes.small
-                                        ) else Modifier
-                                    )
-                                    .padding(horizontal = 4.dp, vertical = 2.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(
-                                    modifier = Modifier.weight(1f),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
+                                // ★★ 排行榜始终显示（只要有测速数据），按最快→最慢排序 ★★
+                                // 点排行项可手动强制切换到该模型
+                                val forcedModelId by viewModel.forcedModelId.collectAsState()
+                                if (pStatus.isNotEmpty()) {
+                                    // ★ 显示强制模式指示
+                                    if (forcedModelId.isNotBlank()) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "🎯 强制模式: ${pStatus.find { it.modelId == forcedModelId }?.modelName ?: forcedModelId}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                            TextButton(onClick = { viewModel.clearForcedModel() }) {
+                                                Text("↩️ 取消强制", style = MaterialTheme.typography.labelSmall)
+                                            }
+                                        }
+                                    }
+                                    // 取已排序的结果
+                                    val sortedItems = remember(pStatus) {
+                                        pStatus.sortedBy { it.latencyMs }
+                                    }
+                                    Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        text = "#${index + 1} ",
-                                        style = MaterialTheme.typography.bodySmall,
+                                        text = "📊 速度排行（点排行项可手动强制切换）",
+                                        style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
-                                    if (item.isCurrent) {
-                                        Text("▶ ", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    LazyColumn(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .heightIn(max = 200.dp),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        itemsIndexed(sortedItems) { index, item ->
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clickable {
+                                                        viewModel.forceModel(item.modelId)
+                                                    }
+                                                    .then(
+                                                        if (item.isCurrent) Modifier.background(
+                                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+                                                            MaterialTheme.shapes.small
+                                                        ) else Modifier
+                                                    )
+                                                    .then(
+                                                        if (item.modelId == forcedModelId) Modifier.background(
+                                                            Warning.copy(alpha = 0.12f),
+                                                            MaterialTheme.shapes.small
+                                                        ) else Modifier
+                                                    )
+                                                    .padding(horizontal = 4.dp, vertical = 2.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.weight(1f),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Text(
+                                                        text = "#${index + 1} ",
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+                                                    )
+                                                    if (item.isCurrent) {
+                                                        Text("▶ ", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
+                                                    }
+                                                    if (item.modelId == forcedModelId) {
+                                                        Text("🎯 ", style = MaterialTheme.typography.bodySmall)
+                                                    }
+                                                    Text(
+                                                        text = item.modelName,
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        fontWeight = if (item.isCurrent || item.modelId == forcedModelId) FontWeight.Bold else FontWeight.Normal,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis,
+                                                        modifier = Modifier.weight(1f)
+                                                    )
+                                                }
+                                                Text(
+                                                    text = item.status,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = when {
+                                                        item.status.startsWith("✅") -> Online
+                                                        item.status.startsWith("❌") -> Error
+                                                        item.status.startsWith("⏳") -> MaterialTheme.colorScheme.primary
+                                                        item.isCurrent -> MaterialTheme.colorScheme.primary
+                                                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                                    }
+                                                )
+                                            }
+                                        }
                                     }
-                                    Text(
-                                        text = item.modelName,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        fontWeight = if (item.isCurrent) FontWeight.Bold else FontWeight.Normal,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                }
-                                Text(
-                                    text = item.status,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    fontWeight = FontWeight.Medium,
-                                    color = when {
-                                        item.status.startsWith("✅") -> Online
-                                        item.status.startsWith("❌") -> Error
-                                        item.status.startsWith("⏳") -> MaterialTheme.colorScheme.primary
-                                        item.isCurrent -> MaterialTheme.colorScheme.primary
-                                        else -> MaterialTheme.colorScheme.onSurfaceVariant
-                                    }
-                                )
-                            }
-                        }
-                    }
-                } else if (autoFailover && !pRunning) {
+                                } else if (autoFailover && !pRunning) {
                     Text(
                         text = "点击「▶️ 启动」对所有启用模型进行接力测速",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(vertical = 8.dp)
                     )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // ★★ 实时会话跑马灯（每条从右←左滚动，显示时间+模型+内容）★★
+        var tick by remember { mutableStateOf(0L) }
+        LaunchedEffect(Unit) {
+            while (true) { delay(800); tick = System.currentTimeMillis() }
+        }
+        val currentSessions = remember(tick) { viewModel.liveSessions }
+        if (currentSessions.isNotEmpty() && serviceRunning) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("📡 实时会话", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        TextButton(onClick = { viewModel.clearLiveSessions() }) { Text("🗑️ 清空", style = MaterialTheme.typography.labelSmall) }
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    val transition = rememberInfiniteTransition(label = "marquee")
+                    Column(modifier = Modifier.fillMaxWidth().heightIn(max = 160.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        currentSessions.take(10).forEachIndexed { idx, session ->
+                            val offset by transition.animateFloat(
+                                initialValue = 1200f, targetValue = -1200f,
+                                animationSpec = infiniteRepeatable(
+                                    animation = tween(durationMillis = (14000 + idx * 1000).toInt(), easing = LinearEasing, delayMillis = (idx * 600).toInt()),
+                                    repeatMode = RepeatMode.Restart
+                                ), label = "marquee_$idx"
+                            )
+                            Row(modifier = Modifier.fillMaxWidth().offset(x = offset.dp), verticalAlignment = Alignment.CenterVertically) {
+                                // 时间（如 16:33）
+                                val timeStr = remember(session.timestamp) {
+                                    val sdf = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+                                    sdf.format(java.util.Date(session.timestamp))
+                                }
+                                Text(timeStr, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Medium)
+                                Spacer(Modifier.width(4.dp))
+                                // 状态
+                                Text(session.status, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold,
+                                    color = if (session.status.startsWith("📤")) Online else MaterialTheme.colorScheme.primary)
+                                Spacer(Modifier.width(4.dp))
+                                // 模型名
+                                Text(session.modelName.take(12), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 70.dp))
+                                Spacer(Modifier.width(4.dp))
+                                // 用户消息内容（不是JSON！）
+                                Text(session.requestPreview, style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                            }
+                        }
+                    }
                 }
             }
         }
