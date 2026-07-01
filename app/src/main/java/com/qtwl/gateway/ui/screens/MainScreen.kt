@@ -483,7 +483,7 @@ fun HomeScreen(viewModel: GatewayViewModel) {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // ★★ 实时会话跑马灯（每条从右←左滚动，显示时间+模型+内容）★★
+        // ★★ 实时会话跑马灯（每条从右←左滚动，显示时间+模型+发送+回复内容）★★
         var tick by remember { mutableStateOf(0L) }
         LaunchedEffect(Unit) {
             while (true) { delay(800); tick = System.currentTimeMillis() }
@@ -515,7 +515,7 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                                 ), label = "marquee_$idx"
                             )
                             Row(modifier = Modifier.fillMaxWidth().offset(x = offset.dp), verticalAlignment = Alignment.CenterVertically) {
-                                // 时间（如 16:33）
+                                // 时间
                                 val timeStr = remember(session.timestamp) {
                                     val sdf = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
                                     sdf.format(java.util.Date(session.timestamp))
@@ -530,9 +530,23 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                                 Text(session.modelName.take(12), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 70.dp))
                                 Spacer(Modifier.width(4.dp))
-                                // 用户消息内容（不是JSON！）
-                                Text(session.requestPreview, style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                // ★★ 发送内容 ★★
+                                if (session.requestPreview.isNotBlank()) {
+                                    Text("📤", style = MaterialTheme.typography.labelSmall, color = Online)
+                                    Spacer(Modifier.width(2.dp))
+                                    Text(session.requestPreview, style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f))
+                                }
+                                // ★★ 回复内容 ★★
+                                if (session.responsePreview.isNotBlank()) {
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("📥", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                    Spacer(Modifier.width(2.dp))
+                                    Text(session.responsePreview, style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f))
+                                }
                             }
                         }
                     }

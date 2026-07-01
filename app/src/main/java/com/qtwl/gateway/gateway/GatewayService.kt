@@ -595,7 +595,7 @@ val attemptModels: List<AiModel> = if (allEnabled.isNotEmpty()) {
                     recordSessionModel(call, matchedModel.modelId)
                     
                     // ★★ 更新会话状态为 📥 回复 ★★
-                    GatewayForegroundService.updateLiveSession(session.id, "📥 回复", "等待回复中...")
+                    GatewayForegroundService.updateLiveSession(session.id, "📥 回复", "✅ 成功")
                     return
                 } catch (e: Exception) {
                     failCount++
