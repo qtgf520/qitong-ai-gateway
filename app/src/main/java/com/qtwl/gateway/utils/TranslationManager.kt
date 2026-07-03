@@ -4,6 +4,9 @@ import android.content.Context
 import android.content.res.Configuration
 import android.os.Build
 import com.qtwl.gateway.GatewayApplication
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import java.util.Locale
 
 /**
@@ -67,9 +70,15 @@ object TranslationManager {
     private const val KEY_LANGUAGE = "app_language"
     private const val KEY_AUTO_DETECT = "auto_detect_language"
 
+    private val _currentLanguage = MutableStateFlow(AppLanguage.ZH_CN)
+    val currentLanguageFlow: StateFlow<AppLanguage> = _currentLanguage.asStateFlow()
+
     @Volatile
     var currentLanguage: AppLanguage = AppLanguage.ZH_CN
         private set
+
+    private val _autoDetect = MutableStateFlow(true)
+    val autoDetectFlow: StateFlow<Boolean> = _autoDetect.asStateFlow()
 
     @Volatile
     var autoDetect: Boolean = true
@@ -88,6 +97,7 @@ object TranslationManager {
         if (initialized) return
         val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
         autoDetect = prefs.getBoolean(KEY_AUTO_DETECT, true)
+        _autoDetect.value = autoDetect
         val code = prefs.getString(KEY_LANGUAGE, "") ?: ""
         currentLanguage = if (autoDetect) {
             AppLanguage.detectFromSystem()
@@ -96,6 +106,7 @@ object TranslationManager {
         } else {
             AppLanguage.detectFromSystem()
         }
+        _currentLanguage.value = currentLanguage
         // 读取自定义标题
         customAppTitle = prefs.getString(KEY_CUSTOM_TITLE, null)?.takeIf { it.isNotBlank() }
         initialized = true
@@ -104,7 +115,9 @@ object TranslationManager {
     /** 设置语言 */
     fun setLanguage(lang: AppLanguage, context: Context) {
         currentLanguage = lang
+        _currentLanguage.value = lang
         autoDetect = false
+        _autoDetect.value = false
         val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
         prefs.edit().putString(KEY_LANGUAGE, lang.code).putBoolean(KEY_AUTO_DETECT, false).apply()
         applyLocale(context, lang)
@@ -113,10 +126,12 @@ object TranslationManager {
     /** 开启/关闭自动跟随系统 */
     fun setAutoDetect(enabled: Boolean, context: Context) {
         autoDetect = enabled
+        _autoDetect.value = enabled
         val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
         prefs.edit().putBoolean(KEY_AUTO_DETECT, enabled).apply()
         if (enabled) {
             currentLanguage = AppLanguage.detectFromSystem()
+            _currentLanguage.value = currentLanguage
             applyLocale(context, currentLanguage)
         }
     }

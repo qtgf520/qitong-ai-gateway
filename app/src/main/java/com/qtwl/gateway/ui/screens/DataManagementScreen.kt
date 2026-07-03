@@ -281,7 +281,8 @@ fun DataManagementScreen(
                     HorizontalDivider()
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // 按钮行
+                    // ★ 按钮行：立即备份 | 恢复备份（自动扫 Downloads + 专用目录）
+                    val appBackupDir = File(Environment.getExternalStorageDirectory(), "QiTongGateway/backups")
                     var showBackupList by remember { mutableStateOf(false) }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = {
@@ -291,6 +292,8 @@ fun DataManagementScreen(
                                     result.onSuccess { json ->
                                         val timeStr = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
                                         val fileName = "qitong_gateway_backup_$timeStr.json"
+
+                                        // ★ 存到 Downloads
                                         if (Build.VERSION.SDK_INT >= 29) {
                                             val values = ContentValues().apply {
                                                 put(MediaStore.Downloads.DISPLAY_NAME, fileName)
@@ -300,50 +303,75 @@ fun DataManagementScreen(
                                             val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
                                             uri?.let {
                                                 context.contentResolver.openOutputStream(it)?.use { os -> os.write(json.toByteArray()) }
-                                                snackbarHostState.showSnackbar("✅ 备份完成: $fileName")
                                             }
                                         } else {
                                             val file = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), fileName)
                                             file.writeText(json)
-                                            snackbarHostState.showSnackbar("✅ 备份完成: $fileName")
                                         }
+
+                                        // ★ 再存到专用目录
+                                        withContext(Dispatchers.IO) {
+                                            appBackupDir.mkdirs()
+                                            File(appBackupDir, fileName).writeText(json)
+                                        }
+
+                                        snackbarHostState.showSnackbar("✅ 备份完成: $fileName")
                                     }.onFailure { e -> snackbarHostState.showSnackbar("❌ 备份失败: ${e.message}") }
                                 } catch (e: Exception) {
                                     snackbarHostState.showSnackbar("❌ 备份失败: ${e.message}")
                                 }
                             }
                         }, modifier = Modifier.weight(1f)) {
-                            Icon(Icons.Default.Backup, contentDescription = null)
+                            Icon(Icons.Default.Save, contentDescription = null)
                             Spacer(modifier = Modifier.width(4.dp))
                             Text("立即备份")
                         }
                         OutlinedButton(onClick = {
-                            scope.launch { showBackupList = true }
+                            showBackupList = true
                         }, modifier = Modifier.weight(1f)) {
                             Icon(Icons.Default.Restore, contentDescription = null)
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("一键恢复")
+                            Text("恢复备份")
                         }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    // ★ 第二行：手动导入（调文件选择器）
+                    OutlinedButton(onClick = {
+                        filePickerLauncher.launch("application/json")
+                    }, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Default.NoteAdd, contentDescription = null)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("📂 手动导入（从文件选择器选择备份 JSON）")
                     }
                     Spacer(modifier = Modifier.height(4.dp))
                     if (autoBackupEnabled.value) {
                         Text("⏱️ 下次自动备份: ${String.format("%02d", autoBackupHour.value)}:${String.format("%02d", autoBackupMinute.value)}",
                             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                     } else {
-                        Text("💡 开启「定时自动备份」后，每天指定时间自动保存到 Downloads",
+                        Text("💡 备份到 Downloads + QiTongGateway/backups/ 专用目录",
                             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
 
-                    // 扫描并列出备份文件弹窗
+                    // 扫描并列出备份文件弹窗（扫两个目录）
                     if (showBackupList) {
                         var backupFiles by remember { mutableStateOf<List<File>>(emptyList()) }
                         var isLoading by remember { mutableStateOf(true) }
                         LaunchedEffect(showBackupList) {
                             withContext(Dispatchers.IO) {
-                                val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-                                backupFiles = dir.listFiles()?.filter {
+                                val files = mutableListOf<File>()
+                                // 扫 Downloads
+                                val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                                downloadDir.listFiles()?.filter {
                                     it.name.startsWith("qitong_gateway_backup") && it.name.endsWith(".json")
-                                }?.sortedByDescending { it.lastModified() } ?: emptyList()
+                                }?.let { files.addAll(it) }
+                                // 扫专用目录
+                                if (appBackupDir.exists()) {
+                                    appBackupDir.listFiles()?.filter {
+                                        it.name.startsWith("qitong_gateway_backup") && it.name.endsWith(".json")
+                                    }?.let { files.addAll(it) }
+                                }
+                                // 去重排序
+                                backupFiles = files.distinctBy { it.name }.sortedByDescending { it.lastModified() }
                                 isLoading = false
                             }
                         }
@@ -424,6 +452,8 @@ fun DataManagementScreen(
 
             // ★ 多语言设置卡片
             var showLangSelector by remember { mutableStateOf(false) }
+            val currentLang by TranslationManager.currentLanguageFlow.collectAsState()
+            val autoDetect by TranslationManager.autoDetectFlow.collectAsState()
             Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -438,13 +468,13 @@ fun DataManagementScreen(
                         Column(modifier = Modifier.weight(1f)) {
                             Text(tr("auto_follow_system"), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
                             Text(
-                                if (TranslationManager.autoDetect) "当前: ${TranslationManager.currentLanguage.displayName}" 
-                                else "手动: ${TranslationManager.currentLanguage.displayName}",
+                                if (autoDetect) "当前: ${currentLang.displayName}" 
+                                else "手动: ${currentLang.displayName}",
                                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                         Switch(
-                            checked = TranslationManager.autoDetect,
+                            checked = autoDetect,
                             onCheckedChange = { enabled ->
                                 TranslationManager.setAutoDetect(enabled, context)
                                 showLangSelector = !enabled
@@ -452,12 +482,12 @@ fun DataManagementScreen(
                         )
                     }
                     
-                    if (!TranslationManager.autoDetect) {
+                    if (!autoDetect) {
                         Spacer(modifier = Modifier.height(8.dp))
                         OutlinedButton(onClick = { showLangSelector = true }, modifier = Modifier.fillMaxWidth()) {
                             Icon(Icons.Default.Language, contentDescription = null)
                             Spacer(Modifier.width(4.dp))
-                            Text(TranslationManager.currentLanguage.displayName)
+                            Text(currentLang.displayName)
                         }
                     }
                 }
@@ -477,7 +507,7 @@ fun DataManagementScreen(
                                         showLangSelector = false
                                     },
                                     colors = CardDefaults.cardColors(
-                                        containerColor = if (lang == TranslationManager.currentLanguage) 
+                                        containerColor = if (lang == currentLang) 
                                             MaterialTheme.colorScheme.primary.copy(alpha = 0.1f) 
                                         else MaterialTheme.colorScheme.surface
                                     )
@@ -485,9 +515,9 @@ fun DataManagementScreen(
                                     Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                                         Text(lang.displayName, 
                                             modifier = Modifier.weight(1f),
-                                            fontWeight = if (lang == TranslationManager.currentLanguage) FontWeight.Bold else FontWeight.Normal
+                                            fontWeight = if (lang == currentLang) FontWeight.Bold else FontWeight.Normal
                                         )
-                                        if (lang == TranslationManager.currentLanguage) {
+                                        if (lang == currentLang) {
                                             Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                                         }
                                     }

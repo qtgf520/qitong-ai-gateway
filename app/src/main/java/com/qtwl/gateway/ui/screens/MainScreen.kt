@@ -299,6 +299,60 @@ fun HomeScreen(viewModel: GatewayViewModel) {
         }
 
         Spacer(modifier = Modifier.height(12.dp))
+// ★★ 首页思考引导开关 & 卡片 ★★
+          // 读取/保存开关状态（SharedPreferences via GatewayForegroundService)
+          val showHintState = remember { mutableStateOf(true) }
+          LaunchedEffect(Unit) {
+              val stored = com.qtwl.gateway.service.GatewayForegroundService.getGatewayConfig("show_home_hint", "true")
+              showHintState.value = stored.toBoolean()
+          }
+          Row(
+              modifier = Modifier.fillMaxWidth(),
+              horizontalArrangement = Arrangement.SpaceBetween,
+              verticalAlignment = Alignment.CenterVertically
+          ) {
+              Text("首页思考引导", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+              Switch(
+                  checked = showHintState.value,
+                  onCheckedChange = { enabled ->
+                      showHintState.value = enabled
+                      com.qtwl.gateway.service.GatewayForegroundService.saveGatewayConfig("show_home_hint", enabled.toString())
+                  }
+              )
+          }
+          if (showHintState.value) {
+              Card(
+                  modifier = Modifier.fillMaxWidth(),
+                  colors = CardDefaults.cardColors(
+                      containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+                  )
+              ) {
+                  Column(modifier = Modifier.padding(16.dp)) {
+                      Row(verticalAlignment = Alignment.CenterVertically) {
+                          Text("💡", style = MaterialTheme.typography.titleLarge)
+                          Spacer(modifier = Modifier.width(8.dp))
+                          Text(
+                              text = "快速上手",
+                              style = MaterialTheme.typography.titleSmall,
+                              fontWeight = FontWeight.Bold,
+                              color = MaterialTheme.colorScheme.primary
+                          )
+                      }
+                      Spacer(modifier = Modifier.height(8.dp))
+                      Text(
+                          text = "1. 添加服务商 → 同步模型\n" +
+                                  "2. 启动网关服务\n" +
+                                  "3. 在第三方APP设置 Base URL 为手机地址\n" +
+                                  "4. 开启故障转移可自动切换最优模型",
+                          style = MaterialTheme.typography.bodySmall,
+                          color = MaterialTheme.colorScheme.onSurfaceVariant,
+                          lineHeight = MaterialTheme.typography.bodySmall.lineHeight
+                      )
+                  }
+              }
+          }
+
+        Spacer(modifier = Modifier.height(12.dp))
 
         // ★★ 自动故障转移开关 + 流水线测速看板 ★★
         val autoFailover by viewModel.autoFailover.collectAsState()
@@ -530,20 +584,20 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                                 Text(session.modelName.take(12), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 70.dp))
                                 Spacer(Modifier.width(4.dp))
-                                // ★★ 发送内容 ★★
-                                if (session.requestPreview.isNotBlank()) {
-                                    Text("📤", style = MaterialTheme.typography.labelSmall, color = Online)
-                                    Spacer(Modifier.width(2.dp))
-                                    Text(session.requestPreview, style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.weight(1f))
+                                // ★★ 合并发送+回复内容为一整行跑马灯 ★★
+                                val marqueeText = buildString {
+                                    if (session.requestPreview.isNotBlank()) {
+                                        append("📤 我：${session.requestPreview}")
+                                    }
+                                    if (session.requestPreview.isNotBlank() && session.responsePreview.isNotBlank()) {
+                                        append(" → ")
+                                    }
+                                    if (session.responsePreview.isNotBlank()) {
+                                        append("📥 AI：${session.responsePreview}")
+                                    }
                                 }
-                                // ★★ 回复内容 ★★
-                                if (session.responsePreview.isNotBlank()) {
-                                    Spacer(Modifier.width(4.dp))
-                                    Text("📥", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                                    Spacer(Modifier.width(2.dp))
-                                    Text(session.responsePreview, style = MaterialTheme.typography.bodySmall,
+                                if (marqueeText.isNotBlank()) {
+                                    Text(marqueeText, style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
                                         modifier = Modifier.weight(1f))
                                 }

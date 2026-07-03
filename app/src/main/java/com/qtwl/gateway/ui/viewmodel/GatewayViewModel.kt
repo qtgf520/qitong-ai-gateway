@@ -52,6 +52,7 @@ import java.util.concurrent.TimeUnit
 
 // ==================== 包级全局变量（Activity重建不丢失）====================
 /** 流水线测速状态条目 */
+@kotlinx.serialization.Serializable
 data class PipelineTestItem(
     val modelId: String,
     val modelName: String,
@@ -67,6 +68,25 @@ private val _pipelineRunning = MutableStateFlow(false)
 val pipelineRunning: StateFlow<Boolean> = _pipelineRunning.asStateFlow()
 
 private var pipelineJob: kotlinx.coroutines.Job? = null
+
+/** ★ 缓存测速结果到 SharedPreferences */
+private fun savePipelineCache(items: List<PipelineTestItem>) {
+    try {
+        val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+        val str = json.encodeToString(items)
+        GatewayForegroundService.saveGatewayConfig("pipeline_cache", str)
+    } catch (_: Exception) { }
+}
+
+/** ★ 从 SharedPreferences 加载缓存的测速结果 */
+private fun loadPipelineCache(): List<PipelineTestItem> {
+    return try {
+        val str = GatewayForegroundService.getGatewayConfig("pipeline_cache", "")
+        if (str.isBlank()) return emptyList()
+        val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+        json.decodeFromString<List<PipelineTestItem>>(str)
+    } catch (_: Exception) { emptyList() }
+}
 
 class GatewayViewModel(
     private val database: AppDatabase
@@ -255,52 +275,87 @@ fun refreshTokenStats() {
         val exampleApiKey: String      // API Key 提示
     )
     
-    companion object {
-        val PROVIDER_TYPES = listOf(
-            ProviderTypePreset(
-                displayName = "OpenAI",
-                defaultType = "OpenAI Compatible",
-                defaultBaseUrl = "https://api.openai.com",
-                defaultPort = "443",
-                exampleApiKey = "sk-..."
-            ),
-            ProviderTypePreset(
-                displayName = "Anthropic (Claude)",
-                defaultType = "Anthropic",
-                defaultBaseUrl = "https://api.anthropic.com",
-                defaultPort = "443",
-                exampleApiKey = "sk-ant-..."
-            ),
-            ProviderTypePreset(
-                displayName = "Google (Gemini)",
-                defaultType = "Google Gemini",
-                defaultBaseUrl = "https://generativelanguage.googleapis.com",
-                defaultPort = "443",
-                exampleApiKey = "AIza..."
-            ),
-            ProviderTypePreset(
-                displayName = "AI.JILI5",
-                defaultType = "OpenAI Compatible",
-                defaultBaseUrl = "https://ai.jili5.cn",
-                defaultPort = "443",
-                exampleApiKey = ""
-            ),
-            ProviderTypePreset(
-                displayName = "Ollama (本地)",
-                defaultType = "Ollama",
-                defaultBaseUrl = "http://localhost",
-                defaultPort = "11434",
-                exampleApiKey = ""
-            ),
-            ProviderTypePreset(
-                displayName = "Custom (自定义)",
-                defaultType = "Custom",
-                defaultBaseUrl = "",
-                defaultPort = "",
-                exampleApiKey = ""
+companion object {
+            val PROVIDER_TYPES = listOf(
+                ProviderTypePreset(
+                    displayName = "OpenAI",
+                    defaultType = "OpenAI Compatible",
+                    defaultBaseUrl = "https://api.openai.com",
+                    defaultPort = "443",
+                    exampleApiKey = "sk-..."
+                ),
+                ProviderTypePreset(
+                    displayName = "Anthropic (Claude)",
+                    defaultType = "Anthropic",
+                    defaultBaseUrl = "https://api.anthropic.com",
+                    defaultPort = "443",
+                    exampleApiKey = "sk-ant-..."
+                ),
+                ProviderTypePreset(
+                    displayName = "Google (Gemini)",
+                    defaultType = "Google Gemini",
+                    defaultBaseUrl = "https://generativelanguage.googleapis.com",
+                    defaultPort = "443",
+                    exampleApiKey = "AIza..."
+                ),
+                ProviderTypePreset(
+                    displayName = "DeepSeek",
+                    defaultType = "OpenAI Compatible",
+                    defaultBaseUrl = "https://api.deepseek.com",
+                    defaultPort = "443",
+                    exampleApiKey = "sk-..."
+                ),
+                ProviderTypePreset(
+                    displayName = "Qwen (通义千问)",
+                    defaultType = "OpenAI Compatible",
+                    defaultBaseUrl = "https://dashscope.aliyuncs.com/compatible-mode",
+                    defaultPort = "443",
+                    exampleApiKey = "sk-..."
+                ),
+                ProviderTypePreset(
+                    displayName = "Groq",
+                    defaultType = "OpenAI Compatible",
+                    defaultBaseUrl = "https://api.groq.com/openai",
+                    defaultPort = "443",
+                    exampleApiKey = "gsk-..."
+                ),
+                ProviderTypePreset(
+                    displayName = "OpenRouter",
+                    defaultType = "OpenAI Compatible",
+                    defaultBaseUrl = "https://openrouter.ai/api",
+                    defaultPort = "443",
+                    exampleApiKey = "sk-or-..."
+                ),
+                ProviderTypePreset(
+                    displayName = "Together",
+                    defaultType = "OpenAI Compatible",
+                    defaultBaseUrl = "https://api.together.xyz",
+                    defaultPort = "443",
+                    exampleApiKey = "api-..."
+                ),
+                ProviderTypePreset(
+                    displayName = "AI.JILI5",
+                    defaultType = "OpenAI Compatible",
+                    defaultBaseUrl = "https://ai.jili5.cn",
+                    defaultPort = "443",
+                    exampleApiKey = ""
+                ),
+                ProviderTypePreset(
+                    displayName = "Ollama (本地)",
+                    defaultType = "Ollama",
+                    defaultBaseUrl = "http://localhost",
+                    defaultPort = "11434",
+                    exampleApiKey = ""
+                ),
+                ProviderTypePreset(
+                    displayName = "Custom (自定义)",
+                    defaultType = "Custom",
+                    defaultBaseUrl = "",
+                    defaultPort = "",
+                    exampleApiKey = ""
+                )
             )
-        )
-    }
+        }
 
         private val jsonStatic = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
 
@@ -328,6 +383,32 @@ fun refreshTokenStats() {
         loadProxyListFromPrefs()
         // 同步真实服务运行状态
         _serviceRunning.value = GatewayForegroundService.isServiceRunning
+        // ★★ 加载上次测速缓存到排行榜，同步本地模型（去重+移除不存在的+添加新模型）★★
+        val cached = loadPipelineCache()
+        if (cached.isNotEmpty()) {
+            viewModelScope.launch {
+                val enabledList = withContext(Dispatchers.IO) {
+                    database.aiModelDao().getEnabledModelsList().filter { it.isEnabled }
+                }
+                val enabledIds = enabledList.map { it.modelId }.toSet()
+                // 保留缓存中仍在本地启用的 + 本地有但缓存没有的新模型（标记为"等待中"）
+                val merged = cached.filter { it.modelId in enabledIds }.toMutableList()
+                val cachedIds = merged.map { it.modelId }.toSet()
+                for (model in enabledList) {
+                    if (model.modelId !in cachedIds) {
+                        merged.add(PipelineTestItem(
+                            modelId = model.modelId,
+                            modelName = model.displayName,
+                            status = "⏳ 等待中",
+                            latencyMs = 0,
+                            isCurrent = false
+                        ))
+                    }
+                }
+                _pipelineStatus.value = merged
+                savePipelineCache(merged)
+            }
+        }
         // ★★ 初始化时检查自动故障转移是否已开启，若是则自动启动接力测速 ★★
         if (GatewayForegroundService.getAutoFailover()) {
             startPipelineTest()
@@ -868,8 +949,7 @@ fun refreshTokenStats() {
     }
 
     // ========== 模型同步 ==========
-
-    /** 从服务商同步模型列表 */
+/** 从服务商同步模型列表（支持平台预设模型） */
     fun syncModels(provider: Provider) {
         viewModelScope.launch {
             _syncingProviderId.value = provider.id
@@ -877,6 +957,41 @@ fun refreshTokenStats() {
 
             try {
                 withContext(Dispatchers.IO) {
+                    // ★★ 平台判断 & 预设模型 ★★
+                    val platformType = provider.type
+                    val presetModels: List<String>? = when {
+                        platformType.contains("Claude", ignoreCase = true) -> listOf(
+                            "claude-3-5-sonnet-latest", "claude-3-opus", "claude-3-haiku"
+                        )
+                        platformType.contains("Gemini", ignoreCase = true) -> listOf(
+                            "gemini-2.5-pro", "gemini-2.5-flash", "gemini-1.5-pro"
+                        )
+                        else -> null
+                    }
+
+                    if (presetModels != null) {
+                        // 使用预设模型列表
+                        val existingModels = database.aiModelDao().getModelsByProvider(provider.id)
+                        val enabledMap = existingModels.associate { it.modelId to it.isEnabled }
+
+                        val models = presetModels.map { modelId ->
+                            AiModel(
+                                providerId = provider.id,
+                                modelId = modelId,
+                                displayName = modelId,
+                                syncStatus = "Synced",
+                                isEnabled = enabledMap[modelId] ?: true,
+                                customAlias = ""
+                            )
+                        }
+                        database.aiModelDao().deleteByProvider(provider.id)
+                        database.aiModelDao().insertAll(models)
+                        _syncResult.value = "✅ 已加载 ${presetModels.size} 个预设模型"
+                        _snackbarMessage.value = "✅ 已加载 ${presetModels.size} 个预设模型"
+                        return@withContext
+                    }
+
+                    // ★★ 其他平台：正常调用 fetchModels ★★
                     val resolvedUrl = provider.resolvedBaseUrl
                     val response = UpstreamClient.fetchModels(
                         baseUrl = resolvedUrl,
@@ -917,7 +1032,7 @@ fun refreshTokenStats() {
                             modelId = modelId,
                             displayName = displayName,
                             syncStatus = "Synced",
-                            isEnabled = enabledMap[modelId] ?: false,  // 保留旧的启用状态
+                            isEnabled = enabledMap[modelId] ?: false,
                             customAlias = ""
                         )
                     }
@@ -1638,26 +1753,32 @@ fun getDisplayModelName(model: AiModel): String {
                     val bodyStr = response.body?.string() ?: ""
                     
                     val result = if (response.isSuccessful) {
-                        // ★★ 解析返回内容，确认真的有回复 ★★
-                        var success = false
-                        var errorMsg = ""
-                        try {
-                            val respJson = json.parseToJsonElement(bodyStr).jsonObject
-                            val choices = respJson["choices"]?.jsonArray
-                            if (choices != null && choices.isNotEmpty()) {
-                                val first = choices[0]?.jsonObject
-                                val msg = first?.get("message")?.jsonObject
-                                val content = msg?.get("content")?.jsonPrimitive?.content
-                                success = content != null && content.isNotBlank()
-                                if (!success) errorMsg = "回复为空"
-                            } else {
-                                errorMsg = "choices为空"
-                            }
-                        } catch (_: Exception) { 
-                            errorMsg = "解析失败" 
-                        }
-                        if (success) "✅ ${model.displayName}: ${latency}ms"
-                        else "❌ ${model.displayName}: $errorMsg"
+                     // ★★ 放宽判定：有 choices 就算成功，空内容显示"· 无输出" ★★
+                     var success = false
+                     var statusText = ""
+                     try {
+                         val respJson = json.parseToJsonElement(bodyStr).jsonObject
+                         val choices = respJson["choices"]?.jsonArray
+                         if (choices != null && choices.isNotEmpty()) {
+                             success = true
+                             val first = choices[0]?.jsonObject
+                             val msg = first?.get("message")?.jsonObject
+                             val content = msg?.get("content")?.jsonPrimitive?.content
+                             if (content == null) {
+                                 statusText = "· 无输出"
+                             } else if (content.isBlank()) {
+                                 statusText = "· 无输出"
+                             } else {
+                                 statusText = "${latency}ms"
+                             }
+                         } else {
+                             statusText = "不可用"
+                         }
+                     } catch (_: Exception) {
+                         statusText = "不可用"
+                     }
+                     if (success) "✅ ${model.displayName}: $statusText"
+                     else "❌ ${model.displayName}: $statusText"
                     } else {
                         "❌ ${model.displayName}: HTTP ${response.code} ${bodyStr.take(80)}"
                     }
@@ -1819,20 +1940,22 @@ fun clearChatError() {
                                 latency = System.currentTimeMillis() - startTime
                                 if (resp.isSuccessful) {
                                     val bodyStr = resp.body?.string() ?: ""
-                                    // ★★ 解析返回内容，确认真的有回复 ★★
-                                    try {
-                                        val respJson = json.parseToJsonElement(bodyStr).jsonObject
-                                        val choices = respJson["choices"]?.jsonArray
-                                        if (choices != null && choices.isNotEmpty()) {
-                                            val first = choices[0]?.jsonObject
-                                            val msg = first?.get("message")?.jsonObject
-                                            val content = msg?.get("content")?.jsonPrimitive?.content
-                                            success = content != null && content.isNotBlank()
-                                            if (!success) errorMsg = "回复为空"
-                                        } else {
-                                            errorMsg = "choices为空"
-                                        }
-                                    } catch (_: Exception) { errorMsg = "解析失败" }
+                                    // ★★ 放宽判定：有 choices 就算成功，空内容显示"· 无输出" ★★
+                            try {
+                                val respJson = json.parseToJsonElement(bodyStr).jsonObject
+                                val choices = respJson["choices"]?.jsonArray
+                                if (choices != null && choices.isNotEmpty()) {
+                                    success = true
+                                    val first = choices[0]?.jsonObject
+                                    val msg = first?.get("message")?.jsonObject
+                                    val content = msg?.get("content")?.jsonPrimitive?.content
+                                    if (content == null || content.isBlank()) {
+                                        errorMsg = "· 无输出"
+                                    }
+                                } else {
+                                    errorMsg = "不可用"
+                                }
+                            } catch (_: Exception) { errorMsg = "不可用" }
                                 } else { errorMsg = "HTTP ${resp.code}" }
                                 resp.close()
                             }
@@ -1849,6 +1972,8 @@ fun clearChatError() {
                     val sorted = _pipelineStatus.value.sortedBy { it.latencyMs }
                     _pipelineStatus.value = sorted
                     com.qtwl.gateway.gateway.pipelineSortedModelIds = sorted.map { it.modelId }
+                    // ★ 保存测速结果缓存
+                    savePipelineCache(sorted)
                     firstRound = false
                     if (_pipelineRunning.value) delay(30000)
                 }
