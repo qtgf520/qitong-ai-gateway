@@ -6,26 +6,33 @@
 
 ---
 
-## 🔄 v3.5.0（预发布）
-### ✨ 新增
-- 🆕 **备份恢复重构** — 立即备份到Downloads+专用目录 `/sdcard/QiTongGateway/backups/`，恢复自动扫双目录去重，手动导入单独调文件选择器
-- 🆕 **测速排行榜缓存** — SharedPreferences 持久化，APP重启不丢排行数据
-- 🆕 **排行榜去重同步** — 加载缓存时同步本地模型列表，删除不存在的模型、添加新模型标记"等待中"
-- 🆕 **首页引导文字卡片 + 开关** — "快速上手"引导卡片，支持SharedPreferences开关控制
-- 🆕 **多语言切换** — 14种语言选择，StateFlow响应式刷新，自动跟随系统/手动切换
-- 🆕 **平台列表补全** — 新增 DeepSeek/Qwen/Groq/OpenRouter/Together 5个平台预设
-- 🆕 **自动拉取模型** — Claude/Gemini预设模型列表，其他平台GET /v1/models自动拉取
-- 🆕 **测速放宽判定** — 有choices就算成功，空内容显示"· 无输出"，不再误判为失败
-- 🆕 **跑马灯用户+AI内容合并** — 格式 `📤 我：用户内容 → 📥 AI：回复内容`，完整显示不截断
+## 🔄 v3.5.1（正式发布）
+### 🧠 新增：记忆大脑系统
+- 🆕 **BrainMemoryManager** — 独立记忆系统，SharedPreferences存储，不升级数据库（v5不变）
+- 🆕 **三级记忆架构** — 短期记忆 → 自动升级为长期记忆 → 潜意识影响行为
+- 🆕 **情感感知** — 自动检测 happy/sad/angry/surprised/neutral 情感标签
+- 🆕 **重要性评分** — 自动计算0-10分，关键词+长度加权
+- 🆕 **保存模式** — 频繁/正常/偶尔三种模式控制记忆密度
+- 🆕 **记忆管理UI** — 管理页完整卡片：展开列表、搜索、编辑、删除、情感选择、重要性设置
+
+### 🌐 语言切换修复
+- 🔧 **AppCompatDelegate** — 改用 `setApplicationLocales()` 替代手动 `updateConfiguration`
+- 🔧 **MainActivity** — 继承 `AppCompatActivity`，切换语言后系统自动 recreate
+- 🔧 **appcompat:1.7.0** — 新增依赖
+
+### 🔌 模型能力标记
+- 🆕 **ModelCapabilityManager** — SharedPreferences 存储模型能力（supportsTools/supportsVision/supportsImageGen）
+- 🆕 **probeModel()** — 测速结束后自动发探针检测模型能力
+- 🆕 **自动切换** — 发送消息时能力不匹配自动切换到排行榜下一个支持该能力的模型
 
 ### 🔧 修复
-- 🐛 **多语言UI不刷新** — TranslationManager改为StateFlow，切换语言即时响应
-- 🐛 **测速空回复误判失败** — 放宽判定逻辑，choices存在即算成功
-- 🐛 **备份双目录恢复** — 自动扫描Downloads+专用目录去重排序
+- 🐛 **语言切换UI不刷新** — StateFlow响应式 + AppCompatDelegate 系统级切换
+- 🐛 **备份EPERM权限** — Android 10+ 改用 MediaStore 方式写入
+- 🐛 **Factory冲突** — `Icons.Default.Factory` 和 `GatewayViewModel.Factory` 重名修复
 
-### 🔄 重构
-- 🔄 **备份恢复功能重构** — 统一备份到双目录，恢复支持手动导入
-- 🔄 **翻译管理器** — 增加 StateFlow 响应式支持
+### 📦 其他
+- 数据库保持 v5 未升级
+- 全部新功能通过 SharedPreferences / 内存实现
 
 ---
 
