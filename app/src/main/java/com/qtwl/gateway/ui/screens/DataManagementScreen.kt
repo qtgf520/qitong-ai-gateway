@@ -336,10 +336,28 @@ fun DataManagementScreen(
                                             file.writeText(json)
                                         }
 
-                                        // ★ 再存到专用目录
+                                        // ★ 再存到专用目录（Android 10+ 用 MediaStore 方式，避免 EPERM）
                                         withContext(Dispatchers.IO) {
-                                            appBackupDir.mkdirs()
-                                            File(appBackupDir, fileName).writeText(json)
+                                            try {
+                                                if (Build.VERSION.SDK_INT >= 29) {
+                                                    // Android 10+ 用 MediaStore 存到 Downloads 子目录
+                                                    val values2 = ContentValues().apply {
+                                                        put(MediaStore.Downloads.DISPLAY_NAME, fileName)
+                                                        put(MediaStore.Downloads.MIME_TYPE, "application/json")
+                                                        put(MediaStore.Downloads.RELATIVE_PATH, "QiTongGateway/backups")
+                                                    }
+                                                    val uri2 = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values2)
+                                                    uri2?.let {
+                                                        context.contentResolver.openOutputStream(it)?.use { os -> os.write(json.toByteArray()) }
+                                                    }
+                                                } else {
+                                                    appBackupDir.mkdirs()
+                                                    File(appBackupDir, fileName).writeText(json)
+                                                }
+                                            } catch (e: Exception) {
+                                                // 专用目录写入失败不影响主备份，仅提示
+                                                android.util.Log.w("Backup", "专用目录备份失败: ${e.message}")
+                                            }
                                         }
 
                                         snackbarHostState.showSnackbar("✅ 备份完成: $fileName")

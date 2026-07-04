@@ -13,8 +13,8 @@ android {
         applicationId = "com.qtwl.gateway"
         minSdk = 24
         targetSdk = 35
-versionCode = 66
-        versionName = "3.5.0"
+versionCode = 68
+        versionName = "3.5.0-2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

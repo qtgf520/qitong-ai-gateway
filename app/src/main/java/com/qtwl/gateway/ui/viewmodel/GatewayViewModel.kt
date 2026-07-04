@@ -69,7 +69,91 @@ val pipelineRunning: StateFlow<Boolean> = _pipelineRunning.asStateFlow()
 
 private var pipelineJob: kotlinx.coroutines.Job? = null
 
-/** ★ 缓存测速结果到 SharedPreferences */
+/** ★★ 模型能力标记管理器（SharedPreferences 存储，不升级数据库）★★ */
+object ModelCapabilityManager {
+    private const val KEY_CAPABILITIES = "capabilities_json"
+    
+    private val json = Json { ignoreUnknownKeys = true }
+    
+    /** 获取模型能力: (supportsTools, supportsVision, supportsImageGen) */
+    fun getCapabilities(modelId: String): Triple<Boolean, Boolean, Boolean> {
+        val all = loadAll()
+        val cap = all[modelId]
+        if (cap != null) {
+            return Triple(
+                cap["t"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false,
+                cap["v"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false,
+                cap["g"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false
+            )
+        }
+        return Triple(false, false, false)
+    }
+    
+    /** 设置模型能力 */
+    fun setCapabilities(modelId: String, supportsTools: Boolean, supportsVision: Boolean, supportsImageGen: Boolean) {
+        val all = loadAll().toMutableMap()
+        all[modelId] = buildJsonObject {
+            put("t", JsonPrimitive(supportsTools))
+            put("v", JsonPrimitive(supportsVision))
+            put("g", JsonPrimitive(supportsImageGen))
+        }
+        saveAll(all)
+    }
+    
+    private fun loadAll(): Map<String, JsonObject> {
+        try {
+            val str = GatewayForegroundService.getGatewayConfig(KEY_CAPABILITIES, "{}")
+            if (str.isBlank()) return emptyMap()
+            val obj = json.parseToJsonElement(str).jsonObject
+            return obj.entries.associate { (k, v) -> k to v.jsonObject }
+        } catch (_: Exception) { return emptyMap() }
+    }
+    
+    private fun saveAll(map: Map<String, JsonObject>) {
+        try {
+            val jsonObj = buildJsonObject {
+                map.forEach { (k, v) -> put(k, v) }
+            }
+            GatewayForegroundService.saveGatewayConfig(KEY_CAPABILITIES, jsonObj.toString())
+        } catch (_: Exception) { }
+    }
+    
+    /** ★★ 探针：对指定模型探测能力并缓存结果 ★★ */
+    fun probeModel(modelId: String, resolvedUrl: String, apiKey: String?) {
+        val (t, v, g) = getCapabilities(modelId)
+        if (t && v && g) return // 已探全
+        
+        var supportsTools = t; var supportsVision = v; var supportsImageGen = g
+        try {
+            val client = OkHttpClient.Builder()
+                .connectTimeout(3000, TimeUnit.MILLISECONDS)
+                .readTimeout(3000, TimeUnit.MILLISECONDS)
+                .build()
+            val baseUrl = resolvedUrl.trimEnd('/')
+            val ct = "application/json".toMediaType()
+            
+            if (!supportsTools) {
+                val body = """{"model":"$modelId","messages":[{"role":"user","content":"hi"}],"tools":[{"type":"function","function":{"name":"t","description":"t","parameters":{"type":"object","properties":{}}}}],"max_tokens":1}"""
+                val resp = client.newCall(okhttp3.Request.Builder().url("$baseUrl/v1/chat/completions").post(body.toByteArray().toRequestBody(ct)).apply { if (!apiKey.isNullOrBlank()) header("Authorization", "Bearer $apiKey") }.build()).execute()
+                val code = resp.code; resp.close()
+                supportsTools = code != 501 && code != 404
+            }
+            if (!supportsVision) {
+                val body = """{"model":"$modelId","messages":[{"role":"user","content":[{"type":"text","text":"hi"},{"type":"image_url","image_url":{"url":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="}}]}],"max_tokens":1}"""
+                val resp = client.newCall(okhttp3.Request.Builder().url("$baseUrl/v1/chat/completions").post(body.toByteArray().toRequestBody(ct)).apply { if (!apiKey.isNullOrBlank()) header("Authorization", "Bearer $apiKey") }.build()).execute()
+                val code = resp.code; resp.close()
+                supportsVision = code != 501 && code != 404 && code != 400
+            }
+            if (!supportsImageGen) {
+                val body = """{"model":"$modelId","messages":[{"role":"user","content":"draw"}],"max_tokens":1}"""
+                val resp = client.newCall(okhttp3.Request.Builder().url("$baseUrl/v1/chat/completions").post(body.toByteArray().toRequestBody(ct)).apply { if (!apiKey.isNullOrBlank()) header("Authorization", "Bearer $apiKey") }.build()).execute()
+                val code = resp.code; resp.close()
+                supportsImageGen = code != 501 && code != 404
+            }
+        } catch (_: Exception) { }
+        setCapabilities(modelId, supportsTools, supportsVision, supportsImageGen)
+    }
+}
 private fun savePipelineCache(items: List<PipelineTestItem>) {
     try {
         val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
@@ -1961,7 +2045,18 @@ fun clearChatError() {
                             }
                         } catch (e: Exception) { errorMsg = e.message?.take(60) ?: "超时" }
 
-                        val rl = _pipelineStatus.value.toMutableList()
+                        // ★★ 用完返回再发探针检测模型能力（异步，不影响排序）★★
+                                if (success) {
+                                    try {
+                                        ModelCapabilityManager.probeModel(
+                                            model.modelId,
+                                            provider.resolvedBaseUrl,
+                                            provider.apiKey
+                                        )
+                                    } catch (_: Exception) { }
+                                }
+
+                                val rl = _pipelineStatus.value.toMutableList()
                         rl[realIdx] = rl[realIdx].copy(
                             status = if (success) "✅ ${latency}ms" else "❌ $errorMsg",
                             latencyMs = if (success) latency else Long.MAX_VALUE, isCurrent = false
