@@ -1,8 +1,9 @@
 package com.qtwl.gateway.utils
 
 import android.content.Context
-import android.content.res.Configuration
 import android.os.Build
+import androidx.appcompat.app.AppCompatDelegate
+import androidx.core.os.LocaleListCompat
 import com.qtwl.gateway.GatewayApplication
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -136,16 +137,16 @@ object TranslationManager {
         }
     }
 
-    /** 应用语言到 Activity */
+    /** 应用语言到 Activity（使用 AppCompatDelegate 方式，系统自动 recreate） */
     fun applyLocale(context: Context, lang: AppLanguage) {
         val locale = lang.locale
         Locale.setDefault(locale)
-        val config = Configuration()
-        config.setLocale(locale)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            context.createConfigurationContext(config)
+        if (lang.code == "system") {
+            AppCompatDelegate.setApplicationLocales(LocaleListCompat.getEmptyLocaleList())
+        } else {
+            val langTag = lang.locale.toLanguageTag()
+            AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags(langTag))
         }
-        context.resources.updateConfiguration(config, context.resources.displayMetrics)
     }
 
     /** 设置自定义标题 */

@@ -34,6 +34,7 @@ import com.qtwl.gateway.service.GatewayForegroundService
 import com.qtwl.gateway.ui.theme.Error
 import com.qtwl.gateway.ui.theme.Online
 import com.qtwl.gateway.ui.theme.Warning
+import com.qtwl.gateway.ui.viewmodel.BrainMemoryManager
 import com.qtwl.gateway.ui.viewmodel.GatewayViewModel
 import com.qtwl.gateway.utils.AppLanguage
 import com.qtwl.gateway.utils.TranslationManager
@@ -491,6 +492,148 @@ fun DataManagementScreen(
                         Text("重置所有数据")
                     }
                 }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // ★★ 记忆管理卡片（BrainMemory 大脑）★★
+            val cfg = BrainMemoryManager.getConfig()
+            var memEnabled by remember { mutableStateOf(cfg.enabled) }
+            var memMode by remember { mutableStateOf(cfg.saveMode) }
+            var memMax by remember { mutableStateOf(cfg.maxShortTerm.toString()) }
+            var showMemDetail by remember { mutableStateOf(false) }
+            var memSearchQuery by remember { mutableStateOf("") }
+            var memList by remember { mutableStateOf(BrainMemoryManager.getAll()) }
+            var editingMem by remember { mutableStateOf<com.qtwl.gateway.ui.viewmodel.BrainMemoryManager.MemoryItem?>(null) }
+            var editTitle by remember { mutableStateOf("") }
+            var editContent by remember { mutableStateOf("") }
+            var editEmotion by remember { mutableStateOf("neutral") }
+            var editImportance by remember { mutableStateOf("5") }
+            
+            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Memory, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("🧠 大脑记忆", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                        Switch(checked = memEnabled, onCheckedChange = { e ->
+                            memEnabled = e
+                            BrainMemoryManager.updateConfig(cfg.copy(enabled = e))
+                        })
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text("qtai-sj 大脑：${memList.size}条记忆 · 模式:${memMode} · 情感感知:${if (cfg.emotionalAwareness) "开" else "关"}",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    
+                    if (memEnabled) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        // 保存模式
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("保存模式:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(Modifier.width(8.dp))
+                            val modes = listOf("frequent" to "频繁", "normal" to "正常", "occasional" to "偶尔")
+                            modes.forEach { (k, v) ->
+                                FilterChip(selected = memMode == k, onClick = {
+                                    memMode = k
+                                    BrainMemoryManager.updateConfig(cfg.copy(saveMode = k))
+                                }, label = { Text(v, style = MaterialTheme.typography.labelSmall) }, modifier = Modifier.padding(end = 4.dp))
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        // 上限设置
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("上限:", style = MaterialTheme.typography.labelSmall)
+                            Spacer(Modifier.width(4.dp))
+                            OutlinedTextField(value = memMax, onValueChange = { v ->
+                                memMax = v; v.toIntOrNull()?.let { n ->
+                                    BrainMemoryManager.updateConfig(cfg.copy(maxShortTerm = n))
+                                }
+                            }, singleLine = true, modifier = Modifier.width(80.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                            Spacer(Modifier.width(8.dp))
+                            OutlinedButton(onClick = { BrainMemoryManager.clearAll(); memList = emptyList(); scope.launch { snackbarHostState.showSnackbar("🧹 所有记忆已清空") } },
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Error)) {
+                                Icon(Icons.Default.DeleteSweep, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(2.dp)); Text("清空", style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        // 展开/折叠
+                        TextButton(onClick = { showMemDetail = !showMemDetail }) {
+                            Text(text = if (showMemDetail) "▲ 收起记忆列表" else "▼ 展开记忆列表 (${memList.size}条)", style = MaterialTheme.typography.labelMedium)
+                        }
+                        if (showMemDetail) {
+                            // 搜索框
+                            OutlinedTextField(value = memSearchQuery, onValueChange = { memSearchQuery = it },
+                                placeholder = { Text("搜索记忆...", style = MaterialTheme.typography.bodySmall) },
+                                singleLine = true, modifier = Modifier.fillMaxWidth(), leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp)) })
+                            Spacer(modifier = Modifier.height(4.dp))
+                            // 记忆列表
+                            val filtered = if (memSearchQuery.isBlank()) memList else BrainMemoryManager.search(memSearchQuery)
+                            if (filtered.isEmpty()) {
+                                Text("暂无记忆", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(8.dp))
+                            } else {
+                                LazyColumn(modifier = Modifier.heightIn(max = 300.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    items(filtered) { mem ->
+                                        Card(modifier = Modifier.fillMaxWidth().clickable {
+                                            editingMem = mem; editTitle = mem.title; editContent = mem.content; editEmotion = mem.emotion; editImportance = mem.importance.toString()
+                                        }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                                            Row(modifier = Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                                // 情感图标
+                                                val emoji = when (mem.emotion) { "happy" -> "😊"; "sad" -> "😢"; "angry" -> "😠"; "surprised" -> "😮"; else -> "😐" }
+                                                Text(emoji, style = MaterialTheme.typography.bodyMedium)
+                                                Spacer(Modifier.width(6.dp))
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(mem.title, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                    Text("重要:${mem.importance}/10 · ${mem.type} · ${java.text.SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(java.util.Date(mem.timestamp))}",
+                                                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                }
+                                                IconButton(onClick = { BrainMemoryManager.deleteMemory(mem.id); memList = BrainMemoryManager.getAll() }, modifier = Modifier.size(28.dp)) {
+                                                    Icon(Icons.Default.Delete, contentDescription = "删除", tint = Error, modifier = Modifier.size(16.dp))
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            // 编辑记忆弹窗
+            if (editingMem != null) {
+                AlertDialog(onDismissRequest = { editingMem = null },
+                    title = { Text("✏️ 编辑记忆", fontWeight = FontWeight.Bold) },
+                    text = {
+                        Column {
+                            OutlinedTextField(value = editTitle, onValueChange = { editTitle = it }, label = { Text("标题") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                            Spacer(Modifier.height(8.dp))
+                            OutlinedTextField(value = editContent, onValueChange = { editContent = it }, label = { Text("内容") }, modifier = Modifier.fillMaxWidth().heightIn(min = 60.dp), maxLines = 5)
+                            Spacer(Modifier.height(8.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("情感:", style = MaterialTheme.typography.labelSmall)
+                                Spacer(Modifier.width(8.dp))
+                                listOf("neutral" to "😐", "happy" to "😊", "sad" to "😢", "angry" to "😠", "surprised" to "😮").forEach { (k, v) ->
+                                    FilterChip(selected = editEmotion == k, onClick = { editEmotion = k },
+                                        label = { Text(v, style = MaterialTheme.typography.labelSmall) }, modifier = Modifier.padding(end = 2.dp))
+                                }
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("重要性 (0-10):", style = MaterialTheme.typography.labelSmall)
+                                Spacer(Modifier.width(8.dp))
+                                OutlinedTextField(value = editImportance, onValueChange = { editImportance = it }, singleLine = true, modifier = Modifier.width(80.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        Button(onClick = {
+                            BrainMemoryManager.updateMemory(editingMem!!.id, title = editTitle, content = editContent, emotion = editEmotion, importance = editImportance.toIntOrNull())
+                            editingMem = null; memList = BrainMemoryManager.getAll()
+                            scope.launch { snackbarHostState.showSnackbar("✅ 记忆已更新") }
+                        }) { Text("保存") }
+                    },
+                    dismissButton = { TextButton(onClick = { editingMem = null }) { Text("取消") } }
+                )
             }
 
             Spacer(modifier = Modifier.height(8.dp))
