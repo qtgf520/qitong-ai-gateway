@@ -5,7 +5,9 @@ import android.content.ClipboardManager
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.Manifest
 import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
@@ -61,6 +63,19 @@ fun DataManagementScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
+
+    // ★ 文件存储权限请求器（Android 11+ 专用目录写入需要）
+    val storagePermLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        scope.launch {
+            if (granted) {
+                snackbarHostState.showSnackbar("✅ 文件存储权限已授予")
+            } else {
+                snackbarHostState.showSnackbar("⚠️ 权限被拒，备份将使用 MediaStore 保存到 Downloads")
+            }
+        }
+    }
 
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -284,8 +299,20 @@ fun DataManagementScreen(
                     // ★ 按钮行：立即备份 | 恢复备份（自动扫 Downloads + 专用目录）
                     val appBackupDir = File(Environment.getExternalStorageDirectory(), "QiTongGateway/backups")
                     var showBackupList by remember { mutableStateOf(false) }
+                    // ★ 检查/请求文件存储权限
+                    val hasStoragePerm = if (Build.VERSION.SDK_INT >= 30) {
+                        // Android 11+ 用 MediaStore 不需要额外权限，但写专用目录需要
+                        Environment.getExternalStorageDirectory().canWrite()
+                    } else {
+                        ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+                    }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = {
+                            // ★ 检查权限，没有则请求
+                            if (Build.VERSION.SDK_INT < 30 && !hasStoragePerm) {
+                                storagePermLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                                return@Button
+                            }
                             scope.launch {
                                 try {
                                     val result = withContext(Dispatchers.IO) { viewModel.getBackupJson() }
