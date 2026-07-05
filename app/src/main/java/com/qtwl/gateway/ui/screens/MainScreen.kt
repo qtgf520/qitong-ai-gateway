@@ -52,6 +52,7 @@ import com.qtwl.gateway.ui.theme.Warning
 import com.qtwl.gateway.ui.viewmodel.GatewayViewModel
 import com.qtwl.gateway.ui.viewmodel.pipelineStatus
 import com.qtwl.gateway.ui.viewmodel.pipelineRunning
+import com.qtwl.gateway.ui.viewmodel.pipelineProgress
 import com.qtwl.gateway.service.LiveSession
 import com.qtwl.gateway.utils.TranslationManager
 import com.qtwl.gateway.utils.tr
@@ -358,6 +359,7 @@ fun HomeScreen(viewModel: GatewayViewModel) {
         val autoFailover by viewModel.autoFailover.collectAsState()
         val pStatus by pipelineStatus.collectAsState()
         val pRunning by pipelineRunning.collectAsState()
+        val pProgress by pipelineProgress.collectAsState()
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
@@ -420,6 +422,43 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                         }
                     }
                 }
+                
+                // ★★ 测速进度条（始终显示，不依赖故障转移开关）★★
+                if (pRunning && pProgress > 0f) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    LinearProgressIndicator(
+                        progress = { pProgress },
+                        modifier = Modifier.fillMaxWidth().height(6.dp),
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                    Text(
+                        text = "测速中... ${(pProgress * 100).toInt()}% (${pStatus.count { it.status.startsWith("✅") || it.status.startsWith("❌") }}/${pStatus.size})",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
+                // ★★ qtai-sj 状态提示（始终显示）★★
+                Spacer(modifier = Modifier.height(4.dp))
+                val qtaiStatus = when {
+                    pRunning -> "⏳ qtai-sj 正在测速中，暂时无法使用"
+                    pStatus.isEmpty() -> "⚠️ 暂无测速数据，请先启动测速"
+                    pStatus.any { it.status.contains("❌") || it.status.contains("超时") } -> "⚠️ 部分模型异常，qtai-sj 可能受影响"
+                    else -> "✅ qtai-sj 已就绪，可正常使用"
+                }
+                Text(
+                    text = qtaiStatus,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Medium,
+                    color = when {
+                        pRunning -> MaterialTheme.colorScheme.primary
+                        pStatus.isEmpty() -> MaterialTheme.colorScheme.error
+                        pStatus.any { it.status.contains("❌") || it.status.contains("超时") } -> MaterialTheme.colorScheme.error
+                        else -> Online
+                    },
+                    modifier = Modifier.padding(top = 2.dp)
+                )
 
                                 // ★★ 排行榜始终显示（只要有测速数据），按最快→最慢排序 ★★
                                 // 点排行项可手动强制切换到该模型

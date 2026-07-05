@@ -64,6 +64,10 @@ data class PipelineTestItem(
 private val _pipelineStatus = MutableStateFlow<List<PipelineTestItem>>(emptyList())
 val pipelineStatus: StateFlow<List<PipelineTestItem>> = _pipelineStatus.asStateFlow()
 
+/** ★★ 流水线测速进度 ★★ */
+private val _pipelineProgress = MutableStateFlow(0f)
+val pipelineProgress: StateFlow<Float> = _pipelineProgress.asStateFlow()
+
 private val _pipelineRunning = MutableStateFlow(false)
 val pipelineRunning: StateFlow<Boolean> = _pipelineRunning.asStateFlow()
 
@@ -587,6 +591,10 @@ companion object {
         }
         // ★★ 启动后台静默探针（30分钟循环，静默检测模型能力）★★
         ModelCapabilityManager.startSilentProbe(database, viewModelScope)
+        // ★★ 启动时自动全量测速，确保排行榜立即可用 ★★
+        if (!_pipelineRunning.value) {
+            startPipelineTest()
+        }
     }
 
     // ========== 服务生命周期控制 ==========
@@ -1533,15 +1541,21 @@ fun getDisplayModelName(model: AiModel): String {
                     return@launch
                 }
 
-                // ★★ qtai-sj 用强制模型ID或测速最优模型的实际ID ★★
-                val actualModelId = if (model.modelId == "qtai-sj") {
-                    val forcedModelId = GatewayForegroundService.getForcedModel()
-                    if (forcedModelId.isNotBlank()) forcedModelId
-                    else {
-                        val sortedIds = com.qtwl.gateway.gateway.pipelineSortedModelIds
-                        if (sortedIds.isNotEmpty()) sortedIds.first() else model.modelId
-                    }
-                } else model.modelId
+// ★★ qtai-sj 用强制模型ID或测速最优模型的实际ID ★★
+                    val actualModelId = if (model.modelId == "qtai-sj") {
+                        val forcedModelId = GatewayForegroundService.getForcedModel()
+                        if (forcedModelId.isNotBlank()) forcedModelId
+                        else {
+                            // ★★ 会话记忆：优先用上次对话成功的模型 ★★
+                            val convModelId = _currentConversation.value?.modelId
+                            if (!convModelId.isNullOrBlank() && convModelId != "qtai-sj") {
+                                convModelId
+                            } else {
+                                val sortedIds = com.qtwl.gateway.gateway.pipelineSortedModelIds
+                                if (sortedIds.isNotEmpty()) sortedIds.first() else model.modelId
+                            }
+                        }
+                    } else model.modelId
 
                 // 3. 构造请求体
                 val messagesJson = buildMessagesJson(_currentMessages.value)
@@ -2098,6 +2112,7 @@ fun clearChatError() {
         pipelineJob?.cancel()
         pipelineJob = viewModelScope.launch {
             _pipelineRunning.value = true
+            _pipelineProgress.value = 0f
             try {
                 var firstRound = true
                 while (_pipelineRunning.value) {
@@ -2129,6 +2144,10 @@ fun clearChatError() {
                         val realIdx = _pipelineStatus.value.indexOfFirst { it.modelId == model.modelId }
                         if (realIdx < 0) continue
                         if (!_pipelineRunning.value) break
+                        // ★★ 更新进度 ★★
+                        val testedCount = _pipelineStatus.value.count { it.status.startsWith("✅") || it.status.startsWith("❌") }
+                        val total = _pipelineStatus.value.size
+                        _pipelineProgress.value = if (total > 0) testedCount.toFloat() / total.toFloat() else 0f
 
                         val cur = _pipelineStatus.value.toMutableList()
                         cur[realIdx] = cur[realIdx].copy(status = "⏳ 测速中...", isCurrent = true)

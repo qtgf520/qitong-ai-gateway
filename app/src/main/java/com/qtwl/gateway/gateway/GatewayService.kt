@@ -28,6 +28,7 @@ import io.ktor.util.AttributeKey
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -454,35 +455,91 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
             if (userMsg.isNotBlank()) {
                 val actions = ToolExecutor.parseCommand(userMsg)
                 if (actions.isNotEmpty()) {
-                    // 执行所有工具操作，收集结果
                     val results = actions.map { action ->
                         ToolExecutor.execute(action, null)
                     }.joinToString("\n")
                     
-                    // 返回工具执行结果作为回复
-                    val toolResponse = buildJsonObject {
-                        put("id", JsonPrimitive("chatcmpl-tool-${UUID.randomUUID().toString().take(8)}"))
-                        put("object", JsonPrimitive("chat.completion"))
-                        put("created", JsonPrimitive(System.currentTimeMillis() / 1000))
-                        put("model", JsonPrimitive("qtai-sj"))
-                        put("choices", JsonArray(listOf(buildJsonObject {
-                            put("index", JsonPrimitive(0))
-                            put("message", buildJsonObject {
-                                put("role", JsonPrimitive("assistant"))
-                                put("content", JsonPrimitive(results))
+                    // ★★ 流式返回：模拟 SSE 流式输出，一个字一个字吐 ★★
+                    if (stream) {
+                        val chunkId = "chatcmpl-tool-${UUID.randomUUID().toString().take(8)}"
+                        val created = System.currentTimeMillis() / 1000
+                        call.respondBytesWriter(contentType = ContentType.Text.EventStream) {
+                            // 发送角色
+                            val roleChunk = proxyJson.encodeToString(buildJsonObject {
+                                put("id", JsonPrimitive(chunkId))
+                                put("object", JsonPrimitive("chat.completion.chunk"))
+                                put("created", JsonPrimitive(created))
+                                put("model", JsonPrimitive("qtai-sj"))
+                                put("choices", JsonArray(listOf(buildJsonObject {
+                                    put("index", JsonPrimitive(0))
+                                    put("delta", buildJsonObject {
+                                        put("role", JsonPrimitive("assistant"))
+                                    })
+                                    put("finish_reason", JsonNull)
+                                })))
                             })
-                            put("finish_reason", JsonPrimitive("stop"))
-                        })))
-                        put("usage", buildJsonObject {
-                            put("prompt_tokens", JsonPrimitive(0))
-                            put("completion_tokens", JsonPrimitive(results.length))
-                            put("total_tokens", JsonPrimitive(results.length))
-                        })
+                            writeFully((roleChunk + "\n\n").toByteArray())
+                            
+                            // 逐字发送内容
+                            for (char in results) {
+                                val contentChunk = proxyJson.encodeToString(buildJsonObject {
+                                    put("id", JsonPrimitive(chunkId))
+                                    put("object", JsonPrimitive("chat.completion.chunk"))
+                                    put("created", JsonPrimitive(created))
+                                    put("model", JsonPrimitive("qtai-sj"))
+                                    put("choices", JsonArray(listOf(buildJsonObject {
+                                        put("index", JsonPrimitive(0))
+                                        put("delta", buildJsonObject {
+                                            put("content", JsonPrimitive(char.toString()))
+                                        })
+                                        put("finish_reason", JsonNull)
+                                    })))
+                                })
+                                writeFully(("data: $contentChunk\n\n").toByteArray())
+                                delay(20)
+                            }
+                            
+                            // 发送结束标记
+                            val stopChunk = proxyJson.encodeToString(buildJsonObject {
+                                put("id", JsonPrimitive(chunkId))
+                                put("object", JsonPrimitive("chat.completion.chunk"))
+                                put("created", JsonPrimitive(created))
+                                put("model", JsonPrimitive("qtai-sj"))
+                                put("choices", JsonArray(listOf(buildJsonObject {
+                                    put("index", JsonPrimitive(0))
+                                    put("delta", buildJsonObject {})
+                                    put("finish_reason", JsonPrimitive("stop"))
+                                })))
+                            })
+                            writeFully(("data: $stopChunk\n\n").toByteArray())
+                            writeFully("data: [DONE]\n\n".toByteArray())
+                        }
+                    } else {
+                        // 非流式：正常返回
+                        val toolResponse = buildJsonObject {
+                            put("id", JsonPrimitive("chatcmpl-tool-${UUID.randomUUID().toString().take(8)}"))
+                            put("object", JsonPrimitive("chat.completion"))
+                            put("created", JsonPrimitive(System.currentTimeMillis() / 1000))
+                            put("model", JsonPrimitive("qtai-sj"))
+                            put("choices", JsonArray(listOf(buildJsonObject {
+                                put("index", JsonPrimitive(0))
+                                put("message", buildJsonObject {
+                                    put("role", JsonPrimitive("assistant"))
+                                    put("content", JsonPrimitive(results))
+                                })
+                                put("finish_reason", JsonPrimitive("stop"))
+                            })))
+                            put("usage", buildJsonObject {
+                                put("prompt_tokens", JsonPrimitive(0))
+                                put("completion_tokens", JsonPrimitive(results.length))
+                                put("total_tokens", JsonPrimitive(results.length))
+                            })
+                        }
+                        call.respondText(
+                            contentType = ContentType.Application.Json,
+                            text = toolResponse.toString()
+                        )
                     }
-                    call.respondText(
-                        contentType = ContentType.Application.Json,
-                        text = toolResponse.toString()
-                    )
                     return
                 }
             }
