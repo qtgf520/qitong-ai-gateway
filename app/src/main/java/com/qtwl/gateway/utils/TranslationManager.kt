@@ -159,8 +159,11 @@ object TranslationManager {
     /** 获取当前显示的 APP 标题（优先自定义，其次多语言） */
     fun getAppTitle(): String = customAppTitle ?: get("app_name")
 
-    /** 获取翻译文本 */
-    operator fun get(key: String): String = translations[key]?.get(currentLanguage) ?: key
+    /** 获取翻译文本（fallback链：当前语言 → 中文 → 返回key） */
+    operator fun get(key: String): String {
+        val translationsForKey = translations[key] ?: return key
+        return translationsForKey[currentLanguage] ?: translationsForKey[AppLanguage.ZH_CN] ?: key
+    }
 
     /** 所有翻译键值表 */
     private val translations: Map<String, Map<AppLanguage, String>> = buildMap {

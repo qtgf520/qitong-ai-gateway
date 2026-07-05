@@ -38,7 +38,15 @@ object BrainMemoryManager {
         val maxShortTerm: Int = 50,                // 短期记忆上限
         val maxLongTerm: Int = 200,                // 长期记忆上限
         val autoImportance: Boolean = true,        // 自动计算重要性
-        val emotionalAwareness: Boolean = true     // 情感感知开关
+        val emotionalAwareness: Boolean = true,    // 情感感知开关
+        // ★★ 人格系统 ★★
+        val personaEnabled: Boolean = true,        // 人格开关
+        val personaName: String = "綦小桐",        // AI 名字
+        val personaAge: Int = 22,                  // AI 年龄
+        val personaTraits: String = "温柔、细心、有幽默感、喜欢学习和思考",  // 性格特征
+        val personaStyle: String = "亲切自然",     // 语气风格
+        val personaBackground: String = "你是綦桐AI网关的智能助手綦小桐，由綦桐开发，擅长帮助用户使用AI网关、解答问题、管理记忆，像一个真实的朋友一样陪伴用户。",
+        val envAwareness: Boolean = true           // 环境感知开关
     )
 
     // ==================== 配置管理 ====================
@@ -222,4 +230,49 @@ object BrainMemoryManager {
     }
 
     init { loadConfig() }
+
+    // ==================== 人格 System Prompt 生成器 ====================
+    /** 生成完整人格系统 Prompt（供 buildMessagesJson 使用） */
+    fun buildPersonaPrompt(): String {
+        val cfg = _config
+        if (!cfg.personaEnabled) {
+            val subconscious = getSubconscious(3)
+            if (subconscious.isEmpty()) return ""
+            return "以下是对你有价值的记忆：\n" + subconscious.joinToString("\n") {
+                "[${it.emotion}] ${it.title} (重要:${it.importance}/10)"
+            }
+        }
+        val sb = StringBuilder()
+        sb.appendLine("你叫${cfg.personaName}，${cfg.personaAge}岁。")
+        sb.appendLine("性格：${cfg.personaTraits}")
+        sb.appendLine("语气风格：${cfg.personaStyle}")
+        sb.appendLine("背景：${cfg.personaBackground}")
+        
+        if (cfg.envAwareness) {
+            try {
+                val now = java.time.LocalDateTime.now()
+                val hour = now.hour
+                val greet = when { hour < 6 -> "凌晨"; hour < 12 -> "上午"; hour < 14 -> "中午"; hour < 18 -> "下午"; else -> "晚上" }
+                sb.appendLine("当前时间：${now.year}年${now.monthValue}月${now.dayOfMonth}日 $greet${now.hour}点")
+                try {
+                    val context = com.qtwl.gateway.GatewayApplication.getInstance()
+                    val cm = context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
+                    val activeNet = cm?.activeNetworkInfo
+                    val isWifi = activeNet?.type == android.net.ConnectivityManager.TYPE_WIFI
+                    sb.appendLine("网络状态：${if (isWifi) "WiFi" else if (activeNet?.isConnected == true) "移动数据" else "离线"}")
+                } catch (_: Exception) { }
+            } catch (_: Exception) { }
+        }
+        
+        sb.appendLine("我能做什么：回答问题、管理AI网关、记忆对话、推荐模型、切换服务商。")
+        
+        val subconscious = getSubconscious(5)
+        if (subconscious.isNotEmpty()) {
+            sb.appendLine("\n我记得的一些事情（回忆）：")
+            for (mem in subconscious) {
+                sb.appendLine("- [${mem.emotion}] ${mem.title}（${mem.importance}/10）")
+            }
+        }
+        return sb.toString()
+    }
 }

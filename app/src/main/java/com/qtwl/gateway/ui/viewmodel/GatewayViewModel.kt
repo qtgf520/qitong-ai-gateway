@@ -201,6 +201,46 @@ object ModelCapabilityManager {
         } catch (_: Exception) { }
         setCapabilities(modelId, supportsTools, supportsVision, supportsImageGen)
     }
+
+    // ==================== 后台静默探针系统 ====================
+    private var probeJob: kotlinx.coroutines.Job? = null
+
+    /** ★★ 启动后台静默探针：对所有启用模型进行能力探测，不打扰用户 ★★ */
+    fun startSilentProbe(database: com.qtwl.gateway.data.db.AppDatabase, scope: kotlinx.coroutines.CoroutineScope) {
+        probeJob?.cancel()
+        probeJob = scope.launch {
+            while (true) {
+                try {
+                    // 获取所有已启用的模型
+                    val models = withContext(Dispatchers.IO) {
+                        database.aiModelDao().getEnabledModelsList().filter { it.isEnabled }
+                    }
+                    val providers = withContext(Dispatchers.IO) {
+                        database.providerDao().getAllProvidersOnce()
+                    }
+                    val providerMap = providers.associateBy { it.id }
+
+                    for (model in models) {
+                        val provider = providerMap[model.providerId] ?: continue
+                        // 只探测未探全的模型
+                        val (t, v, g) = getCapabilities(model.modelId)
+                        if (t && v && g) continue
+                        
+                        probeModel(model.modelId, provider.resolvedBaseUrl, provider.apiKey)
+                        kotlinx.coroutines.delay(500) // 每个模型间隔500ms，避免并发
+                    }
+                } catch (_: Exception) { }
+                // 每次循环间隔 30 分钟
+                kotlinx.coroutines.delay(30 * 60 * 1000L)
+            }
+        }
+    }
+
+    /** ★★ 停止后台静默探针 ★★ */
+    fun stopSilentProbe() {
+        probeJob?.cancel()
+        probeJob = null
+    }
 }
 private fun savePipelineCache(items: List<PipelineTestItem>) {
     try {
@@ -545,6 +585,8 @@ companion object {
         if (GatewayForegroundService.getAutoFailover()) {
             startPipelineTest()
         }
+        // ★★ 启动后台静默探针（30分钟循环，静默检测模型能力）★★
+        ModelCapabilityManager.startSilentProbe(database, viewModelScope)
     }
 
     // ========== 服务生命周期控制 ==========
@@ -1756,14 +1798,26 @@ fun getDisplayModelName(model: AiModel): String {
         _currentMessages.value = messages
     }
 
-    /** 构造消息 JSON 数组 */
+    /** 构造消息 JSON 数组（自动注入人格 + 潜意识记忆） */
     private fun buildMessagesJson(messages: List<ChatMessage>): JsonArray {
-        val list = messages.filter { !it.isStreaming }.map { msg ->
+        val list = mutableListOf<JsonObject>()
+        // ★★ 注入人格 System Prompt ★★
+        if (BrainMemoryManager.getConfig().enabled) {
+            val personaText = BrainMemoryManager.buildPersonaPrompt()
+            if (personaText.isNotBlank()) {
+                list.add(buildJsonObject {
+                    put("role", JsonPrimitive("system"))
+                    put("content", JsonPrimitive(personaText))
+                })
+            }
+        }
+        // ★★ 历史消息 ★★
+        list.addAll(messages.filter { !it.isStreaming }.map { msg ->
             buildJsonObject {
                 put("role", JsonPrimitive(msg.role))
                 put("content", JsonPrimitive(msg.content))
             }
-        }
+        })
         return JsonArray(list)
     }
 
