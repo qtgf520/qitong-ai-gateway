@@ -11,6 +11,7 @@ import com.qtwl.gateway.ui.viewmodel.BrainMemoryManager
 import com.qtwl.gateway.utils.ToolExecutor
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.withCharset
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.call
 import io.ktor.server.cio.CIO
@@ -101,7 +102,7 @@ class GatewayService(private val database: AppDatabase) {
                             put("data", JsonArray(finalList))
                         }
                         call.respondText(
-                            contentType = ContentType.Application.Json,
+                            contentType = ContentType.Application.Json.withCharset(Charsets.UTF_8),
                             text = response.toString()
                         )
                     } catch (e: Exception) {
@@ -246,6 +247,65 @@ private suspend fun refreshHealthCache(database: AppDatabase) {
             }
         }
     }
+}
+
+/** ★ 模型智能排序缓存：记录历史成功/失败，按优先级排序 */
+private val modelHistory = mutableMapOf<String, ModelHistoryRecord>()
+private data class ModelHistoryRecord(
+    val modelId: String,
+    val lastSuccessTime: Long = 0,  // 最近成功时间
+    val successCount: Int = 0,       // 累计成功次数
+    val failCount: Int = 0,          // 累计失败次数
+    val lastFailTime: Long = 0,      // 最近失败时间
+    val isHealthy: Boolean = true    // 最近一次是否健康
+)
+private const val MODEL_HISTORY_TTL = 30 * 60 * 1000L // 30分钟
+
+/** 记录模型调用结果 */
+private fun recordModelResult(modelId: String, success: Boolean) {
+    synchronized(modelHistory) {
+        val existing = modelHistory[modelId]
+        modelHistory[modelId] = ModelHistoryRecord(
+            modelId = modelId,
+            lastSuccessTime = if (success) System.currentTimeMillis() else (existing?.lastSuccessTime ?: 0),
+            successCount = (existing?.successCount ?: 0) + if (success) 1 else 0,
+            failCount = (existing?.failCount ?: 0) + if (success) 0 else 1,
+            lastFailTime = if (!success) System.currentTimeMillis() else (existing?.lastFailTime ?: 0),
+            isHealthy = success
+        )
+    }
+}
+
+/** 智能排序：a(当前可用) → d(历史成功) → b(历史可用) → c(从未成功/失败) */
+private fun smartSort(models: List<AiModel>): List<AiModel> {
+    val now = System.currentTimeMillis()
+    val tierA = mutableListOf<AiModel>()  // 当前测速可用（✅）
+    val tierB = mutableListOf<AiModel>()  // 历史成功过
+    val tierC = mutableListOf<AiModel>()  // 从未成功或最近失败
+    val tierD = mutableListOf<AiModel>()  // 有测速结果但失败
+    
+    for (model in models) {
+        val history = synchronized(modelHistory) { modelHistory[model.modelId] }
+        val isPipelineSuccess = pipelineSortedModelIds.contains(model.modelId)
+        
+        when {
+            // a: 测速排行榜上有且历史成功过 → 最高优先级
+            isPipelineSuccess && history != null && history.isHealthy -> tierA.add(model)
+            // d: 历史成功过（即使当前测速没跑完）→ 第二优先级
+            history != null && history.successCount > 0 && (now - history.lastSuccessTime < MODEL_HISTORY_TTL) -> tierB.add(model)
+            // c: 有历史但最近失败 → 第三优先级
+            history != null && history.failCount > 0 -> tierC.add(model)
+            // b: 从未记录过 → 第四优先级
+            else -> tierD.add(model)
+        }
+    }
+    
+    // 同层内按测速速度排序
+    val speedOrder = pipelineSortedModelIds.withIndex().associate { it.value to it.index }
+    return (tierA.sortedBy { speedOrder[it.modelId] ?: Int.MAX_VALUE } +
+            tierB.sortedBy { speedOrder[it.modelId] ?: Int.MAX_VALUE } +
+            tierC.sortedBy { speedOrder[it.modelId] ?: Int.MAX_VALUE } +
+            tierD.sortedBy { speedOrder[it.modelId] ?: Int.MAX_VALUE })
 }
 
 /** ★ 记录最近使用的模型 */
@@ -581,12 +641,11 @@ val attemptModels: List<AiModel> = if (allEnabled.isNotEmpty()) {
                                     }
                                 }
                             } else if (pipelineSortedModelIds.isEmpty()) {
-                                // 无测速数据时，自动执行一次完整测速
-                                val sorted = allEnabled.sortedBy { it.modelId }
-                                // 直接选取第一个可用模型
-                                listOfNotNull(sorted.firstOrNull())
+                                // 无测速数据时，智能排序
+                                smartSort(allEnabled).ifEmpty { allEnabled }
                             } else {
-                                pipelineSortedModelIds.mapNotNull { id -> allEnabled.find { it.modelId == id } }.ifEmpty { allEnabled }
+                                // ★★ 使用智能排序：a(当前可用)→d(历史成功)→b(历史可用)→c(失败) ★★
+                                smartSort(allEnabled).ifEmpty { allEnabled }
                             }
                         }
                     } else if (autoFailover) {
@@ -674,6 +733,7 @@ val attemptModels: List<AiModel> = if (allEnabled.isNotEmpty()) {
                     }
                     
                     recordSessionModel(call, primaryModel.modelId)
+                    recordModelResult(primaryModel.modelId, true)
                     GatewayForegroundService.updateLiveSession(session.id, "📥 回复", "✅ 成功")
                     return
                 } catch (e: Exception) {
@@ -726,7 +786,8 @@ val attemptModels: List<AiModel> = if (allEnabled.isNotEmpty()) {
                     
                     // ★★ 记录会话成功模型
                     recordSessionModel(call, matchedModel.modelId)
-                    
+                    recordModelResult(matchedModel.modelId, true)
+
                     // ★★ 更新会话状态为 📥 回复 ★★
                     GatewayForegroundService.updateLiveSession(session.id, "📥 回复", "✅ 成功")
                     return
@@ -734,6 +795,7 @@ val attemptModels: List<AiModel> = if (allEnabled.isNotEmpty()) {
                     failCount++
                     lastError = "${matchedModel.modelId}: ${e.message}"
                     synchronized(healthCache) { healthCache[matchedModel.modelId] = ModelHealth(matchedModel.modelId, matchedModel.providerId, Long.MAX_VALUE, System.currentTimeMillis(), false) }
+                    recordModelResult(matchedModel.modelId, false)
                     if (GatewayForegroundService.getDebugMode()) GatewayForegroundService.addDebugLog("✗ ${matchedModel.modelId}: ${e.message?.take(60)}")
                 }
             } // ★★ 结束故障转移循环 ★★
