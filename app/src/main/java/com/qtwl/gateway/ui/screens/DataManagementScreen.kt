@@ -638,6 +638,90 @@ fun DataManagementScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
 
+            // ★★ 人格设置卡片（綦小桐）★★
+            val pCfg = BrainMemoryManager.getConfig()
+            var personaEnabled by remember { mutableStateOf(pCfg.personaEnabled) }
+            var personaName by remember { mutableStateOf(pCfg.personaName) }
+            var personaAge by remember { mutableStateOf(pCfg.personaAge.toString()) }
+            var personaTraits by remember { mutableStateOf(pCfg.personaTraits) }
+            var personaStyle by remember { mutableStateOf(pCfg.personaStyle) }
+            var personaBg by remember { mutableStateOf(pCfg.personaBackground) }
+            var envAware by remember { mutableStateOf(pCfg.envAwareness) }
+            
+            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Face, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("🧑 人格设定", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text("定制 qtai-sj 的个性化形象", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("启用人格系统", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                        Switch(checked = personaEnabled, onCheckedChange = { e ->
+                            personaEnabled = e
+                            BrainMemoryManager.updateConfig(pCfg.copy(personaEnabled = e))
+                        })
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(value = personaName, onValueChange = { v ->
+                            personaName = v
+                            BrainMemoryManager.updateConfig(pCfg.copy(personaName = v))
+                        }, label = { Text("名字") }, singleLine = true, modifier = Modifier.weight(1f))
+                        OutlinedTextField(value = personaAge, onValueChange = { v ->
+                            personaAge = v
+                            v.toIntOrNull()?.let { BrainMemoryManager.updateConfig(pCfg.copy(personaAge = it)) }
+                        }, label = { Text("年龄") }, singleLine = true, modifier = Modifier.width(80.dp),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    
+                    OutlinedTextField(value = personaTraits, onValueChange = { v ->
+                        personaTraits = v
+                        BrainMemoryManager.updateConfig(pCfg.copy(personaTraits = v))
+                    }, label = { Text("性格特征（逗号分隔）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    Spacer(modifier = Modifier.height(4.dp))
+                    
+                    val styleOptions = listOf("亲切自然", "专业严谨", "活泼可爱")
+                    var styleExpanded by remember { mutableStateOf(false) }
+                    ExposedDropdownMenuBox(expanded = styleExpanded, onExpandedChange = { styleExpanded = it }) {
+                        OutlinedTextField(value = personaStyle, onValueChange = {}, readOnly = true,
+                            label = { Text("语气风格") }, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = styleExpanded) },
+                            modifier = Modifier.fillMaxWidth().menuAnchor())
+                        ExposedDropdownMenu(expanded = styleExpanded, onDismissRequest = { styleExpanded = false }) {
+                            styleOptions.forEach { opt ->
+                                DropdownMenuItem(text = { Text(opt) }, onClick = {
+                                    personaStyle = opt
+                                    BrainMemoryManager.updateConfig(pCfg.copy(personaStyle = opt))
+                                    styleExpanded = false
+                                })
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    
+                    OutlinedTextField(value = personaBg, onValueChange = { v ->
+                        personaBg = v
+                        BrainMemoryManager.updateConfig(pCfg.copy(personaBackground = v))
+                    }, label = { Text("背景设定") }, modifier = Modifier.fillMaxWidth(),
+                    minLines = 2, maxLines = 3)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("环境感知（时间/网络）", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                        Switch(checked = envAware, onCheckedChange = { e ->
+                            envAware = e
+                            BrainMemoryManager.updateConfig(pCfg.copy(envAwareness = e))
+                        })
+                    }
+                }
+            }
+            
             // ★ 多语言设置卡片
             var showLangSelector by remember { mutableStateOf(false) }
             val currentLang by TranslationManager.currentLanguageFlow.collectAsState()

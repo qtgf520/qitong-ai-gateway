@@ -1653,6 +1653,18 @@ fun getDisplayModelName(model: AiModel): String {
                                             modelId = model.modelId
                                         )
                                     }
+                                    // ★★ 保存到大脑记忆 ★★
+                                    if (BrainMemoryManager.getConfig().enabled) {
+                                        val userText = _currentMessages.value.lastOrNull { it.role == "user" }?.content ?: ""
+                                        val aiText = contentBuilder.toString()
+                                        if (userText.isNotBlank()) {
+                                            BrainMemoryManager.addMemory(
+                                                content = "用户: $userText\nAI: $aiText",
+                                                title = userText.take(40) + if (userText.length > 40) "..." else "",
+                                                source = "chat"
+                                            )
+                                        }
+                                    }
                                 }
                                 // ★★ 恢复 isSending（流正常结束）★★
                                 _isSending.value = false
