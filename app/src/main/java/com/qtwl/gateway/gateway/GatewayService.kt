@@ -8,6 +8,7 @@ import com.qtwl.gateway.network.UpstreamClient
 import com.qtwl.gateway.service.GatewayForegroundService
 import com.qtwl.gateway.service.LiveSession
 import com.qtwl.gateway.ui.viewmodel.BrainMemoryManager
+import com.qtwl.gateway.utils.ToolExecutor
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
@@ -432,6 +433,61 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
     }
 
     val isChat = effectivePath == "chat/completions" || effectivePath == "completions"
+
+    // ★★ 工具指令检测：在转发前先解析并执行操作指令 ★★
+    if (isChat && requestBodyStr.isNotBlank()) {
+        val requestJson = try { proxyJson.parseToJsonElement(requestBodyStr).jsonObject } catch (_: Exception) { null }
+        val modelId = requestJson?.get("model")?.jsonPrimitive?.content
+        val stream = requestJson?.get("stream")?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false
+        
+        if (modelId == "qtai-sj") {
+            // 从 messages 中提取用户最后一句指令
+            val userMsg = try {
+                val msgs = requestJson?.get("messages")?.jsonArray
+                if (msgs != null && msgs.isNotEmpty()) {
+                    msgs.lastOrNull {
+                        it?.jsonObject?.get("role")?.jsonPrimitive?.content == "user"
+                    }?.jsonObject?.get("content")?.jsonPrimitive?.content ?: ""
+                } else ""
+            } catch (_: Exception) { "" }
+            
+            if (userMsg.isNotBlank()) {
+                val actions = ToolExecutor.parseCommand(userMsg)
+                if (actions.isNotEmpty()) {
+                    // 执行所有工具操作，收集结果
+                    val results = actions.map { action ->
+                        ToolExecutor.execute(action, null)
+                    }.joinToString("\n")
+                    
+                    // 返回工具执行结果作为回复
+                    val toolResponse = buildJsonObject {
+                        put("id", JsonPrimitive("chatcmpl-tool-${UUID.randomUUID().toString().take(8)}"))
+                        put("object", JsonPrimitive("chat.completion"))
+                        put("created", JsonPrimitive(System.currentTimeMillis() / 1000))
+                        put("model", JsonPrimitive("qtai-sj"))
+                        put("choices", JsonArray(listOf(buildJsonObject {
+                            put("index", JsonPrimitive(0))
+                            put("message", buildJsonObject {
+                                put("role", JsonPrimitive("assistant"))
+                                put("content", JsonPrimitive(results))
+                            })
+                            put("finish_reason", JsonPrimitive("stop"))
+                        })))
+                        put("usage", buildJsonObject {
+                            put("prompt_tokens", JsonPrimitive(0))
+                            put("completion_tokens", JsonPrimitive(results.length))
+                            put("total_tokens", JsonPrimitive(results.length))
+                        })
+                    }
+                    call.respondText(
+                        contentType = ContentType.Application.Json,
+                        text = toolResponse.toString()
+                    )
+                    return
+                }
+            }
+        }
+    }
 
     if (isChat && requestBodyStr.isNotBlank()) {
         val requestJson = try { proxyJson.parseToJsonElement(requestBodyStr).jsonObject } catch (_: Exception) { null }
