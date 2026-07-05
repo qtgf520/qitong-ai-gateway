@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
@@ -419,6 +420,41 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                     }
                 }
 
+                // ★★ 指示灯 + 框1 + 框2 ★★
+                val doneItems = pStatus.filter {
+                    it.status.startsWith("✅") || it.status.startsWith("❌")
+                }.sortedBy { it.latencyMs }
+                val forcedModelId by viewModel.forcedModelId.collectAsState()
+                val hasReadyModel = doneItems.any { it.status.startsWith("✅") }
+                val allFailed = doneItems.isNotEmpty() && doneItems.all { it.status.startsWith("❌") }
+
+                // ★★ 指示灯：排行上方，亮红/绿灯 ★★
+                Spacer(modifier = Modifier.height(4.dp))
+                val indicatorColor = when {
+                    pRunning -> MaterialTheme.colorScheme.primary
+                    hasReadyModel -> Online
+                    else -> Error
+                }
+                val indicatorText = when {
+                    pStatus.isEmpty() && !pRunning -> "请先启动测速获取可用模型排行"
+                    pRunning -> "测速中，完成一个即可使用"
+                    hasReadyModel -> "全部测速完成，qtai-sj 已就绪"
+                    allFailed -> "全部模型异常，暂时无法使用"
+                    else -> "部分模型异常，qtai-sj 可能受影响"
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Canvas(modifier = Modifier.size(14.dp)) {
+                        drawCircle(color = indicatorColor)
+                    }
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = indicatorText,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Medium,
+                        color = indicatorColor
+                    )
+                }
+
                 // ★★ 框2：正在测速的模型 ★★
                 val currentItem = pStatus.find { it.isCurrent && it.status.contains("测速中") }
                 if (currentItem != null || pRunning) {
@@ -453,11 +489,6 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                 }
 
                 // ★★ 框1：已测速完的模型（✅成功 / ❌失败），按速度排序 ★★
-                val doneItems = pStatus.filter {
-                    it.status.startsWith("✅") || it.status.startsWith("❌")
-                }.sortedBy { it.latencyMs }
-                val forcedModelId by viewModel.forcedModelId.collectAsState()
-
                 if (doneItems.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text("✅ 已测速完成", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold,
@@ -544,28 +575,6 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                         modifier = Modifier.padding(vertical = 4.dp)
                     )
                 }
-
-                // ★★ qtai-sj 状态提示（只要有1个测速完成就能用）★★
-                Spacer(modifier = Modifier.height(6.dp))
-                val hasReadyModel = doneItems.any { it.status.startsWith("✅") }
-                val qtaiStatus = when {
-                    pRunning -> "⏳ qtai-sj 正在测速中，完成一个即可使用"
-                    hasReadyModel -> "✅ qtai-sj 已就绪，可正常使用"
-                    doneItems.isNotEmpty() && doneItems.all { it.status.startsWith("❌") } -> "⚠️ 全部模型异常，qtai-sj 暂时无法使用"
-                    pStatus.isEmpty() -> "⚠️ 暂无测速数据，请先启动测速"
-                    else -> "⚠️ 部分模型异常，qtai-sj 可能受影响"
-                }
-                Text(
-                    text = qtaiStatus,
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Medium,
-                    color = when {
-                        pRunning -> MaterialTheme.colorScheme.primary
-                        hasReadyModel -> Online
-                        else -> MaterialTheme.colorScheme.error
-                    },
-                    modifier = Modifier.padding(top = 2.dp)
-                )
             }
         }
 
