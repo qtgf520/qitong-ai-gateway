@@ -526,50 +526,64 @@ val attemptModels: List<AiModel> = if (allEnabled.isNotEmpty()) {
             )
             GatewayForegroundService.addLiveSession(session)
             
+            // ★★ 只试第一个模型，不通才走排行榜后续 ★★
+            if (attemptModels.isNotEmpty()) {
+            val primaryModel = attemptModels.first()
+            val provider = database.providerDao().getProviderById(primaryModel.providerId)
+            if (provider != null && provider.isEnabled) {
+                try {
+                    GatewayForegroundService.trafficUploadBytes.addAndGet(rawBytes.size.toLong())
+                    call.attributes.put(MODEL_ID_KEY, primaryModel.modelId)
+                    call.attributes.put(PROVIDER_ID_KEY, primaryModel.providerId)
+                    GatewayForegroundService.activeNodeName = primaryModel.modelId
+                    recordModelUsage(primaryModel.modelId)
+                    val useProxy = primaryModel.useProxy
+
+                    val sanitizedBody = sanitizeRequestBody(requestBodyStr)
+                    // ★★ 人格+记忆注入 ★★
+                    val bodyWithPersona = if (BrainMemoryManager.getConfig().enabled) {
+                        val personaText = BrainMemoryManager.buildPersonaPrompt()
+                        if (personaText.isNotBlank()) {
+                            val systemJson = "{\"role\":\"system\",\"content\":${proxyJson.encodeToString(JsonPrimitive(personaText))}}"
+                            sanitizedBody.replaceFirst(Regex("\"messages\"\\s*:\\s*\\["), "\"messages\":[$systemJson,")
+                        } else sanitizedBody
+                    } else sanitizedBody
+                    // ★★ qtai-sj 替换模型ID ★★
+                    val modifiedBody = if (modelId == "qtai-sj" || (autoFailover && primaryModel.modelId != modelId)) {
+                        bodyWithPersona.replaceFirst(Regex("\"model\"\\s*:\\s*\"[^\"]+\""), "\"model\":\"${primaryModel.modelId}\"")
+                    } else bodyWithPersona
+                    val modifiedBytes = modifiedBody.toByteArray()
+
+                    if (stream) {
+                        pipeStreamResponse(call, provider, modifiedBytes, "/v1/$effectivePath", primaryModel.modelId, primaryModel.providerId, database, useProxy)
+                    } else {
+                        pipeNormalResponse(call, provider, modifiedBytes, "/v1/$effectivePath", database, useProxy)
+                    }
+                    
+                    recordSessionModel(call, primaryModel.modelId)
+                    GatewayForegroundService.updateLiveSession(session.id, "📥 回复", "✅ 成功")
+                    return
+                } catch (e: Exception) {
+                    failCount++
+                    lastError = "${primaryModel.modelId}: ${e.message}"
+                    synchronized(healthCache) { healthCache[primaryModel.modelId] = ModelHealth(primaryModel.modelId, primaryModel.providerId, Long.MAX_VALUE, System.currentTimeMillis(), false) }
+                    if (GatewayForegroundService.getDebugMode()) GatewayForegroundService.addDebugLog("✗ ${primaryModel.modelId}: ${e.message?.take(60)}")
+                    // 主模型失败，继续尝试后续模型
+                }
+            }
+            
+            // ★★ 主模型失败后，快速遍历后续模型（不预检测，直接转发）★★
             for ((idx, matchedModel) in attemptModels.withIndex()) {
-                if (idx > 0 && GatewayForegroundService.getDebugMode()) {
-                    GatewayForegroundService.addDebugLog("↻ 故障转移 #$idx → ${matchedModel.modelId}")
+                if (idx == 0) continue // 跳过已经试过的主模型
+                if (GatewayForegroundService.getDebugMode()) {
+                    GatewayForegroundService.addDebugLog("↻ 故障转移 #${idx} → ${matchedModel.modelId}")
                 }
 
                 if (!matchedModel.isEnabled) continue
-                val provider = database.providerDao().getProviderById(matchedModel.providerId)
-                if (provider == null || !provider.isEnabled) continue
+                val provider2 = database.providerDao().getProviderById(matchedModel.providerId)
+                if (provider2 == null || !provider2.isEnabled) continue
 
-                // ★★ 切换模型前先快速测试连通性（跟测速一样），不通就跳过
-                if (idx > 0) {
-                    try {
-                        val testBody = """{"model":"${matchedModel.modelId}","messages":[{"role":"user","content":"hi"}],"max_tokens":1,"stream":false}"""
-                        val testUrl = provider.resolvedBaseUrl.trimEnd('/') + "/v1/chat/completions"
-                        val testReq = okhttp3.Request.Builder()
-                            .url(testUrl)
-                            .post(testBody.toRequestBody(DEFAULT_CT))
-                            .apply { if (!provider.apiKey.isNullOrBlank()) header("Authorization", "Bearer ${provider.apiKey}") }
-                            .build()
-                        val testClient = okhttp3.OkHttpClient.Builder()
-                            .connectTimeout(5, TimeUnit.SECONDS)
-                            .readTimeout(5, TimeUnit.SECONDS)
-                            .build()
-                        val testResp = withContext(Dispatchers.IO) { testClient.newCall(testReq).execute() }
-                        val testOk = testResp.isSuccessful
-                        val testBodyStr = testResp.body?.string() ?: ""
-                        testResp.close()
-                        if (!testOk) {
-                            failCount++
-                            lastError = "${matchedModel.modelId}: 预检测失败"
-                            synchronized(healthCache) { healthCache[matchedModel.modelId] = ModelHealth(matchedModel.modelId, matchedModel.providerId, Long.MAX_VALUE, System.currentTimeMillis(), false) }
-                            if (GatewayForegroundService.getDebugMode()) GatewayForegroundService.addDebugLog("✗ 预检测 ${matchedModel.modelId}: 不通→跳过")
-                            continue
-                        }
-                        if (GatewayForegroundService.getDebugMode()) GatewayForegroundService.addDebugLog("✓ 预检测 ${matchedModel.modelId}: 通过→转发请求")
-                    } catch (e: Exception) {
-                        failCount++
-                        lastError = "${matchedModel.modelId}: 预检测异常 ${e.message?.take(40)}"
-                        synchronized(healthCache) { healthCache[matchedModel.modelId] = ModelHealth(matchedModel.modelId, matchedModel.providerId, Long.MAX_VALUE, System.currentTimeMillis(), false) }
-                        if (GatewayForegroundService.getDebugMode()) GatewayForegroundService.addDebugLog("✗ 预检测 ${matchedModel.modelId}: ${e.message?.take(40)}→跳过")
-                        continue
-                    }
-                }
-
+                // ★★ 故障转移：不预检测，直接转发（信任已有测速+健康缓存）★★
                 try {
                     GatewayForegroundService.trafficUploadBytes.addAndGet(rawBytes.size.toLong())
                     call.attributes.put(MODEL_ID_KEY, matchedModel.modelId)
@@ -578,26 +592,23 @@ val attemptModels: List<AiModel> = if (allEnabled.isNotEmpty()) {
                     recordModelUsage(matchedModel.modelId)
                     val useProxy = matchedModel.useProxy
 
-                    val sanitizedBody = sanitizeRequestBody(requestBodyStr)
-                    // ★★ 人格+记忆注入：在 messages 数组前插入 system 人格 ★★
-                    val bodyWithPersona = if (BrainMemoryManager.getConfig().enabled) {
+                    val sanitizedBody2 = sanitizeRequestBody(requestBodyStr)
+                    val bodyWithPersona2 = if (BrainMemoryManager.getConfig().enabled) {
                         val personaText = BrainMemoryManager.buildPersonaPrompt()
                         if (personaText.isNotBlank()) {
                             val systemJson = "{\"role\":\"system\",\"content\":${proxyJson.encodeToString(JsonPrimitive(personaText))}}"
-                            sanitizedBody.replaceFirst(Regex("\"messages\"\\s*:\\s*\\["), "\"messages\":[$systemJson,")
-                        } else sanitizedBody
-                    } else sanitizedBody
-                    // ★★ qtai-sj 或故障转移切模型时，都要替换 body 里的 model 字段 ★★
-                    val needReplaceModel = modelId == "qtai-sj" || (autoFailover && matchedModel.modelId != modelId)
-                    val modifiedBody = if (needReplaceModel) {
-                        bodyWithPersona.replaceFirst(Regex("\"model\"\\s*:\\s*\"[^\"]+\""), "\"model\":\"${matchedModel.modelId}\"")
-                    } else bodyWithPersona
-                    val modifiedBytes = modifiedBody.toByteArray()
+                            sanitizedBody2.replaceFirst(Regex("\"messages\"\\s*:\\s*\\["), "\"messages\":[$systemJson,")
+                        } else sanitizedBody2
+                    } else sanitizedBody2
+                    val modifiedBody2 = if (modelId == "qtai-sj" || (autoFailover && matchedModel.modelId != modelId)) {
+                        bodyWithPersona2.replaceFirst(Regex("\"model\"\\s*:\\s*\"[^\"]+\""), "\"model\":\"${matchedModel.modelId}\"")
+                    } else bodyWithPersona2
+                    val modifiedBytes2 = modifiedBody2.toByteArray()
 
                     if (stream) {
-                        pipeStreamResponse(call, provider, modifiedBytes, "/v1/$effectivePath", matchedModel.modelId, matchedModel.providerId, database, useProxy)
+                        pipeStreamResponse(call, provider2, modifiedBytes2, "/v1/$effectivePath", matchedModel.modelId, matchedModel.providerId, database, useProxy)
                     } else {
-                        pipeNormalResponse(call, provider, modifiedBytes, "/v1/$effectivePath", database, useProxy)
+                        pipeNormalResponse(call, provider2, modifiedBytes2, "/v1/$effectivePath", database, useProxy)
                     }
                     
                     // ★★ 记录会话成功模型
@@ -612,8 +623,8 @@ val attemptModels: List<AiModel> = if (allEnabled.isNotEmpty()) {
                     synchronized(healthCache) { healthCache[matchedModel.modelId] = ModelHealth(matchedModel.modelId, matchedModel.providerId, Long.MAX_VALUE, System.currentTimeMillis(), false) }
                     if (GatewayForegroundService.getDebugMode()) GatewayForegroundService.addDebugLog("✗ ${matchedModel.modelId}: ${e.message?.take(60)}")
                 }
-            }
-
+            } // ★★ 结束故障转移循环 ★★
+            } // ★★ 结束 attemptModels 非空判断 ★★
             val errMsg = when {
                 modelId == "qtai-sj" && !GatewayForegroundService.getQtaiSjEnabled() -> "🔄 自动化切换已禁用，请在模型页面开启"
                 modelId == "qtai-sj" && pipelineSortedModelIds.isEmpty() -> "请先启动测速以获取可用模型排行"
