@@ -389,63 +389,171 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                     )
                 }
 
-                // 流水线测速看板
-                if (autoFailover) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    HorizontalDivider()
-                    Spacer(modifier = Modifier.height(8.dp))
+                // ★★ 测速排行榜 — 分两个框：框1=已完成，框2=正在测速 ★★
+                Spacer(modifier = Modifier.height(8.dp))
+                HorizontalDivider()
+                Spacer(modifier = Modifier.height(8.dp))
 
-                    // 标题 + 启停按钮
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                // 标题 + 启停按钮
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "🏃 模型测速",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    TextButton(
+                        onClick = {
+                            if (pRunning) viewModel.stopPipelineTest()
+                            else viewModel.startPipelineTest()
+                        }
                     ) {
                         Text(
-                            text = "🏃 模型接力测速",
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
+                            if (pRunning) "⏹ 停止" else "▶️ 启动",
+                            style = MaterialTheme.typography.labelMedium
                         )
-                        val qtaiSjEnabled by viewModel.qtaiSjEnabled.collectAsState()
-                        TextButton(
-                            enabled = qtaiSjEnabled,
-                            onClick = {
-                                if (pRunning) viewModel.stopPipelineTest()
-                                else viewModel.startPipelineTest()
-                            }
+                    }
+                }
+
+                // ★★ 框2：正在测速的模型 ★★
+                val currentItem = pStatus.find { it.isCurrent && it.status.contains("测速中") }
+                if (currentItem != null || pRunning) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text("⏳ 正在测速", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.06f))
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                if (pRunning) "⏹ 停止" else "▶️ 启动",
-                                style = MaterialTheme.typography.labelMedium
+                                text = currentItem?.modelName ?: "准备中...",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
                             )
+                            if (pRunning) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("测速中", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                }
+                            }
                         }
                     }
                 }
-                
-                // ★★ 测速进度条（始终显示，不依赖故障转移开关）★★
-                if (pRunning && pProgress > 0f) {
+
+                // ★★ 框1：已测速完的模型（✅成功 / ❌失败），按速度排序 ★★
+                val doneItems = pStatus.filter {
+                    it.status.startsWith("✅") || it.status.startsWith("❌")
+                }.sortedBy { it.latencyMs }
+                val forcedModelId by viewModel.forcedModelId.collectAsState()
+
+                if (doneItems.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("✅ 已测速完成", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold,
+                        color = Online)
                     Spacer(modifier = Modifier.height(4.dp))
-                    LinearProgressIndicator(
-                        progress = { pProgress },
-                        modifier = Modifier.fillMaxWidth().height(6.dp),
-                        color = MaterialTheme.colorScheme.primary,
-                        trackColor = MaterialTheme.colorScheme.surfaceVariant
-                    )
+                    // ★ 显示强制模式指示
+                    if (forcedModelId.isNotBlank()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "🎯 强制模式: ${doneItems.find { it.modelId == forcedModelId }?.modelName ?: forcedModelId}",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            TextButton(onClick = { viewModel.clearForcedModel() }) {
+                                Text("↩️ 取消强制", style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+                    }
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 200.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        itemsIndexed(doneItems) { index, item ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth()
+                                    .clickable { viewModel.forceModel(item.modelId) }
+                                    .then(
+                                        if (item.modelId == forcedModelId) Modifier.background(
+                                            Warning.copy(alpha = 0.12f), MaterialTheme.shapes.small
+                                        ) else Modifier
+                                    )
+                                    .padding(horizontal = 4.dp, vertical = 2.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = "#${index + 1} ",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+                                    )
+                                    if (item.modelId == forcedModelId) {
+                                        Text("🎯 ", style = MaterialTheme.typography.bodySmall)
+                                    }
+                                    Text(
+                                        text = item.modelName,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = if (item.modelId == forcedModelId) FontWeight.Bold else FontWeight.Normal,
+                                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                                Text(
+                                    text = item.status,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.Medium,
+                                    color = when {
+                                        item.status.startsWith("✅") -> Online
+                                        item.status.startsWith("❌") -> Error
+                                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                    }
+                                )
+                            }
+                        }
+                    }
+                } else if (!pRunning && pStatus.isNotEmpty()) {
                     Text(
-                        text = "测速中... ${(pProgress * 100).toInt()}% (${pStatus.count { it.status.startsWith("✅") || it.status.startsWith("❌") }}/${pStatus.size})",
-                        style = MaterialTheme.typography.labelSmall,
+                        text = "⏳ 测速排队中，请点击「▶️ 启动」开始测速",
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 2.dp)
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    )
+                } else if (pStatus.isEmpty()) {
+                    Text(
+                        text = "暂无测速数据，点击「▶️ 启动」开始测速",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 4.dp)
                     )
                 }
-                // ★★ qtai-sj 状态提示（始终显示）★★
-                Spacer(modifier = Modifier.height(4.dp))
+
+                // ★★ qtai-sj 状态提示（只要有1个测速完成就能用）★★
+                Spacer(modifier = Modifier.height(6.dp))
+                val hasReadyModel = doneItems.any { it.status.startsWith("✅") }
                 val qtaiStatus = when {
-                    pRunning -> "⏳ qtai-sj 正在测速中，暂时无法使用"
+                    pRunning -> "⏳ qtai-sj 正在测速中，完成一个即可使用"
+                    hasReadyModel -> "✅ qtai-sj 已就绪，可正常使用"
+                    doneItems.isNotEmpty() && doneItems.all { it.status.startsWith("❌") } -> "⚠️ 全部模型异常，qtai-sj 暂时无法使用"
                     pStatus.isEmpty() -> "⚠️ 暂无测速数据，请先启动测速"
-                    pStatus.any { it.status.contains("❌") || it.status.contains("超时") } -> "⚠️ 部分模型异常，qtai-sj 可能受影响"
-                    else -> "✅ qtai-sj 已就绪，可正常使用"
+                    else -> "⚠️ 部分模型异常，qtai-sj 可能受影响"
                 }
                 Text(
                     text = qtaiStatus,
@@ -453,124 +561,11 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                     fontWeight = FontWeight.Medium,
                     color = when {
                         pRunning -> MaterialTheme.colorScheme.primary
-                        pStatus.isEmpty() -> MaterialTheme.colorScheme.error
-                        pStatus.any { it.status.contains("❌") || it.status.contains("超时") } -> MaterialTheme.colorScheme.error
-                        else -> Online
+                        hasReadyModel -> Online
+                        else -> MaterialTheme.colorScheme.error
                     },
                     modifier = Modifier.padding(top = 2.dp)
                 )
-
-                                // ★★ 排行榜始终显示（只要有测速数据），按最快→最慢排序 ★★
-                                // 点排行项可手动强制切换到该模型
-                                val forcedModelId by viewModel.forcedModelId.collectAsState()
-                                if (pStatus.isNotEmpty()) {
-                                    // ★ 显示强制模式指示
-                                    if (forcedModelId.isNotBlank()) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Text(
-                                                text = "🎯 强制模式: ${pStatus.find { it.modelId == forcedModelId }?.modelName ?: forcedModelId}",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                fontWeight = FontWeight.Bold,
-                                                color = MaterialTheme.colorScheme.primary
-                                            )
-                                            TextButton(onClick = { viewModel.clearForcedModel() }) {
-                                                Text("↩️ 取消强制", style = MaterialTheme.typography.labelSmall)
-                                            }
-                                        }
-                                    }
-                                    // 取已排序的结果
-                                    val sortedItems = remember(pStatus) {
-                                        pStatus.sortedBy { it.latencyMs }
-                                    }
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = "📊 速度排行（点排行项可手动强制切换）",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    LazyColumn(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .heightIn(max = 200.dp),
-                                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
-                                        itemsIndexed(sortedItems) { index, item ->
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .clickable {
-                                                        viewModel.forceModel(item.modelId)
-                                                    }
-                                                    .then(
-                                                        if (item.isCurrent) Modifier.background(
-                                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
-                                                            MaterialTheme.shapes.small
-                                                        ) else Modifier
-                                                    )
-                                                    .then(
-                                                        if (item.modelId == forcedModelId) Modifier.background(
-                                                            Warning.copy(alpha = 0.12f),
-                                                            MaterialTheme.shapes.small
-                                                        ) else Modifier
-                                                    )
-                                                    .padding(horizontal = 4.dp, vertical = 2.dp),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Row(
-                                                    modifier = Modifier.weight(1f),
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    Text(
-                                                        text = "#${index + 1} ",
-                                                        style = MaterialTheme.typography.bodySmall,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
-                                                    )
-                                                    if (item.isCurrent) {
-                                                        Text("▶ ", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
-                                                    }
-                                                    if (item.modelId == forcedModelId) {
-                                                        Text("🎯 ", style = MaterialTheme.typography.bodySmall)
-                                                    }
-                                                    Text(
-                                                        text = item.modelName,
-                                                        style = MaterialTheme.typography.bodySmall,
-                                                        fontWeight = if (item.isCurrent || item.modelId == forcedModelId) FontWeight.Bold else FontWeight.Normal,
-                                                        maxLines = 1,
-                                                        overflow = TextOverflow.Ellipsis,
-                                                        modifier = Modifier.weight(1f)
-                                                    )
-                                                }
-                                                Text(
-                                                    text = item.status,
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    fontWeight = FontWeight.Medium,
-                                                    color = when {
-                                                        item.status.startsWith("✅") -> Online
-                                                        item.status.startsWith("❌") -> Error
-                                                        item.status.startsWith("⏳") -> MaterialTheme.colorScheme.primary
-                                                        item.isCurrent -> MaterialTheme.colorScheme.primary
-                                                        else -> MaterialTheme.colorScheme.onSurfaceVariant
-                                                    }
-                                                )
-                                            }
-                                        }
-                                    }
-                                } else if (autoFailover && !pRunning) {
-                    Text(
-                        text = "点击「▶️ 启动」对所有启用模型进行接力测速",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(vertical = 8.dp)
-                    )
-                }
             }
         }
 
