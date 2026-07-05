@@ -7,6 +7,7 @@ import com.qtwl.gateway.data.model.TokenUsage
 import com.qtwl.gateway.network.UpstreamClient
 import com.qtwl.gateway.service.GatewayForegroundService
 import com.qtwl.gateway.service.LiveSession
+import com.qtwl.gateway.ui.viewmodel.BrainMemoryManager
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
@@ -578,11 +579,19 @@ val attemptModels: List<AiModel> = if (allEnabled.isNotEmpty()) {
                     val useProxy = matchedModel.useProxy
 
                     val sanitizedBody = sanitizeRequestBody(requestBodyStr)
+                    // ★★ 人格+记忆注入：在 messages 数组前插入 system 人格 ★★
+                    val bodyWithPersona = if (BrainMemoryManager.getConfig().enabled) {
+                        val personaText = BrainMemoryManager.buildPersonaPrompt()
+                        if (personaText.isNotBlank()) {
+                            val systemJson = "{\"role\":\"system\",\"content\":${proxyJson.encodeToString(JsonPrimitive(personaText))}}"
+                            sanitizedBody.replaceFirst(Regex("\"messages\"\\s*:\\s*\\["), "\"messages\":[$systemJson,")
+                        } else sanitizedBody
+                    } else sanitizedBody
                     // ★★ qtai-sj 或故障转移切模型时，都要替换 body 里的 model 字段 ★★
                     val needReplaceModel = modelId == "qtai-sj" || (autoFailover && matchedModel.modelId != modelId)
                     val modifiedBody = if (needReplaceModel) {
-                        sanitizedBody.replaceFirst(Regex("\"model\"\\s*:\\s*\"[^\"]+\""), "\"model\":\"${matchedModel.modelId}\"")
-                    } else sanitizedBody
+                        bodyWithPersona.replaceFirst(Regex("\"model\"\\s*:\\s*\"[^\"]+\""), "\"model\":\"${matchedModel.modelId}\"")
+                    } else bodyWithPersona
                     val modifiedBytes = modifiedBody.toByteArray()
 
                     if (stream) {

@@ -1451,28 +1451,29 @@ fun getDisplayModelName(model: AiModel): String {
             return
         }
         
-        // ★★ 模型能力自动切换：检测当前模型是否支持所需能力，不支持则切排行榜下一个 ★★
-        if (model.modelId != "qtai-sj") {
-            val (hasTools, hasVision, _) = ModelCapabilityManager.getCapabilities(model.modelId)
-            val needTools = text.contains("tools", ignoreCase = true) || text.contains("function", ignoreCase = true)
-            val needVision = text.contains("image", ignoreCase = true) || text.contains("picture", ignoreCase = true)
-            if ((needTools && !hasTools) || (needVision && !hasVision)) {
-                val sortedIds = com.qtwl.gateway.gateway.pipelineSortedModelIds
-                var found: AiModel? = null
-                for (mid in sortedIds) {
-                    val (t, v, _) = ModelCapabilityManager.getCapabilities(mid)
-                    if ((!needTools || t) && (!needVision || v)) {
-                        found = enabledModels.value.find { it.modelId == mid }
-                        if (found != null) break
-                    }
-                }
-                if (found != null) {
-                    model = found
-                    _selectedModel.value = found
-                    _snackbarMessage.value = "🔄 已自动切换到 ${found.displayName}"
-                }
+        // ★★ 对话绑定模型：不激进切换，仅 API 报错时才换 ★★
+        val conv = _currentConversation.value
+        val stableModel = model
+        if (conv != null && stableModel != null && conv.modelId != stableModel.modelId) {
+            kotlinx.coroutines.GlobalScope.launch {
+                try {
+                    database.conversationDao().update(conv.copy(modelId = stableModel.modelId))
+                } catch (_: Exception) { }
             }
         }
+        // ★★ 用的时候测：异步探针检测模型能力（不阻塞，结果缓存供后续使用）★★
+        if (stableModel != null) {
+            kotlinx.coroutines.GlobalScope.launch {
+                try {
+                    val provider = database.providerDao().getProviderById(stableModel.providerId)
+                    if (provider != null) {
+                        ModelCapabilityManager.probeModel(stableModel.modelId, provider.baseUrl.trimEnd('/'), provider.apiKey)
+                    }
+                } catch (_: Exception) { }
+            }
+        }
+        
+        // ★★ qtai-sj 大脑分析：不在此处做关键词匹配切换，交由 GatewayService 按排行榜选模型 ★★
         
         // ★★ 取消旧任务，启动新生成任务 ★★
         sendJob?.cancel()
