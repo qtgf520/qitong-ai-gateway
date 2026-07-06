@@ -144,7 +144,7 @@ var pipelineSortedModelIds: List<String> = emptyList()
 
 private val proxyJson = Json { ignoreUnknownKeys = true; prettyPrint = false }
 private val DEFAULT_CT = "application/json".toMediaType()
-private const val MAX_RETRIES = 5
+private const val MAX_RETRIES = 3
 private const val HEALTH_CHECK_TIMEOUT = 5000L
 private val failoverScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -546,21 +546,19 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
                                     })))
                                 })
                                 writeFully((roleChunk + "\n\n").toByteArray())
-                                for (char in results) {
-                                    val contentChunk = proxyJson.encodeToString(buildJsonObject {
-                                        put("id", JsonPrimitive(chunkId))
-                                        put("object", JsonPrimitive("chat.completion.chunk"))
-                                        put("created", JsonPrimitive(created))
-                                        put("model", JsonPrimitive("qtai-sj"))
-                                        put("choices", JsonArray(listOf(buildJsonObject {
-                                            put("index", JsonPrimitive(0))
-                                            put("delta", buildJsonObject { put("content", JsonPrimitive(char.toString())) })
-                                            put("finish_reason", JsonNull)
-                                        })))
-                                    })
-                                    writeFully(("data: $contentChunk\n\n").toByteArray())
-                                    delay(20)
-                                }
+                                // ★★ 一次性输出全部结果，不再逐字delay ★★
+                                val contentChunk = proxyJson.encodeToString(buildJsonObject {
+                                    put("id", JsonPrimitive(chunkId))
+                                    put("object", JsonPrimitive("chat.completion.chunk"))
+                                    put("created", JsonPrimitive(created))
+                                    put("model", JsonPrimitive("qtai-sj"))
+                                    put("choices", JsonArray(listOf(buildJsonObject {
+                                        put("index", JsonPrimitive(0))
+                                        put("delta", buildJsonObject { put("content", JsonPrimitive(results)) })
+                                        put("finish_reason", JsonNull)
+                                    })))
+                                })
+                                writeFully(("data: $contentChunk\n\n").toByteArray())
                                 val stopChunk = proxyJson.encodeToString(buildJsonObject {
                                     put("id", JsonPrimitive(chunkId))
                                     put("object", JsonPrimitive("chat.completion.chunk"))
@@ -631,12 +629,12 @@ $rankingInfo
 
 只输出JSON，不要任何其他文字。"""
                         
-                            val brainBody = """{"model":"${brainModel.modelId}","messages":[{"role":"system","content":${proxyJson.encodeToString(JsonPrimitive(brainPrompt))}},{"role":"user","content":${proxyJson.encodeToString(JsonPrimitive(userMsg))}}],"max_tokens":200,"stream":false,"temperature":0.01}"""
+                            val brainBody = """{"model":"${brainModel.modelId}","messages":[{"role":"system","content":${proxyJson.encodeToString(JsonPrimitive(brainPrompt))}},{"role":"user","content":${proxyJson.encodeToString(JsonPrimitive(userMsg))}}],"max_tokens":300,"stream":false,"temperature":0.01}"""
                         
                             try {
                                 val brainClient = okhttp3.OkHttpClient.Builder()
-                                    .connectTimeout(5000, TimeUnit.MILLISECONDS)
-                                    .readTimeout(10000, TimeUnit.MILLISECONDS)
+                                    .connectTimeout(10000, TimeUnit.MILLISECONDS)
+                                    .readTimeout(20000, TimeUnit.MILLISECONDS)
                                     .build()
                                 val brainReq = okhttp3.Request.Builder()
                                     .url("${brainProvider.resolvedBaseUrl.trimEnd('/')}/v1/chat/completions")
@@ -703,18 +701,10 @@ $rankingInfo
                                         return
                                     }
                                 }
-                                // ★ 脑子说不是指令 → 继续走正常路由
-                                // ★★ 但先检查文字中是否提到模型ID/名称 ★★
-                                val mentionedModel = pipelineSortedModelIds.firstOrNull { modelId ->
-                                    val m = database.aiModelDao().getEnabledModelsList().find { it.modelId == modelId }
-                                    val displayName = m?.customAlias?.takeIf { it.isNotBlank() } ?: m?.displayName ?: ""
-                                    brainContent.contains(modelId, ignoreCase = true) || 
-                                    (displayName.isNotBlank() && brainContent.contains(displayName, ignoreCase = true)) ||
-                                    brainContent.contains(modelId.substringAfterLast("/"), ignoreCase = true)
-                                }
-                                if (mentionedModel != null) {
-                                    GatewayForegroundService.saveForcedModel(mentionedModel)
-                                    GatewayForegroundService.addDebugLog("🧠 脑子推荐模型: $mentionedModel")
+                                // ★ 脑子说不是指令 → 清除强制模型走正常路由
+                                // ★★ 不扫描文字切换模型，避免误设强制模型 ★★
+                                if (GatewayForegroundService.getForcedModel().isNotBlank()) {
+                                    GatewayForegroundService.saveForcedModel("")
                                 }
                             } catch (_: Exception) { /* 脑子模型失败，走正常路由 */ }
                         }

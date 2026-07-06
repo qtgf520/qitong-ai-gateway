@@ -44,8 +44,8 @@ object ToolExecutor {
             }
         }
         
-        // 切换指定模型ID — 支持"切换 step-3.7-flash"等
-        val switchModelRegex = Regex("切换(?:至|到|\\s+)?\\s+([a-zA-Z0-9_.-]+)")
+        // 切换指定模型ID — 支持"切换 step-3.7-flash", "切换 google/diffusiongemma-26b"等
+        val switchModelRegex = Regex("切换(?:至|到|\\s+)?\\s+([\\w./-]+)")
         val switchModelMatch = switchModelRegex.find(lower)
         if (switchModelMatch != null) {
             val targetModelId = switchModelMatch.groupValues[1]
