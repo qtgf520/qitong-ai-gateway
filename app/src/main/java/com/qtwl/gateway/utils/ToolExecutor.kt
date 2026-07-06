@@ -54,6 +54,16 @@ object ToolExecutor {
             }
         }
         
+        // 数字编号切换 — 支持"切1"、"2"等
+        val numRegex = Regex("(?:切|切换)?\\s*(\\d+)\\s*$")
+        val numMatch = numRegex.find(text.trim())
+        if (numMatch != null) {
+            val num = numMatch.groupValues[1].toIntOrNull()
+            if (num != null && num > 0 && num <= pipelineSortedModelIds.size) {
+                actions.add(ToolAction.ForceModel(pipelineSortedModelIds[num - 1]))
+            }
+        }
+        
         // 上一个/下一个模型
         if (lower.contains("上个模型") || lower.contains("上一个") || lower.contains("prev")) {
             actions.add(ToolAction.SwitchPrevModel)
@@ -99,6 +109,9 @@ object ToolExecutor {
         if (lower.contains("排行") || lower.contains("rank") || lower.contains("速度")) {
             actions.add(ToolAction.QueryRanking)
         }
+        if (lower.contains("当前模型") || lower.contains("用了什么") || lower.contains("当前用")) {
+            actions.add(ToolAction.QueryCurrentModel)
+        }
         if (lower.contains("流量") || lower.contains("token") || lower.contains("用量")) {
             actions.add(ToolAction.QueryTokenUsage)
         }
@@ -121,14 +134,17 @@ object ToolExecutor {
             }
             is ToolAction.ForceModel -> {
                 GatewayForegroundService.saveForcedModel(action.modelId)
+                GatewayForegroundService.addDebugLog("🔄 AI切换模型 → ${action.modelId}")
                 "✅ 已强制指定模型为: ${action.modelId}"
             }
             is ToolAction.SwitchPrevModel -> {
-                switchModel(-1)
+                val switched = switchModel(-1)
+                if (switched.isNotBlank()) GatewayForegroundService.addDebugLog("🔄 AI切换模型 ← 上一个: $switched")
                 "✅ 已切换到上一个模型"
             }
             is ToolAction.SwitchNextModel -> {
-                switchModel(1)
+                val switched = switchModel(1)
+                if (switched.isNotBlank()) GatewayForegroundService.addDebugLog("🔄 AI切换模型 → 下一个: $switched")
                 "✅ 已切换到下一个模型"
             }
             is ToolAction.EnableAutoFailover -> {
@@ -182,7 +198,18 @@ object ToolExecutor {
                 if (pipelineSortedModelIds.isEmpty()) {
                     "⚠️ 暂无测速数据，请先启动测速"
                 } else {
-                    "📈 测速排行（共${pipelineSortedModelIds.size}个）：\n${pipelineSortedModelIds.joinToString("\n") { "  ${it}" }}"
+                    val list = pipelineSortedModelIds.mapIndexed { i, id -> "  ${i+1}. $id" }.joinToString("\n")
+                    "📈 测速排行（共${pipelineSortedModelIds.size}个）：\n$list\n\n回复数字编号（如 1）即可切换到对应模型"
+                }
+            }
+            is ToolAction.QueryCurrentModel -> {
+                val forced = GatewayForegroundService.getForcedModel()
+                if (forced.isNotBlank()) {
+                    "🧠 当前在使用: $forced"
+                } else if (pipelineSortedModelIds.isNotEmpty()) {
+                    "🧠 当前在使用: ${pipelineSortedModelIds.first()}"
+                } else {
+                    "⚠️ 暂无模型数据"
                 }
             }
             is ToolAction.QueryTokenUsage -> {
@@ -191,18 +218,16 @@ object ToolExecutor {
         }
     }
     
-    /** 切换模型（基于测速排行） */
-    private fun switchModel(direction: Int) {
+    /** 切换模型（基于测速排行），返回切换到的模型ID */
+    private fun switchModel(direction: Int): String {
         if (pipelineSortedModelIds.isEmpty()) {
-            return
+            return ""
         }
-        // 这里简单实现：记录当前模型索引，按方向切换
-        // 实际应该从 SharedPreferences 读取当前索引
         val currentIdx = GatewayForegroundService.getGatewayConfig("current_model_idx", "0").toIntOrNull() ?: 0
         val nextIdx = (currentIdx + direction + pipelineSortedModelIds.size) % pipelineSortedModelIds.size
         GatewayForegroundService.saveGatewayConfig("current_model_idx", nextIdx.toString())
-        // 设置强制模型
         GatewayForegroundService.saveForcedModel(pipelineSortedModelIds[nextIdx])
+        return pipelineSortedModelIds[nextIdx]
     }
 }
 
@@ -224,5 +249,6 @@ sealed class ToolAction {
     object StopGateway : ToolAction()
     object QueryStatus : ToolAction()
     object QueryRanking : ToolAction()
+    object QueryCurrentModel : ToolAction()
     object QueryTokenUsage : ToolAction()
 }

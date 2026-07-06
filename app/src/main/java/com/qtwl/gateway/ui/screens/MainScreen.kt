@@ -55,6 +55,8 @@ import com.qtwl.gateway.ui.viewmodel.pipelineStatus
 import com.qtwl.gateway.ui.viewmodel.pipelineRunning
 import com.qtwl.gateway.ui.viewmodel.pipelineProgress
 import com.qtwl.gateway.service.LiveSession
+import com.qtwl.gateway.service.GatewayForegroundService
+import com.qtwl.gateway.gateway.pipelineSortedModelIds
 import com.qtwl.gateway.utils.TranslationManager
 import com.qtwl.gateway.utils.tr
 import kotlinx.coroutines.delay
@@ -457,6 +459,24 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                     )
                 }
 
+                // ★★ 首页显示当前AI助手切换的模型 ★★
+                val currentModelName = remember {
+                    val forced = GatewayForegroundService.getForcedModel()
+                    if (forced.isNotBlank()) forced
+                    else if (pipelineSortedModelIds.isNotEmpty()) pipelineSortedModelIds.first()
+                    else ""
+                }
+                if (currentModelName.isNotBlank()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("🧠 AI助手当前模型", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(currentModelName, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    }
+                }
+                
                 // ★★ 框2：正在测速的模型 ★★
                 val currentItem = pStatus.find { it.isCurrent && it.status.contains("测速中") }
                 if (currentItem != null || pRunning) {
