@@ -1539,14 +1539,39 @@ private fun ModelCard(model: AiModel, viewModel: GatewayViewModel) {
                 }
             }
 
-// ★★ qtai-sj：启用/禁用开关绑定自动化切换状态 ★★
-            if (model.modelId == "qtai-sj") {
-                val qtaiSjEnabled by viewModel.qtaiSjEnabled.collectAsState()
-                Switch(
-                    checked = qtaiSjEnabled,
-                    onCheckedChange = { viewModel.toggleQtaiSj() }
-                )
-            } else {
+// ★★ qtai-sj：绑定脑子 + 启用开关 ★★
+                    if (model.modelId == "qtai-sj") {
+                        val qtaiSjEnabled by viewModel.qtaiSjEnabled.collectAsState()
+                        val brainModelId = com.qtwl.gateway.service.GatewayForegroundService.getQtaiSjBrain()
+                        var showBrainPicker by remember { mutableStateOf(false) }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Switch(checked = qtaiSjEnabled, onCheckedChange = { viewModel.toggleQtaiSj() })
+                            Spacer(Modifier.width(4.dp))
+                            TextButton(onClick = { showBrainPicker = true }) {
+                                Text(if (brainModelId.isNotBlank()) "🧠" else "🧠绑定", style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+                        if (showBrainPicker) {
+                            val enabledModels by viewModel.enabledModels.collectAsState()
+                            AlertDialog(
+                                onDismissRequest = { showBrainPicker = false },
+                                title = { Text("选择 qtai-sj 脑子") },
+                                text = { LazyColumn(modifier = Modifier.heightIn(max = 300.dp)) {
+                                    items(enabledModels) { m ->
+                                        Row(modifier = Modifier.fillMaxWidth().clickable {
+                                            com.qtwl.gateway.service.GatewayForegroundService.saveQtaiSjBrain(m.modelId); showBrainPicker = false
+                                        }.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            RadioButton(selected = m.modelId == brainModelId, onClick = {
+                                                com.qtwl.gateway.service.GatewayForegroundService.saveQtaiSjBrain(m.modelId); showBrainPicker = false
+                                            })
+                                            Spacer(Modifier.width(8.dp)); Text(m.displayName)
+                                        }
+                                    }
+                                } },
+                                confirmButton = { TextButton(onClick = { showBrainPicker = false }) { Text("取消") } }
+                            )
+                        }
+                    } else {
                 // 启用/禁用开关
                 Switch(
                     checked = model.isEnabled,
