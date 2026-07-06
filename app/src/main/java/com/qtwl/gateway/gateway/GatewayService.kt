@@ -603,12 +603,26 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
                         val brainProvider = if (brainModel != null) database.providerDao().getProviderById(brainModel.providerId) else null
                     
                         if (brainModel != null && brainProvider != null && brainProvider.isEnabled) {
-                            // ★ 用脑子模型判断意图 ★
-                            val brainPrompt = """你是一个网关控制助手。用户消息可能是网关操作指令（切换模型、测速、开关故障转移、查状态等），也可能是普通对话。
-    分析用户消息，如果是网关操作指令，返回JSON: {"action":"工具名","params":{}} 
-    支持的指令：startPipelineTest, toggleAutoFailover, toggleQtaiSj, queryStatus, queryRanking, forceModel, switchPrev, switchNext
-    如果不是网关指令，返回: {"action":"chat","params":{}}
-    仅返回JSON，不要其他文字。"""
+                            // ★ 用脑子模型分析用户意图（带排行榜+全部模型数据）★★
+                            val rankingInfo = if (pipelineSortedModelIds.isEmpty()) "暂无测速数据" 
+                                else "当前测速排行：\n" + pipelineSortedModelIds.mapIndexed { i, id -> "  ${i+1}. $id" }.joinToString("\n")
+                            val brainPrompt = """你是一个智能网关助手，拥有全自动思考能力。用户消息可能是网关操作指令或需要你智能分析。
+
+当前可用模型排行榜（按速度排序）：
+$rankingInfo
+
+你的能力：
+1. 智能分析用户需求，从排行榜中推荐最合适的模型
+2. 执行网关操作指令
+3. 如果是普通对话，就正常聊天
+
+规则：
+- 如果用户要求推荐/查找特定能力的模型（如图片生成、视频、代码、聊天等），分析排行榜中模型名称，推荐最合适的并自动切换
+- 如果需要切换模型，返回JSON: {"action":"forceModel","params":{"modelId":"模型ID"}}
+- 如果是普通指令，返回JSON: {"action":"工具名"}
+- 如果不是网关指令也不是模型推荐，返回: {"action":"chat"}
+支持的指令：startPipelineTest, toggleAutoFailover, toggleQtaiSj, queryStatus, queryRanking, forceModel, switchPrev, switchNext
+仅返回JSON，不要其他文字。"""
                         
                             val brainBody = """{"model":"${brainModel.modelId}","messages":[{"role":"system","content":${proxyJson.encodeToString(JsonPrimitive(brainPrompt))}},{"role":"user","content":${proxyJson.encodeToString(JsonPrimitive(userMsg))}}],"max_tokens":100,"stream":false}"""
                         
@@ -643,7 +657,11 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
                                         "toggleQtaiSj" -> { GatewayForegroundService.saveQtaiSjEnabled(!GatewayForegroundService.getQtaiSjEnabled()); "✅ qtai-sj已${if (GatewayForegroundService.getQtaiSjEnabled()) "开启" else "关闭"}" }
                                         "queryStatus" -> { val r = GatewayForegroundService.isServiceRunning; val p = GatewayForegroundService.getGatewayPort(); "📊 网关${if (r) "运行中" else "已停止"} | 端口: $p" }
                                         "queryRanking" -> { if (pipelineSortedModelIds.isEmpty()) "⚠️ 暂无测速数据" else "📈 排行: ${pipelineSortedModelIds.joinToString(" → ")}" }
-                                        "forceModel" -> { val m = brainJson?.get("params")?.jsonObject?.get("modelId")?.jsonPrimitive?.content; if (m != null) { GatewayForegroundService.saveForcedModel(m); "✅ 已切换到: $m" } else "⚠️ 请指定模型名" }
+                                        "forceModel" -> { 
+                                        val actionJson = try { proxyJson.parseToJsonElement(brainContent).jsonObject } catch (_: Exception) { null }
+                                        val m = actionJson?.get("params")?.jsonObject?.get("modelId")?.jsonPrimitive?.content
+                                        if (m != null) { GatewayForegroundService.saveForcedModel(m); "✅ 已切换到: $m" } else "⚠️ 请指定模型名" 
+                                    }
                                         "switchPrev" -> { ToolExecutor.execute(ToolAction.SwitchPrevModel, null); "✅ 已切换上一个" }
                                         "switchNext" -> { ToolExecutor.execute(ToolAction.SwitchNextModel, null); "✅ 已切换下一个" }
                                         else -> null

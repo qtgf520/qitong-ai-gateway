@@ -1,7 +1,7 @@
 # 綦桐AI网关 | QiTong AI Gateway
 
 > **包名 / Package：** `com.qtwl.gateway`  
-> **最新版本 / Latest：** v3.6.4 (versionCode=85)  
+> **最新版本 / Latest：** v3.6.5 (versionCode=86)  
 > **开源协议 / License：** Apache 2.0  
 > **语言 / Languages：** 🌐 15 languages (CN/EN/JP/KR/FR/DE/ES/RU/PT/VN/TH/AR/HI/ID)
 > **官方QQ群 / QQ Group：** [1007488535](https://qm.qq.com/q/1007488535) 💬
@@ -122,6 +122,7 @@ See [CHANGELOG.md](CHANGELOG.md) for full changelog.
 
 | Version | Key Features |
 |:--------|:-------------|
+| v3.6.5 | 🧠 全智能思考系统：脑子带排行榜分析，自动推荐模型并切换 |
 | v3.6.4 | 🧠 大脑记忆注入网关，记忆内容完整+短期补充 |
 | v3.6.3 | 🔢 排行编号+当前模型显示+编号切换+通知联动 |
 | v3.6.2 | ✅ 指令系统+脑子模型全部调试通过 |
