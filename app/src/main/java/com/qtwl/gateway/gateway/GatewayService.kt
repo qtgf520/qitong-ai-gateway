@@ -8,6 +8,7 @@ import com.qtwl.gateway.network.UpstreamClient
 import com.qtwl.gateway.service.GatewayForegroundService
 import com.qtwl.gateway.service.LiveSession
 import com.qtwl.gateway.ui.viewmodel.BrainMemoryManager
+import com.qtwl.gateway.ui.viewmodel.ModelCapabilityManager
 import com.qtwl.gateway.utils.ToolAction
 import com.qtwl.gateway.utils.ToolExecutor
 import io.ktor.http.ContentType
@@ -603,28 +604,34 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
                         val brainProvider = if (brainModel != null) database.providerDao().getProviderById(brainModel.providerId) else null
                     
                         if (brainModel != null && brainProvider != null && brainProvider.isEnabled) {
-                            // ★ 用脑子模型分析用户意图（带排行榜+全部模型数据）★★
+                            // ★ 用脑子模型分析用户意图（带排行榜+模型能力标记）★★
                             val rankingInfo = if (pipelineSortedModelIds.isEmpty()) "暂无测速数据" 
-                                else "当前测速排行：\n" + pipelineSortedModelIds.mapIndexed { i, id -> "  ${i+1}. $id" }.joinToString("\n")
-                            val brainPrompt = """你是一个智能网关助手，拥有全自动思考能力。用户消息可能是网关操作指令或需要你智能分析。
+                                else "当前测速排行（按速度排序）：\n" + pipelineSortedModelIds.mapIndexed { i, id -> 
+                                    val m = database.aiModelDao().getEnabledModelsList().find { it.modelId == id }
+                                    val displayName = m?.customAlias?.takeIf { it.isNotBlank() } ?: m?.displayName ?: id
+                                    val caps = if (m != null) ModelCapabilityManager.getCapabilities(m.modelId) else Triple(false, false, false)
+                                    val tags = buildString {
+                                        if (caps.first) append("🛠️")
+                                        if (caps.second) append("👁️")
+                                        if (caps.third) append("🎨")
+                                        if (isEmpty()) append("💬")
+                                    }
+                                    "  ${i+1}. $id ($displayName) $tags"
+                                }.joinToString("\n")
+                            val brainPrompt = """输出JSON。规则：
+1. 用户要图片/视频/音频→ {"action":"forceModel","params":{"modelId":"模型ID"}}，只选带🎨的
+2. 用户要处理图片/文档→ 只选带👁️的
+3. 普通操作指令→ {"action":"指令名"}
+4. 其他→ {"action":"chat"}
 
-当前可用模型排行榜（按速度排序）：
+排行榜(能力标记:🎨图片 🛠️工具 👁️视觉 💬聊天):
 $rankingInfo
 
-你的能力：
-1. 智能分析用户需求，从排行榜中推荐最合适的模型
-2. 执行网关操作指令
-3. 如果是普通对话，就正常聊天
+指令: startPipelineTest, toggleAutoFailover, toggleQtaiSj, queryStatus, queryRanking, forceModel, switchPrev, switchNext
 
-规则：
-- 如果用户要求推荐/查找特定能力的模型（如图片生成、视频、代码、聊天等），分析排行榜中模型名称，推荐最合适的并自动切换
-- 如果需要切换模型，返回JSON: {"action":"forceModel","params":{"modelId":"模型ID"}}
-- 如果是普通指令，返回JSON: {"action":"工具名"}
-- 如果不是网关指令也不是模型推荐，返回: {"action":"chat"}
-支持的指令：startPipelineTest, toggleAutoFailover, toggleQtaiSj, queryStatus, queryRanking, forceModel, switchPrev, switchNext
-仅返回JSON，不要其他文字。"""
+只输出JSON，不要任何其他文字。"""
                         
-                            val brainBody = """{"model":"${brainModel.modelId}","messages":[{"role":"system","content":${proxyJson.encodeToString(JsonPrimitive(brainPrompt))}},{"role":"user","content":${proxyJson.encodeToString(JsonPrimitive(userMsg))}}],"max_tokens":100,"stream":false}"""
+                            val brainBody = """{"model":"${brainModel.modelId}","messages":[{"role":"system","content":${proxyJson.encodeToString(JsonPrimitive(brainPrompt))}},{"role":"user","content":${proxyJson.encodeToString(JsonPrimitive(userMsg))}}],"max_tokens":200,"stream":false,"temperature":0.01}"""
                         
                             try {
                                 val brainClient = okhttp3.OkHttpClient.Builder()
@@ -648,7 +655,6 @@ $rankingInfo
                                     val actionJson = proxyJson.parseToJsonElement(brainContent).jsonObject
                                     actionJson["action"]?.jsonPrimitive?.content
                                 } catch (_: Exception) { null }
-                            
                                 if (brainAction != null && brainAction != "chat") {
                                     // ★ 脑子识别为网关指令 → 执行对应操作 ★
                                     val brainResult = when (brainAction) {
@@ -666,6 +672,7 @@ $rankingInfo
                                         "switchNext" -> { ToolExecutor.execute(ToolAction.SwitchNextModel, null); "✅ 已切换下一个" }
                                         else -> null
                                     }
+                                    
                                     if (brainResult != null) {
                                         val respText = if (stream) brainResult else brainResult
                                         if (stream) {
@@ -697,6 +704,18 @@ $rankingInfo
                                     }
                                 }
                                 // ★ 脑子说不是指令 → 继续走正常路由
+                                // ★★ 但先检查文字中是否提到模型ID/名称 ★★
+                                val mentionedModel = pipelineSortedModelIds.firstOrNull { modelId ->
+                                    val m = database.aiModelDao().getEnabledModelsList().find { it.modelId == modelId }
+                                    val displayName = m?.customAlias?.takeIf { it.isNotBlank() } ?: m?.displayName ?: ""
+                                    brainContent.contains(modelId, ignoreCase = true) || 
+                                    (displayName.isNotBlank() && brainContent.contains(displayName, ignoreCase = true)) ||
+                                    brainContent.contains(modelId.substringAfterLast("/"), ignoreCase = true)
+                                }
+                                if (mentionedModel != null) {
+                                    GatewayForegroundService.saveForcedModel(mentionedModel)
+                                    GatewayForegroundService.addDebugLog("🧠 脑子推荐模型: $mentionedModel")
+                                }
                             } catch (_: Exception) { /* 脑子模型失败，走正常路由 */ }
                         }
                     }
@@ -911,11 +930,23 @@ val attemptModels: List<AiModel> = if (allEnabled.isNotEmpty()) {
         }
     }
 
-    // 3. 非 chat 请求 → 通用转发
-    val providers = database.providerDao().getAllProvidersList()
-    val defaultProvider = providers.firstOrNull { it.isEnabled }
+    // 3. 非 chat 请求 → 通用转发（也要根据请求体model找对应服务商）
+    val reqModelId = try {
+        val j = proxyJson.parseToJsonElement(requestBodyStr).jsonObject
+        j["model"]?.jsonPrimitive?.content
+    } catch (_: Exception) { null }
+    
+    // ★★ 根据模型ID找对应服务商 ★★
+    val nonChatProvider = if (!reqModelId.isNullOrBlank()) {
+        val matchedModel = database.aiModelDao().getEnabledModelsList().find { it.modelId == reqModelId && it.isEnabled }
+        if (matchedModel != null) {
+            database.providerDao().getProviderById(matchedModel.providerId)
+        } else null
+    } else null
+    
+    val defaultProvider = nonChatProvider ?: database.providerDao().getAllProvidersList().firstOrNull { it.isEnabled }
     if (defaultProvider == null) {
-        val (status, body) = openAIError(HttpStatusCode.BadRequest, "No enabled provider available.", "provider_error")
+        val (status, body) = openAIError(HttpStatusCode.BadRequest, "No enabled provider available for model '$reqModelId'.", "provider_error")
         call.respondText(contentType = ContentType.Application.Json, status = status, text = body)
         return
     }
