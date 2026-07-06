@@ -164,12 +164,20 @@ object BrainMemoryManager {
         return getAll().filter { it.title.lowercase().contains(q) || it.content.lowercase().contains(q) || it.tags.lowercase().contains(q) }
     }
 
-    /** 获取潜意识（影响近期行为，最重要+最近高频的记忆） */
+    /** 获取潜意识 + 最近短期记忆（影响近期行为，最重要+最近高频的记忆） */
     fun getSubconscious(limit: Int = 5): List<MemoryItem> {
         val all = getAll()
-        return all.sortedByDescending { it.importance * 2 + it.accessCount }
+        val highPriority = all.sortedByDescending { it.importance * 2 + it.accessCount }
             .filter { it.type == "long" || it.importance >= 7 }
             .take(limit)
+        // 如果不够数量，补充最近的短期记忆
+        if (highPriority.size < limit) {
+            val recentShort = all.filter { it.type == "short" }
+                .sortedByDescending { it.timestamp }
+                .take(limit - highPriority.size)
+            return (highPriority + recentShort).distinctBy { it.id }
+        }
+        return highPriority
     }
 
     /** 访问记忆（增加访问计数） */
@@ -268,9 +276,9 @@ object BrainMemoryManager {
         
         val subconscious = getSubconscious(5)
         if (subconscious.isNotEmpty()) {
-            sb.appendLine("\n我记得的一些事情（回忆）：")
+            sb.appendLine("\n我记得的一些事情：")
             for (mem in subconscious) {
-                sb.appendLine("- [${mem.emotion}] ${mem.title}（${mem.importance}/10）")
+                sb.appendLine("- ${mem.content.replace("\n", " ")}（${mem.emotion}，重要度${mem.importance}）")
             }
         }
         return sb.toString()
