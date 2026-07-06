@@ -1,7 +1,7 @@
 # 綦桐AI网关 | QiTong AI Gateway
 
 > **包名 / Package：** `com.qtwl.gateway`  
-> **最新版本 / Latest：** v3.4.1 (versionCode=48)  
+> **最新版本 / Latest：** v3.6.4 (versionCode=85)  
 > **开源协议 / License：** Apache 2.0  
 > **语言 / Languages：** 🌐 15 languages (CN/EN/JP/KR/FR/DE/ES/RU/PT/VN/TH/AR/HI/ID)
 > **官方QQ群 / QQ Group：** [1007488535](https://qm.qq.com/q/1007488535) 💬
@@ -17,11 +17,14 @@
 
 | 功能 | 说明 |
 |:-----|:------|
-| 🚀 **綦桐AI测速 (qtai-sj)** | 虚拟模型，三端同步，自动走排行榜最快模型 |
-| 🎯 **qtai-sj 独立于故障转移** | 不受 autoFailover 开关限制，永远走排行榜 |
+| 🚀 **綦桐AI测速 (qtai-sj)** | 虚拟模型，前缀指令（綦小桐/qtai-sj/XiaoTong+自定义人格名）控制系统 |
+| 🧠 **绑定脑子模型** | qtai-sj可绑定专属模型理解自然语言，未命中硬指令时自动调脑子分析意图 |
+| 🧠 **大脑记忆系统** | 短期/长期记忆自动保存，情感标签+重要性评分，人格+记忆注入上游请求 |
+| 🧑 **人格系统** | 自定义名字/年龄/性格/语气/背景，动态绑定前缀，人格同步通知栏 |
+| 🔄 **智能排序 a→d→b→c** | 当前可用→历史成功→从未测→失败，故障转移自动切换 |
+| 🔢 **排行编号切换** | 指令查看排行带编号，回复数字直接切换模型 |
 | 🚀 **网关代理** | 本地 Ktor Server（默认 8889 端口），转发 `/v1/*` 所有请求 |
 | 🔄 **智能故障转移** | 自动测速所有模型，失败时自动切换到最快可用模型 |
-| 🧠 **最优模型记忆** | 响应最快的模型自动记住（5分钟缓存），下次直接走最优 |
 | 🔌 **多服务商管理** | 支持 OpenAI / DeepSeek / Claude / Ollama / Custom 等 |
 | 🌐 **代理加速** | HTTP/HTTPS/SOCKS5，订阅导入，按模型粒度控制 |
 | 💬 **内置聊天** | 完整聊天对话管理，流式 SSE 输出，Token 用量统计 |
@@ -119,17 +122,27 @@ See [CHANGELOG.md](CHANGELOG.md) for full changelog.
 
 | Version | Key Features |
 |:--------|:-------------|
-| v3.4.1 | 🎯 手动强制切换模型, 📡实时会话跑马灯, 歌词式会话流, 测速空回复修复, QQ群1007488535 |
-| v3.4.0 | 🐛 qtai-sj聊天室发消息请求修复，本地网关自动分配 |
-| v3.3.6 | 🐛 markModelSuccess传真实延迟，traffic统计AtomicLong，qtai-sj虚拟模型 |
-| v3.3.0 | 🌐 Multi-language system (15 languages), language settings UI |
+| v3.6.4 | 🧠 大脑记忆注入网关，记忆内容完整+短期补充 |
+| v3.6.3 | 🔢 排行编号+当前模型显示+编号切换+通知联动 |
+| v3.6.2 | ✅ 指令系统+脑子模型全部调试通过 |
+| v3.6.1 | 🧑 人格名称动态绑定+Toast提示+切换模型ID修复 |
+| v3.6.0 | 🔥 前缀指令修复：必须綦小桐/qtai-sj/XiaoTong开头 |
+| v3.5.9 | 🧠 绑定脑子UI修复+前缀指令+故障转移保留 |
+| v3.5.8 | 🧠 qtai-sj绑定脑子+自然语言理解 |
+| v3.5.7 | 🧮 智能排序a→d→b→c+乱码修复+绿灯修复 |
+| v3.5.6 | 🟢 红绿灯测速状态指示灯 |
+| v3.5.5 | ⏱ 测速UI重构：双框展示+测完一个即可用 |
+| v3.5.4 | 📊 进度条+状态提示+自动测速+会话记忆 |
+| v3.4.1 | 🎯 手动强制切换模型, 📡实时会话跑马灯 |
+| v3.4.0 | 🐛 qtai-sj聊天室发消息请求修复 |
+| v3.3.6 | 🐛 markModelSuccess传真实延迟 |
+| v3.3.0 | 🌐 Multi-language system (15 languages) |
 | v3.2.3 | 🧠 Best model memory, 4xx/5xx triggers failover |
-| v3.2.2 | 🛡️ Auto-fix temperature/top_p/penalty params |
-| v3.2.1 | 🧵 Fix blocking IO with Dispatchers.IO |
+| v3.2.2 | 🛡️ Auto-fix temperature/top_p/penalty |
 | v3.2.0 | 🔄 Auto failover, model health cache |
-| v3.0.0 | OpenAI full compatibility, standard error format |
+| v3.0.0 | OpenAI full compatibility |
 | v2.6.0 | Proxy per-model, provider mutual exclusion |
-| v2.5.0 | Smart speed test, auto backup, provider-model sync |
+| v2.5.0 | Smart speed test, auto backup |
 | v1.9.0 | Initial release |
 
 ---
