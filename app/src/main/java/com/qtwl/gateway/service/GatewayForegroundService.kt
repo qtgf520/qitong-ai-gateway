@@ -187,6 +187,7 @@ class GatewayForegroundService : Service() {
         private const val KEY_FAILOVER_MODEL = "failover_model"
         private const val KEY_QTAI_SJ_ENABLED = "qtai_sj_enabled"
         private const val KEY_QTAI_SJ_BRAIN = "qtai_sj_brain_model"
+        private const val KEY_QTAI_SJ_NAME = "qtai_sj_name"
         private const val KEY_FORCED_MODEL = "forced_model"
         private const val EXTRA_TOGGLE_WAKE = "toggle_wake"
         private const val DEFAULT_PORT = 8889
@@ -278,12 +279,18 @@ val trafficDownloadBytes = java.util.concurrent.atomic.AtomicLong(0L)
         fun getQtaiSjEnabled(): Boolean = GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).getBoolean(KEY_QTAI_SJ_ENABLED, true)
 
         /** ★★ qtai-sj 绑定的脑子模型ID ★★ */
-        fun saveQtaiSjBrain(modelId: String) {
-            GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).edit().putString(KEY_QTAI_SJ_BRAIN, modelId).apply()
-        }
-        fun getQtaiSjBrain(): String = GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).getString(KEY_QTAI_SJ_BRAIN, "") ?: ""
-
-        fun saveForcedModel(modelId: String) {
+    fun saveQtaiSjBrain(modelId: String) {
+        GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).edit().putString(KEY_QTAI_SJ_BRAIN, modelId).apply()
+    }
+    fun getQtaiSjBrain(): String = GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).getString(KEY_QTAI_SJ_BRAIN, "") ?: ""
+    
+    /** ★★ qtai-sj 人格名称（动态绑定，用户可自定义） ★★ */
+    fun saveQtaiSjName(name: String) {
+        GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).edit().putString(KEY_QTAI_SJ_NAME, name).apply()
+    }
+    fun getQtaiSjName(): String = GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).getString(KEY_QTAI_SJ_NAME, "") ?: ""
+    
+    fun saveForcedModel(modelId: String) {
             GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).edit().putString(KEY_FORCED_MODEL, modelId).apply()
         }
         fun getForcedModel(): String = GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).getString(KEY_FORCED_MODEL, "") ?: ""

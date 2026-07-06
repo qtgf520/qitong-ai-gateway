@@ -67,14 +67,16 @@ import kotlinx.coroutines.delay
 fun MainScreen(
     viewModel: GatewayViewModel = viewModel(factory = GatewayViewModel.Factory())
 ) {
+    val context = LocalContext.current
     var selectedTab by remember { mutableStateOf(0) }
     val snackbarMessage by viewModel.snackbarMessage.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // 处理 Snackbar 显示
+    // 处理 Snackbar 显示 → 改用 Toast（始终在最前面）
     LaunchedEffect(snackbarMessage) {
         snackbarMessage?.let {
-            snackbarHostState.showSnackbar(it)
+            val ctx = context
+            android.widget.Toast.makeText(ctx, it, android.widget.Toast.LENGTH_SHORT).show()
             viewModel.clearSnackbar()
         }
     }

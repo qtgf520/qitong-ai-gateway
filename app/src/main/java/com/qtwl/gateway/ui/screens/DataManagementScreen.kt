@@ -672,6 +672,7 @@ fun DataManagementScreen(
                         OutlinedTextField(value = personaName, onValueChange = { v ->
                             personaName = v
                             BrainMemoryManager.updateConfig(pCfg.copy(personaName = v))
+                            GatewayForegroundService.saveQtaiSjName(v)
                         }, label = { Text("名字") }, singleLine = true, modifier = Modifier.weight(1f))
                         OutlinedTextField(value = personaAge, onValueChange = { v ->
                             personaAge = v

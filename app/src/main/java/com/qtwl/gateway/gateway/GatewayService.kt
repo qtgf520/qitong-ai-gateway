@@ -514,8 +514,10 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
             } catch (_: Exception) { "" }
             
             if (userMsg.isNotBlank()) {
-                // ★★ 必须前缀：綦小桐/qtai-sj/XiaoTong才解析指令，否则直接走正常路由 ★★
-                val prefixMatch = Regex("^(綦小桐|qtai-sj|xiaotong)[\\s,，:：]+(.+)$", RegexOption.IGNORE_CASE).find(userMsg.trim())
+                // ★★ 必须前缀才解析指令：固定前缀(綦小桐/qtai-sj/XiaoTong) + 自定义人格名称 ★★
+                val customName = GatewayForegroundService.getQtaiSjName()
+                val namePattern = if (customName.isNotBlank()) "綦小桐|qtai-sj|xiaotong|${Regex.escape(customName)}" else "綦小桐|qtai-sj|xiaotong"
+                val prefixMatch = Regex("^($namePattern)[\\s,，:：]+(.+)$", RegexOption.IGNORE_CASE).find(userMsg.trim())
                 val actualCmd = prefixMatch?.groupValues?.get(2)?.trim() ?: ""
 
                 if (actualCmd.isNotBlank()) {

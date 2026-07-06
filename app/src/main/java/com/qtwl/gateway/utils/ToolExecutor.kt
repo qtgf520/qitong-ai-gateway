@@ -26,7 +26,6 @@ object ToolExecutor {
             }
         }
         
-        // 切换模型
         val modelKeywords = mapOf(
             "claude" to "claude",
             "gemini" to "gemini",
@@ -42,6 +41,16 @@ object ToolExecutor {
             if (lower.contains(keyword)) {
                 actions.add(ToolAction.ForceModel(modelId))
                 break
+            }
+        }
+        
+        // 切换指定模型ID — 支持"切换 step-3.7-flash"等
+        val switchModelRegex = Regex("切换(?:至|到|\\s+)?\\s+([a-zA-Z0-9_.-]+)")
+        val switchModelMatch = switchModelRegex.find(lower)
+        if (switchModelMatch != null) {
+            val targetModelId = switchModelMatch.groupValues[1]
+            if (targetModelId !in modelKeywords.values) {
+                actions.add(ToolAction.ForceModel(targetModelId))
             }
         }
         
