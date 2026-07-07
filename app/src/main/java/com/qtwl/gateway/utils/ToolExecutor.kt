@@ -1,7 +1,7 @@
 package com.qtwl.gateway.utils
 
 import com.qtwl.gateway.service.GatewayForegroundService
-import com.qtwl.gateway.gateway.pipelineSortedModelIds
+import com.qtwl.gateway.gateway.GatewayScheduler
 
 /**
  * 綦小桐工具调用系统
@@ -59,8 +59,8 @@ object ToolExecutor {
         val numMatch = numRegex.find(text.trim())
         if (numMatch != null) {
             val num = numMatch.groupValues[1].toIntOrNull()
-            if (num != null && num > 0 && num <= pipelineSortedModelIds.size) {
-                actions.add(ToolAction.ForceModel(pipelineSortedModelIds[num - 1]))
+            if (num != null && num > 0 && num <= GatewayScheduler.pipelineSortedModelIds.size) {
+                actions.add(ToolAction.ForceModel(GatewayScheduler.pipelineSortedModelIds[num - 1]))
             }
         }
         
@@ -195,19 +195,19 @@ object ToolExecutor {
                 "📊 网关状态：${if (running) "运行中" else "已停止"} | 端口: $port | 故障转移: ${if (failover) "开" else "关"} | qtai-sj: ${if (qtaiSj) "开" else "关"}"
             }
             is ToolAction.QueryRanking -> {
-                if (pipelineSortedModelIds.isEmpty()) {
+                if (GatewayScheduler.pipelineSortedModelIds.isEmpty()) {
                     "⚠️ 暂无测速数据，请先启动测速"
                 } else {
-                    val list = pipelineSortedModelIds.mapIndexed { i, id -> "  ${i+1}. $id" }.joinToString("\n")
-                    "📈 测速排行（共${pipelineSortedModelIds.size}个）：\n$list\n\n回复数字编号（如 1）即可切换到对应模型"
+                    val list = GatewayScheduler.pipelineSortedModelIds.mapIndexed { i, id -> "  ${i+1}. $id" }.joinToString("\n")
+                    "📈 测速排行（共${GatewayScheduler.pipelineSortedModelIds.size}个）：\n$list\n\n回复数字编号（如 1）即可切换到对应模型"
                 }
             }
             is ToolAction.QueryCurrentModel -> {
                 val forced = GatewayForegroundService.getForcedModel()
                 if (forced.isNotBlank()) {
                     "🧠 当前在使用: $forced"
-                } else if (pipelineSortedModelIds.isNotEmpty()) {
-                    "🧠 当前在使用: ${pipelineSortedModelIds.first()}"
+                } else if (GatewayScheduler.pipelineSortedModelIds.isNotEmpty()) {
+                    "🧠 当前在使用: ${GatewayScheduler.pipelineSortedModelIds.first()}"
                 } else {
                     "⚠️ 暂无模型数据"
                 }
@@ -220,14 +220,14 @@ object ToolExecutor {
     
     /** 切换模型（基于测速排行），返回切换到的模型ID */
     private fun switchModel(direction: Int): String {
-        if (pipelineSortedModelIds.isEmpty()) {
+        if (GatewayScheduler.pipelineSortedModelIds.isEmpty()) {
             return ""
         }
         val currentIdx = GatewayForegroundService.getGatewayConfig("current_model_idx", "0").toIntOrNull() ?: 0
-        val nextIdx = (currentIdx + direction + pipelineSortedModelIds.size) % pipelineSortedModelIds.size
+        val nextIdx = (currentIdx + direction + GatewayScheduler.pipelineSortedModelIds.size) % GatewayScheduler.pipelineSortedModelIds.size
         GatewayForegroundService.saveGatewayConfig("current_model_idx", nextIdx.toString())
-        GatewayForegroundService.saveForcedModel(pipelineSortedModelIds[nextIdx])
-        return pipelineSortedModelIds[nextIdx]
+        GatewayForegroundService.saveForcedModel(GatewayScheduler.pipelineSortedModelIds[nextIdx])
+        return GatewayScheduler.pipelineSortedModelIds[nextIdx]
     }
 }
 

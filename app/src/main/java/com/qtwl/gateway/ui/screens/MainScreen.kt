@@ -56,7 +56,7 @@ import com.qtwl.gateway.ui.viewmodel.pipelineRunning
 import com.qtwl.gateway.ui.viewmodel.pipelineProgress
 import com.qtwl.gateway.service.LiveSession
 import com.qtwl.gateway.service.GatewayForegroundService
-import com.qtwl.gateway.gateway.pipelineSortedModelIds
+import com.qtwl.gateway.gateway.GatewayScheduler
 import com.qtwl.gateway.utils.TranslationManager
 import com.qtwl.gateway.utils.tr
 import kotlinx.coroutines.delay
@@ -463,7 +463,7 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                 val currentModelName = remember {
                     val forced = GatewayForegroundService.getForcedModel()
                     if (forced.isNotBlank()) forced
-                    else if (pipelineSortedModelIds.isNotEmpty()) pipelineSortedModelIds.first()
+                    else if (GatewayScheduler.pipelineSortedModelIds.isNotEmpty()) GatewayScheduler.pipelineSortedModelIds.first()
                     else ""
                 }
                 if (currentModelName.isNotBlank()) {

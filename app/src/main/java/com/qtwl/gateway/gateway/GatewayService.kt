@@ -1,5 +1,7 @@
 package com.qtwl.gateway.gateway
 
+import com.qtwl.gateway.gateway.GatewayScheduler
+
 import com.qtwl.gateway.data.db.AppDatabase
 import com.qtwl.gateway.data.model.AiModel
 import com.qtwl.gateway.data.model.Provider
@@ -138,199 +140,9 @@ class GatewayService(private val database: AppDatabase) {
 
 /** 智能故障转移：模型健康状态缓存 */
 
-/** 流水线测速结果排序（最快的在前），由 ViewModel 更新，供故障转移优先切换使用 */
-@Volatile
-var pipelineSortedModelIds: List<String> = emptyList()
-
 private val proxyJson = Json { ignoreUnknownKeys = true; prettyPrint = false }
 private val DEFAULT_CT = "application/json".toMediaType()
 private const val MAX_RETRIES = 3
-private const val HEALTH_CHECK_TIMEOUT = 5000L
-private val failoverScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-
-/** 模型健康状态 */
-private data class ModelHealth(
-    val modelId: String,
-    val providerId: Long,
-    val latencyMs: Long = Long.MAX_VALUE,
-    val lastCheckTime: Long = 0,
-    val isHealthy: Boolean = true,
-    val successCount: Int = 0      // ★ 连续成功次数
-)
-
-/** 模型健康缓存 */
-private val healthCache = mutableMapOf<String, ModelHealth>()
-private var cacheTime: Long = 0
-private const val CACHE_TTL = 60_000L
-
-/** ★ 最优模型ID（自动记住最快的模型） */
-@Volatile
-private var bestModelId: String? = null
-@Volatile
-private var bestModelLatency: Long = Long.MAX_VALUE
-private var bestModelSetTime: Long = 0
-private const val BEST_MODEL_TTL = 300_000L // 最优模型缓存5分钟
-
-/** 标记模型为成功，自动更新最优模型 */
-private fun markModelSuccess(modelId: String, latencyMs: Long) {
-    synchronized(healthCache) {
-        val existing = healthCache[modelId]
-        val successCount = (existing?.successCount ?: 0) + 1
-        healthCache[modelId] = ModelHealth(modelId, existing?.providerId ?: 0, latencyMs, System.currentTimeMillis(), true, successCount)
-    }
-    // 如果这个模型比当前最优模型快，或者最优模型未设置，更新最优模型
-    if (latencyMs < bestModelLatency || bestModelId == null) {
-        bestModelId = modelId
-        bestModelLatency = latencyMs
-        bestModelSetTime = System.currentTimeMillis()
-    }
-}
-
-/** 获取最优模型ID（如果缓存未过期） */
-private fun getBestModel(): String? {
-    if (bestModelId != null && System.currentTimeMillis() - bestModelSetTime < BEST_MODEL_TTL) {
-        return bestModelId
-    }
-    return null
-}
-/** ★ 刷新健康缓存 — 只测试已启用且最近被使用的模型 */
-private suspend fun refreshHealthCache(database: AppDatabase) {
-    val now = System.currentTimeMillis()
-    if (now - cacheTime < CACHE_TTL) return
-
-    val models = database.aiModelDao().getEnabledModelsList().filter { it.isEnabled }
-    if (models.isEmpty()) return
-
-    cacheTime = now
-
-    // ★ 只测试当前网关正在使用的模型（有 activeNodeName 或最近被请求过的）
-    // 如果是首次开启，测试所有启用模型
-    val targetModels = if (recentlyUsedModels.isEmpty()) {
-        models
-    } else {
-        models.filter { it.modelId in recentlyUsedModels }
-    }
-
-    if (targetModels.isEmpty()) return
-
-    targetModels.forEach { model ->
-        failoverScope.launch {
-            try {
-                val provider = database.providerDao().getProviderById(model.providerId) ?: return@launch
-                if (!provider.isEnabled) return@launch
-
-                val start = System.currentTimeMillis()
-                val resolvedUrl = provider.resolvedBaseUrl.trimEnd('/')
-                val testBody = """{"model":"${model.modelId}","messages":[{"role":"user","content":"hi"}],"max_tokens":1,"stream":false}"""
-                val req = okhttp3.Request.Builder()
-                    .url("$resolvedUrl/v1/chat/completions")
-                    .post(testBody.toRequestBody(DEFAULT_CT))
-                    .apply { if (!provider.apiKey.isNullOrBlank()) header("Authorization", "Bearer ${provider.apiKey}") }
-                    .build()
-                val client = okhttp3.OkHttpClient.Builder()
-                    .connectTimeout(HEALTH_CHECK_TIMEOUT, java.util.concurrent.TimeUnit.MILLISECONDS)
-                    .readTimeout(HEALTH_CHECK_TIMEOUT, java.util.concurrent.TimeUnit.MILLISECONDS)
-                    .build()
-                val resp = client.newCall(req).execute()
-                val latency = System.currentTimeMillis() - start
-                if (resp.isSuccessful) {
-                    synchronized(healthCache) {
-                        healthCache[model.modelId] = ModelHealth(model.modelId, model.providerId, latency, now, true)
-                    }
-                    if (GatewayForegroundService.getDebugMode()) {
-                        GatewayForegroundService.addDebugLog("⏱ ${model.modelId}: ${latency}ms ✅")
-                    }
-                } else {
-                    synchronized(healthCache) { healthCache[model.modelId] = ModelHealth(model.modelId, model.providerId, Long.MAX_VALUE, now, false) }
-                }
-                resp.close()
-            } catch (_: Exception) {
-                synchronized(healthCache) { healthCache[model.modelId] = ModelHealth(model.modelId, model.providerId, Long.MAX_VALUE, System.currentTimeMillis(), false) }
-            }
-        }
-    }
-}
-
-/** ★ 模型智能排序缓存：记录历史成功/失败，按优先级排序 */
-private val modelHistory = mutableMapOf<String, ModelHistoryRecord>()
-private data class ModelHistoryRecord(
-    val modelId: String,
-    val lastSuccessTime: Long = 0,  // 最近成功时间
-    val successCount: Int = 0,       // 累计成功次数
-    val failCount: Int = 0,          // 累计失败次数
-    val lastFailTime: Long = 0,      // 最近失败时间
-    val isHealthy: Boolean = true    // 最近一次是否健康
-)
-private const val MODEL_HISTORY_TTL = 30 * 60 * 1000L // 30分钟
-
-/** 记录模型调用结果 */
-private fun recordModelResult(modelId: String, success: Boolean) {
-    synchronized(modelHistory) {
-        val existing = modelHistory[modelId]
-        modelHistory[modelId] = ModelHistoryRecord(
-            modelId = modelId,
-            lastSuccessTime = if (success) System.currentTimeMillis() else (existing?.lastSuccessTime ?: 0),
-            successCount = (existing?.successCount ?: 0) + if (success) 1 else 0,
-            failCount = (existing?.failCount ?: 0) + if (success) 0 else 1,
-            lastFailTime = if (!success) System.currentTimeMillis() else (existing?.lastFailTime ?: 0),
-            isHealthy = success
-        )
-    }
-}
-
-/** 智能排序：a(当前可用) → d(历史成功) → b(历史可用) → c(从未成功/失败) */
-private fun smartSort(models: List<AiModel>): List<AiModel> {
-    val now = System.currentTimeMillis()
-    val tierA = mutableListOf<AiModel>()  // 当前测速可用（✅）
-    val tierB = mutableListOf<AiModel>()  // 历史成功过
-    val tierC = mutableListOf<AiModel>()  // 从未成功或最近失败
-    val tierD = mutableListOf<AiModel>()  // 有测速结果但失败
-    
-    for (model in models) {
-        val history = synchronized(modelHistory) { modelHistory[model.modelId] }
-        val isPipelineSuccess = pipelineSortedModelIds.contains(model.modelId)
-        
-        when {
-            // a: 测速排行榜上有且历史成功过 → 最高优先级
-            isPipelineSuccess && history != null && history.isHealthy -> tierA.add(model)
-            // d: 历史成功过（即使当前测速没跑完）→ 第二优先级
-            history != null && history.successCount > 0 && (now - history.lastSuccessTime < MODEL_HISTORY_TTL) -> tierB.add(model)
-            // c: 有历史但最近失败 → 第三优先级
-            history != null && history.failCount > 0 -> tierC.add(model)
-            // b: 从未记录过 → 第四优先级
-            else -> tierD.add(model)
-        }
-    }
-    
-    // 同层内按测速速度排序
-    val speedOrder = pipelineSortedModelIds.withIndex().associate { it.value to it.index }
-    return (tierA.sortedBy { speedOrder[it.modelId] ?: Int.MAX_VALUE } +
-            tierB.sortedBy { speedOrder[it.modelId] ?: Int.MAX_VALUE } +
-            tierC.sortedBy { speedOrder[it.modelId] ?: Int.MAX_VALUE } +
-            tierD.sortedBy { speedOrder[it.modelId] ?: Int.MAX_VALUE })
-}
-
-/** ★ 记录最近使用的模型 */
-private val recentlyUsedModels = mutableSetOf<String>()
-
-/** ★ 记录模型被使用 */
-private fun recordModelUsage(modelId: String) {
-    recentlyUsedModels.add(modelId)
-}
-
-/** 按健康状态排序：快的在前，不可用的在后 */
-private fun getSortedModels(models: List<AiModel>, preferredModelId: String?): List<AiModel> {
-    val preferred = models.find { it.modelId == preferredModelId }
-    val others = models.filter { it.modelId != preferredModelId }
-
-    val sortedOthers = others.sortedBy { model ->
-        val health = synchronized(healthCache) { healthCache[model.modelId] }
-        if (health != null && health.isHealthy) health.latencyMs else Long.MAX_VALUE
-    }
-
-    return if (preferred != null) listOf(preferred) + sortedOthers else sortedOthers
-}
-
 /** ★ 修正请求体中的参数，确保符合 OpenAI 标准和各模型限制 */
 private fun sanitizeRequestBody(bodyStr: String): String {
     try {
@@ -603,8 +415,8 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
                     
                         if (brainModel != null && brainProvider != null && brainProvider.isEnabled) {
                             // ★ 用脑子模型分析用户意图（带排行榜+模型能力标记）★★
-                            val rankingInfo = if (pipelineSortedModelIds.isEmpty()) "暂无测速数据" 
-                                else "当前测速排行（按速度排序）：\n" + pipelineSortedModelIds.mapIndexed { i, id -> 
+                            val rankingInfo = if (GatewayScheduler.pipelineSortedModelIds.isEmpty()) "暂无测速数据" 
+                                else "当前测速排行（按速度排序）：\n" + GatewayScheduler.pipelineSortedModelIds.mapIndexed { i, id -> 
                                     val m = database.aiModelDao().getEnabledModelsList().find { it.modelId == id }
                                     val displayName = m?.customAlias?.takeIf { it.isNotBlank() } ?: m?.displayName ?: id
                                     val caps = if (m != null) ModelCapabilityManager.getCapabilities(m.modelId) else Triple(false, false, false)
@@ -660,7 +472,7 @@ $rankingInfo
                                         "toggleAutoFailover" -> { GatewayForegroundService.saveAutoFailover(!GatewayForegroundService.getAutoFailover()); "✅ 故障转移已${if (GatewayForegroundService.getAutoFailover()) "开启" else "关闭"}" }
                                         "toggleQtaiSj" -> { GatewayForegroundService.saveQtaiSjEnabled(!GatewayForegroundService.getQtaiSjEnabled()); "✅ qtai-sj已${if (GatewayForegroundService.getQtaiSjEnabled()) "开启" else "关闭"}" }
                                         "queryStatus" -> { val r = GatewayForegroundService.isServiceRunning; val p = GatewayForegroundService.getGatewayPort(); "📊 网关${if (r) "运行中" else "已停止"} | 端口: $p" }
-                                        "queryRanking" -> { if (pipelineSortedModelIds.isEmpty()) "⚠️ 暂无测速数据" else "📈 排行: ${pipelineSortedModelIds.joinToString(" → ")}" }
+                                        "queryRanking" -> { if (GatewayScheduler.pipelineSortedModelIds.isEmpty()) "⚠️ 暂无测速数据" else "📈 排行: ${GatewayScheduler.pipelineSortedModelIds.joinToString(" → ")}" }
                                         "forceModel" -> { 
                                         val actionJson = try { proxyJson.parseToJsonElement(brainContent).jsonObject } catch (_: Exception) { null }
                                         val m = actionJson?.get("params")?.jsonObject?.get("modelId")?.jsonPrimitive?.content
@@ -721,7 +533,7 @@ $rankingInfo
             val bestModel = if (forced.isNotBlank()) {
                 allEnabledModels.find { it.modelId == forced }
             } else null
-            val targetModel = bestModel ?: pipelineSortedModelIds.firstNotNullOfOrNull { id -> 
+            val targetModel = bestModel ?: GatewayScheduler.pipelineSortedModelIds.firstNotNullOfOrNull { id -> 
                 allEnabledModels.find { it.modelId == id } 
             } ?: allEnabledModels.firstOrNull()
             
@@ -740,7 +552,7 @@ $rankingInfo
                     } else {
                         pipeNormalResponse(call, provider, modifiedBytes, "/v1/$effectivePath", database, useProxy)
                     }
-                    recordModelResult(targetModel.modelId, true)
+                    GatewayScheduler.recordModelResult(targetModel.modelId, true)
                     GatewayForegroundService.addDebugLog("🔄 qtai-sj透传 → ${targetModel.modelId}")
                     return
                 }
@@ -757,7 +569,7 @@ $rankingInfo
             val autoFailover = GatewayForegroundService.getAutoFailover()
 
             if (autoFailover) {
-                refreshHealthCache(database)
+                GatewayScheduler.refreshHealthCache(database)
             }
 val allEnabled = database.aiModelDao().getEnabledModelsList().filter { it.isEnabled }
 val attemptModels: List<AiModel> = if (allEnabled.isNotEmpty()) {
@@ -776,18 +588,18 @@ val attemptModels: List<AiModel> = if (allEnabled.isNotEmpty()) {
                                     listOf(forced) // 强制只使用这个模型
                                 } else {
                                     // 强制模型不存在了，回退到自动
-                                    if (pipelineSortedModelIds.isEmpty()) {
+                                    if (GatewayScheduler.pipelineSortedModelIds.isEmpty()) {
                                         listOfNotNull(allEnabled.sortedBy { it.modelId }.firstOrNull())
                                     } else {
-                                        pipelineSortedModelIds.mapNotNull { id -> allEnabled.find { it.modelId == id } }.ifEmpty { allEnabled }
+                                        GatewayScheduler.pipelineSortedModelIds.mapNotNull { id -> allEnabled.find { it.modelId == id } }.ifEmpty { allEnabled }
                                     }
                                 }
-                            } else if (pipelineSortedModelIds.isEmpty()) {
+                            } else if (GatewayScheduler.pipelineSortedModelIds.isEmpty()) {
                                 // 无测速数据时，智能排序
-                                smartSort(allEnabled).ifEmpty { allEnabled }
+                                GatewayScheduler.smartSort(allEnabled).ifEmpty { allEnabled }
                             } else {
                                 // ★★ 使用智能排序：a(当前可用)→d(历史成功)→b(历史可用)→c(失败) ★★
-                                smartSort(allEnabled).ifEmpty { allEnabled }
+                                GatewayScheduler.smartSort(allEnabled).ifEmpty { allEnabled }
                             }
                         }
                     } else if (autoFailover) {
@@ -796,8 +608,8 @@ val attemptModels: List<AiModel> = if (allEnabled.isNotEmpty()) {
                     val sessionKey = getSessionKey(call)
                     val lastGoodModel = sessionModelCache[sessionKey]
 
-                    val pipelineSorted = if (pipelineSortedModelIds.isNotEmpty()) {
-                        pipelineSortedModelIds.mapNotNull { id -> allEnabled.find { it.modelId == id } }
+                    val pipelineSorted = if (GatewayScheduler.pipelineSortedModelIds.isNotEmpty()) {
+                        GatewayScheduler.pipelineSortedModelIds.mapNotNull { id -> allEnabled.find { it.modelId == id } }
                     } else {
                         allEnabled
                     }
@@ -850,7 +662,7 @@ val attemptModels: List<AiModel> = if (allEnabled.isNotEmpty()) {
                     call.attributes.put(MODEL_ID_KEY, primaryModel.modelId)
                     call.attributes.put(PROVIDER_ID_KEY, primaryModel.providerId)
                     GatewayForegroundService.activeNodeName = primaryModel.modelId
-                    recordModelUsage(primaryModel.modelId)
+                    GatewayScheduler.recordModelUsage(primaryModel.modelId)
                     val useProxy = primaryModel.useProxy
 
                     val sanitizedBody = sanitizeRequestBody(requestBodyStr)
@@ -875,13 +687,13 @@ val attemptModels: List<AiModel> = if (allEnabled.isNotEmpty()) {
                     }
                     
                     recordSessionModel(call, primaryModel.modelId)
-                    recordModelResult(primaryModel.modelId, true)
+                    GatewayScheduler.recordModelResult(primaryModel.modelId, true)
                     GatewayForegroundService.updateLiveSession(session.id, "📥 回复", "✅ 成功")
                     return
                 } catch (e: Exception) {
                     failCount++
                     lastError = "${primaryModel.modelId}: ${e.message}"
-                    synchronized(healthCache) { healthCache[primaryModel.modelId] = ModelHealth(primaryModel.modelId, primaryModel.providerId, Long.MAX_VALUE, System.currentTimeMillis(), false) }
+                    synchronized(GatewayScheduler.healthCache) { GatewayScheduler.healthCache[primaryModel.modelId] = GatewayScheduler.ModelHealth(primaryModel.modelId, primaryModel.providerId, Long.MAX_VALUE, System.currentTimeMillis(), false) }
                     if (GatewayForegroundService.getDebugMode()) GatewayForegroundService.addDebugLog("✗ ${primaryModel.modelId}: ${e.message?.take(60)}")
                     // 主模型失败，继续尝试后续模型
                 }
@@ -904,7 +716,7 @@ val attemptModels: List<AiModel> = if (allEnabled.isNotEmpty()) {
                     call.attributes.put(MODEL_ID_KEY, matchedModel.modelId)
                     call.attributes.put(PROVIDER_ID_KEY, matchedModel.providerId)
                     GatewayForegroundService.activeNodeName = matchedModel.modelId
-                    recordModelUsage(matchedModel.modelId)
+                    GatewayScheduler.recordModelUsage(matchedModel.modelId)
                     val useProxy = matchedModel.useProxy
 
                     val sanitizedBody2 = sanitizeRequestBody(requestBodyStr)
@@ -928,7 +740,7 @@ val attemptModels: List<AiModel> = if (allEnabled.isNotEmpty()) {
                     
                     // ★★ 记录会话成功模型
                     recordSessionModel(call, matchedModel.modelId)
-                    recordModelResult(matchedModel.modelId, true)
+                    GatewayScheduler.recordModelResult(matchedModel.modelId, true)
 
                     // ★★ 更新会话状态为 📥 回复 ★★
                     GatewayForegroundService.updateLiveSession(session.id, "📥 回复", "✅ 成功")
@@ -936,15 +748,15 @@ val attemptModels: List<AiModel> = if (allEnabled.isNotEmpty()) {
                 } catch (e: Exception) {
                     failCount++
                     lastError = "${matchedModel.modelId}: ${e.message}"
-                    synchronized(healthCache) { healthCache[matchedModel.modelId] = ModelHealth(matchedModel.modelId, matchedModel.providerId, Long.MAX_VALUE, System.currentTimeMillis(), false) }
-                    recordModelResult(matchedModel.modelId, false)
+                    synchronized(GatewayScheduler.healthCache) { GatewayScheduler.healthCache[matchedModel.modelId] = GatewayScheduler.ModelHealth(matchedModel.modelId, matchedModel.providerId, Long.MAX_VALUE, System.currentTimeMillis(), false) }
+                    GatewayScheduler.recordModelResult(matchedModel.modelId, false)
                     if (GatewayForegroundService.getDebugMode()) GatewayForegroundService.addDebugLog("✗ ${matchedModel.modelId}: ${e.message?.take(60)}")
                 }
             } // ★★ 结束故障转移循环 ★★
             } // ★★ 结束 attemptModels 非空判断 ★★
             val errMsg = when {
                 modelId == "qtai-sj" && !GatewayForegroundService.getQtaiSjEnabled() -> "🔄 自动化切换已禁用，请在模型页面开启"
-                modelId == "qtai-sj" && pipelineSortedModelIds.isEmpty() -> "请先启动测速以获取可用模型排行"
+                modelId == "qtai-sj" && GatewayScheduler.pipelineSortedModelIds.isEmpty() -> "请先启动测速以获取可用模型排行"
                 autoFailover -> "All ${failCount} models failed. Last: $lastError"
                 else -> "Model '$modelId' error: $lastError"
             }
@@ -1058,7 +870,7 @@ private suspend fun pipeNormalResponse(
         }
 
         // ★★ 记入最优模型（用真实请求耗时作为延迟参考）
-        markModelSuccess(call.proxyModelId ?: "unknown", System.currentTimeMillis() - pipeStartTime)
+        GatewayScheduler.markModelSuccess(call.proxyModelId ?: "unknown", System.currentTimeMillis() - pipeStartTime)
 
         // 解析 usage
         if (path.contains("chat/completions") || path.contains("completions")) {

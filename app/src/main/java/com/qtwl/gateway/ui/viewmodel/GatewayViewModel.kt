@@ -1522,7 +1522,7 @@ fun getDisplayModelName(model: AiModel): String {
                                 database.providerDao().getProviderById(forcedModel.providerId)
                             } else null
                         } else {
-                            val sortedIds = com.qtwl.gateway.gateway.pipelineSortedModelIds
+                            val sortedIds = com.qtwl.gateway.gateway.GatewayScheduler.pipelineSortedModelIds
                             if (sortedIds.isNotEmpty()) {
                                 val bestId = sortedIds.first()
                                 val bestModels = database.aiModelDao().getEnabledModelsList()
@@ -1551,7 +1551,7 @@ fun getDisplayModelName(model: AiModel): String {
                             if (!convModelId.isNullOrBlank() && convModelId != "qtai-sj") {
                                 convModelId
                             } else {
-                                val sortedIds = com.qtwl.gateway.gateway.pipelineSortedModelIds
+                                val sortedIds = com.qtwl.gateway.gateway.GatewayScheduler.pipelineSortedModelIds
                                 if (sortedIds.isNotEmpty()) sortedIds.first() else model.modelId
                             }
                         }
@@ -1692,7 +1692,7 @@ fun getDisplayModelName(model: AiModel): String {
             // ★★ 规则5：失败自动兜底—用测速最优模型重试一次
             val currentModel = _selectedModel.value
             if (currentModel != null) {
-                val sortedIds = com.qtwl.gateway.gateway.pipelineSortedModelIds
+                val sortedIds = com.qtwl.gateway.gateway.GatewayScheduler.pipelineSortedModelIds
                 if (sortedIds.isNotEmpty() && (currentModel.modelId != sortedIds.first())) {
                     val bestModelId = sortedIds.first()
                     // 通过 enabledModels 列表查找最优模型
@@ -2222,7 +2222,7 @@ fun clearChatError() {
 
                     val sorted = _pipelineStatus.value.sortedBy { it.latencyMs }
                     _pipelineStatus.value = sorted
-                    com.qtwl.gateway.gateway.pipelineSortedModelIds = sorted.map { it.modelId }
+                    com.qtwl.gateway.gateway.GatewayScheduler.pipelineSortedModelIds = sorted.map { it.modelId }
                     // ★ 保存测速结果缓存
                     savePipelineCache(sorted)
                     firstRound = false
