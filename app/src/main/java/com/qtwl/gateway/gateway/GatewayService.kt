@@ -706,9 +706,43 @@ $rankingInfo
                                 if (GatewayForegroundService.getForcedModel().isNotBlank()) {
                                     GatewayForegroundService.saveForcedModel("")
                                 }
-                            } catch (_: Exception) { /* 脑子模型失败，走正常路由 */ }
+                            } catch (_: Exception) { /* 脑子模型失败 */ }
                         }
                     }
+                }
+            }
+        }
+        
+        // ★★ qtai-sj没有前缀或脑子说chat → 走正常转发：用排行榜最快的模型直接透传 ★★
+        if (modelId == "qtai-sj") {
+            // 找最适合的模型
+            val allEnabledModels = database.aiModelDao().getEnabledModelsList().filter { it.isEnabled }
+            val forced = GatewayForegroundService.getForcedModel()
+            val bestModel = if (forced.isNotBlank()) {
+                allEnabledModels.find { it.modelId == forced }
+            } else null
+            val targetModel = bestModel ?: pipelineSortedModelIds.firstNotNullOfOrNull { id -> 
+                allEnabledModels.find { it.modelId == id } 
+            } ?: allEnabledModels.firstOrNull()
+            
+            if (targetModel != null) {
+                val provider = database.providerDao().getProviderById(targetModel.providerId)
+                if (provider != null && provider.isEnabled) {
+                    // ★★ 直接透传：用目标模型的provider和url转发，不加人格/记忆 ★★
+                    val resolvedUrl = provider.resolvedBaseUrl.trimEnd('/')
+                    // 替换model字段为目标模型ID
+                    val modifiedBody = requestBodyStr.replace("\"model\":\"qtai-sj\"", "\"model\":\"${targetModel.modelId}\"")
+                    val modifiedBytes = modifiedBody.toByteArray()
+                    val useProxy = targetModel.useProxy
+                    
+                    if (stream) {
+                        pipeStreamResponse(call, provider, modifiedBytes, "/v1/$effectivePath", targetModel.modelId, targetModel.providerId, database, useProxy)
+                    } else {
+                        pipeNormalResponse(call, provider, modifiedBytes, "/v1/$effectivePath", database, useProxy)
+                    }
+                    recordModelResult(targetModel.modelId, true)
+                    GatewayForegroundService.addDebugLog("🔄 qtai-sj透传 → ${targetModel.modelId}")
+                    return
                 }
             }
         }
