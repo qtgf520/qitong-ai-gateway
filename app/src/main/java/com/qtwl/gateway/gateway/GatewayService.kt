@@ -508,14 +508,18 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
                     }
                 
                     // ★★ 硬指令未命中 → 用脑子模型理解自然语言 ★★
-                    val brainModelId = GatewayForegroundService.getQtaiSjBrain()
-                    if (brainModelId.isNotBlank()) {
-                        val brainModel = database.aiModelDao().getEnabledModelsList().find { it.modelId == brainModelId && it.isEnabled }
-                        val brainProvider = if (brainModel != null) database.providerDao().getProviderById(brainModel.providerId) else null
-                    
-                        if (brainModel != null && brainProvider != null && brainProvider.isEnabled) {
-                            // ★ 用脑子模型分析用户意图（带排行榜+模型能力标记）★★
-                            val rankingInfo = if (GatewayScheduler.pipelineSortedModelIds.isEmpty()) "暂无测速数据" 
+val brainModelId = GatewayForegroundService.getQtaiSjBrain()
+if (brainModelId.isNotBlank()) {
+    val brainModel = database.aiModelDao().getEnabledModelsList().find { it.modelId == brainModelId && it.isEnabled }
+    val brainProvider = if (brainModel != null) database.providerDao().getProviderById(brainModel.providerId) else null
+
+    if (brainModel != null && brainProvider != null && brainProvider.isEnabled) {
+        // ★★★ qtai-sj统计：写模型名+流量+记录使用 ★★★
+        GatewayForegroundService.activeNodeName = brainModelId
+        GatewayForegroundService.trafficUploadBytes.addAndGet(rawBytes.size.toLong())
+        GatewayScheduler.recordModelUsage(brainModelId)
+        // ★ 用脑子模型分析用户意图（带排行榜+模型能力标记）★★
+        val rankingInfo = if (GatewayScheduler.pipelineSortedModelIds.isEmpty()) "暂无测速数据" 
                                 else "当前测速排行（按速度排序）：\n" + GatewayScheduler.pipelineSortedModelIds.mapIndexed { i, id -> 
                                     val m = database.aiModelDao().getEnabledModelsList().find { it.modelId == id }
                                     val displayName = m?.customAlias?.takeIf { it.isNotBlank() } ?: m?.displayName ?: id
@@ -564,11 +568,32 @@ $rankingInfo
                                 brainResp.close()
                             
                                 val brainJson = try { proxyJson.parseToJsonElement(brainBodyStr).jsonObject } catch (_: Exception) { null }
-                                val brainContent = brainJson?.get("choices")?.jsonArray?.firstOrNull()?.jsonObject?.get("message")?.jsonObject?.get("content")?.jsonPrimitive?.content ?: ""
-                            
-                                // ★ 解析脑子返回的响应（直接输出脑子回复，不透传） ★
-                                if (brainContent.isNotBlank()) {
-                                    if (stream) {
+val brainContent = brainJson?.get("choices")?.jsonArray?.firstOrNull()?.jsonObject?.get("message")?.jsonObject?.get("content")?.jsonPrimitive?.content ?: ""
+
+// ★★★ qtai-sj脑子路径统计：解析usage+下载流量+记忆 ★★★
+val brainUsage = brainJson?.get("usage")?.jsonObject
+val promptTokens = brainUsage?.get("prompt_tokens")?.jsonPrimitive?.content?.toIntOrNull() ?: 0
+val completionTokens = brainUsage?.get("completion_tokens")?.jsonPrimitive?.content?.toIntOrNull() ?: 0
+if (promptTokens > 0) GatewayForegroundService.tokenPromptInput += promptTokens
+if (completionTokens > 0) GatewayForegroundService.tokenCompletionOutput += completionTokens
+val brainRespBytes = brainBodyStr.toByteArray(Charsets.UTF_8)
+GatewayForegroundService.trafficDownloadBytes.addAndGet(brainRespBytes.size.toLong())
+GatewayForegroundService.addLiveSession(LiveSession(
+    modelName = brainModelId,
+    requestPreview = userMsg.take(30),
+    status = "📥 回复",
+    responsePreview = brainContent.take(30),
+    timestamp = System.currentTimeMillis()
+))
+// 同步写BrainMemoryManager记忆
+if (BrainMemoryManager.getConfig().enabled && userMsg.isNotBlank() && brainContent.isNotBlank()) {
+    BrainMemoryManager.addMemory(content = "用户: $userMsg", title = userMsg.take(40))
+    BrainMemoryManager.addMemory(content = "AI: $brainContent", title = brainContent.take(40))
+}
+
+// ★ 解析脑子返回的响应（直接输出脑子回复，不透传） ★
+if (brainContent.isNotBlank()) {
+    if (stream) {
                                         val chunkId = "chatcmpl-brain-${UUID.randomUUID().toString().take(8)}"
                                         val created = System.currentTimeMillis() / 1000
                                         call.respondBytesWriter(contentType = ContentType.Text.EventStream) {

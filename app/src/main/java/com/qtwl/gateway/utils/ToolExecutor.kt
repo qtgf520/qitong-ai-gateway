@@ -125,24 +125,31 @@ object ToolExecutor {
                 "✅ 已启动流水线接力测速，约20秒完成一轮"
             }
             is ToolAction.StartSingleTest -> {
-                // 单模型测试（需要指定模型）
-                "⚠️ 请指定模型名称，例如：测试Claude模型"
-            }
-            is ToolAction.ForceModel -> {
-                GatewayForegroundService.saveForcedModel(action.modelId)
-                GatewayForegroundService.addDebugLog("🔄 AI切换模型 → ${action.modelId}")
-                "✅ 已强制指定模型为: ${action.modelId}"
-            }
-            is ToolAction.SwitchPrevModel -> {
-                val switched = switchModel(-1)
-                if (switched.isNotBlank()) GatewayForegroundService.addDebugLog("🔄 AI切换模型 ← 上一个: $switched")
-                "✅ 已切换到上一个模型"
-            }
-            is ToolAction.SwitchNextModel -> {
-                val switched = switchModel(1)
-                if (switched.isNotBlank()) GatewayForegroundService.addDebugLog("🔄 AI切换模型 → 下一个: $switched")
-                "✅ 已切换到下一个模型"
-            }
+    // 单模型测试（需要指定模型）
+    "⚠️ 请指定模型名称，例如：测试Claude模型"
+}
+is ToolAction.ForceModel -> {
+    GatewayForegroundService.saveForcedModel(action.modelId)
+    GatewayForegroundService.activeNodeName = action.modelId // ★ 通知栏立刻显示新模型
+    GatewayForegroundService.addDebugLog("🔄 AI切换模型 → ${action.modelId}")
+    "✅ 已强制指定模型为: ${action.modelId}"
+}
+is ToolAction.SwitchPrevModel -> {
+    val switched = switchModel(-1)
+    if (switched.isNotBlank()) {
+        GatewayForegroundService.activeNodeName = switched // ★ 通知栏立刻显示新模型
+        GatewayForegroundService.addDebugLog("🔄 AI切换模型 ← 上一个: $switched")
+    }
+    "✅ 已切换到上一个模型"
+}
+is ToolAction.SwitchNextModel -> {
+    val switched = switchModel(1)
+    if (switched.isNotBlank()) {
+        GatewayForegroundService.activeNodeName = switched // ★ 通知栏立刻显示新模型
+        GatewayForegroundService.addDebugLog("🔄 AI切换模型 → 下一个: $switched")
+    }
+    "✅ 已切换到下一个模型"
+}
             is ToolAction.EnableAutoFailover -> {
                 if (!GatewayForegroundService.getAutoFailover()) {
                     GatewayForegroundService.saveAutoFailover(true)

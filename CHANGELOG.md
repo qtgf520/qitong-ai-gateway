@@ -2,9 +2,16 @@
 
 > 包名：com.qtwl.gateway
 > 签名证书：qitong.jks (别名: qitong)
-> 最后更新：2026-07-07
+> 最后更新：2026-07-08
 
 ---
+
+## 🔄 v3.7.3（正式发布）
+### 🔥 qtai-sj统计修复 + 通知栏实时更新
+- 🆕 **通知栏同步模型切换** — 【指令:xxx】切换模型时，`activeNodeName` 立即更新，通知栏实时显示当前模型
+- 🆕 **qtai-sj Token统计补全** — 脑子模型返回的 `usage` 正确累加 `tokenPromptInput`/`tokenCompletionOutput`
+- 🆕 **qtai-sj记忆绑定** — 脑子回复内容同步写入 `BrainMemoryManager`（用户/AI 对话记忆）
+- 🔧 修复 v3.6.8 引入的问题：qtai-sj 路径跳过了数据统计和记忆写入
 
 ## 🔄 v3.7.2（正式发布）
 ### 🛡️ 代码审查全面修复 + API密钥验证 + 访问日志
