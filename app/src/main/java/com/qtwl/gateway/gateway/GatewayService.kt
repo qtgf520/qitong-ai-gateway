@@ -74,7 +74,19 @@ class GatewayService(private val database: AppDatabase) {
             routing {
                 // 健康检查
                 get("/health") {
-                    call.respondText("OK", ContentType.Text.Plain)
+                    val running = GatewayForegroundService.isServiceRunning
+                    val port = GatewayForegroundService.getGatewayPort()
+                    val failover = GatewayForegroundService.getAutoFailover()
+                    val healthJson = buildJsonObject {
+                        put("status", JsonPrimitive("ok"))
+                        put("service", JsonPrimitive("qitong-ai-gateway"))
+                        put("version", JsonPrimitive("3.7.1"))
+                        put("running", JsonPrimitive(running))
+                        put("port", JsonPrimitive(port))
+                        put("failover", JsonPrimitive(failover))
+                        put("models_count", JsonPrimitive(database.aiModelDao().getEnabledModelsList().size))
+                    }
+                    call.respondText(healthJson.toString(), ContentType.Application.Json.withCharset(Charsets.UTF_8))
                 }
 
                 // 获取模型列表 (OpenAI Compatible)
@@ -245,8 +257,8 @@ private fun makeChatCompletionResponse(modelId: String, content: String, stream:
         })))
         put("usage", buildJsonObject {
             put("prompt_tokens", JsonPrimitive(0))
-            put("completion_tokens", JsonPrimitive(0))
-            put("total_tokens", JsonPrimitive(0))
+            put("completion_tokens", JsonPrimitive(content.length))
+            put("total_tokens", JsonPrimitive(content.length))
         })
     }.toString()
 }
@@ -320,9 +332,23 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
             val userMsg = try {
                 val msgs = requestJson?.get("messages")?.jsonArray
                 if (msgs != null && msgs.isNotEmpty()) {
-                    msgs.lastOrNull {
+                    val lastUserMsg = msgs.lastOrNull {
                         it?.jsonObject?.get("role")?.jsonPrimitive?.content == "user"
-                    }?.jsonObject?.get("content")?.jsonPrimitive?.content ?: ""
+                    }?.jsonObject
+                    if (lastUserMsg != null) {
+                        val contentElem = lastUserMsg["content"]
+                        if (contentElem is JsonPrimitive) {
+                            contentElem.content
+                        } else if (contentElem is JsonArray) {
+                            // ★ 多模态消息：提取所有文本拼接
+                            contentElem.mapNotNull { part ->
+                                val obj = part?.jsonObject
+                                if (obj?.get("type")?.jsonPrimitive?.content == "text") {
+                                    obj["text"]?.jsonPrimitive?.content
+                                } else null
+                            }.joinToString(" ")
+                        } else ""
+                    } else ""
                 } else ""
             } catch (_: Exception) { "" }
             
@@ -357,7 +383,7 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
                                         put("finish_reason", JsonNull)
                                     })))
                                 })
-                                writeFully((roleChunk + "\n\n").toByteArray())
+                                writeFully(("data: $roleChunk\n\n").toByteArray())
                                 // ★★ 一次性输出全部结果，不再逐字delay ★★
                                 val contentChunk = proxyJson.encodeToString(buildJsonObject {
                                     put("id", JsonPrimitive(chunkId))
@@ -483,7 +509,7 @@ $rankingInfo
                                                     put("finish_reason", JsonNull)
                                                 })))
                                             })
-                                            writeFully((roleChunk + "\n\n").toByteArray())
+                                            writeFully(("data: $roleChunk\n\n").toByteArray())
                                             val contentChunk = proxyJson.encodeToString(buildJsonObject {
                                                 put("id", JsonPrimitive(chunkId))
                                                 put("object", JsonPrimitive("chat.completion.chunk"))
