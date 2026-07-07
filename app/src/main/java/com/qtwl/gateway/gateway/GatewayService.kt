@@ -428,20 +428,26 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
                                     }
                                     "  ${i+1}. $id ($displayName) $tags"
                                 }.joinToString("\n")
-                            val brainPrompt = """输出JSON。规则：
-1. 用户要图片/视频/音频→ {"action":"forceModel","params":{"modelId":"模型ID"}}，只选带🎨的
-2. 用户要处理图片/文档→ 只选带👁️的
-3. 普通操作指令→ {"action":"指令名"}
-4. 其他→ {"action":"chat"}
+                            val brainPrompt = """你叫${customName.ifBlank { "綦小桐" }}，是綦桐AI网关的智能助手。你拥有完整的思考能力和网关控制能力。
 
-排行榜(能力标记:🎨图片 🛠️工具 👁️视觉 💬聊天):
+你可以做以下事情：
+1. **智能聊天** — 像真人一样自由对话，理解用户的意图
+2. **控制网关** — 切换模型、查状态、测速、开关故障转移等
+3. **推荐模型** — 根据用户需求推荐最合适的模型
+
+当前可用模型排行：
 $rankingInfo
 
-指令: startPipelineTest, toggleAutoFailover, toggleQtaiSj, queryStatus, queryRanking, forceModel, switchPrev, switchNext
+能力标记：🎨图片生成 🛠️工具调用 👁️视觉识别 💬纯文本聊天
 
-只输出JSON，不要任何其他文字。"""
-                        
-                            val brainBody = """{"model":"${brainModel.modelId}","messages":[{"role":"system","content":${proxyJson.encodeToString(JsonPrimitive(brainPrompt))}},{"role":"user","content":${proxyJson.encodeToString(JsonPrimitive(userMsg))}}],"max_tokens":300,"stream":false,"temperature":0.01}"""
+控制指令格式：
+- 切换模型 → 执行切换（用排行榜中的模型ID）
+- 查状态/排行 → 执行查询
+- 其他聊天 → 自由回复
+
+记住：你是${customName.ifBlank { "綦小桐" }}，要有自己的思考和个性，像真人一样回复用户。如果需要执行网关操作，在回复末尾加上【指令:xxx】。"""
+
+                            val brainBody = """{"model":"${brainModel.modelId}","messages":[{"role":"system","content":${proxyJson.encodeToString(JsonPrimitive(brainPrompt))}},{"role":"user","content":${proxyJson.encodeToString(JsonPrimitive(userMsg))}}],"max_tokens":500,"stream":false,"temperature":0.7}"""
                         
                             try {
                                 val brainClient = okhttp3.OkHttpClient.Builder()
@@ -460,63 +466,62 @@ $rankingInfo
                                 val brainJson = try { proxyJson.parseToJsonElement(brainBodyStr).jsonObject } catch (_: Exception) { null }
                                 val brainContent = brainJson?.get("choices")?.jsonArray?.firstOrNull()?.jsonObject?.get("message")?.jsonObject?.get("content")?.jsonPrimitive?.content ?: ""
                             
-                                // ★ 解析脑子返回的JSON ★
-                                val brainAction = try {
-                                    val actionJson = proxyJson.parseToJsonElement(brainContent).jsonObject
-                                    actionJson["action"]?.jsonPrimitive?.content
-                                } catch (_: Exception) { null }
-                                if (brainAction != null && brainAction != "chat") {
-                                    // ★ 脑子识别为网关指令 → 执行对应操作 ★
-                                    val brainResult = when (brainAction) {
-                                        "startPipelineTest" -> "✅ 已启动流水线测速"
-                                        "toggleAutoFailover" -> { GatewayForegroundService.saveAutoFailover(!GatewayForegroundService.getAutoFailover()); "✅ 故障转移已${if (GatewayForegroundService.getAutoFailover()) "开启" else "关闭"}" }
-                                        "toggleQtaiSj" -> { GatewayForegroundService.saveQtaiSjEnabled(!GatewayForegroundService.getQtaiSjEnabled()); "✅ qtai-sj已${if (GatewayForegroundService.getQtaiSjEnabled()) "开启" else "关闭"}" }
-                                        "queryStatus" -> { val r = GatewayForegroundService.isServiceRunning; val p = GatewayForegroundService.getGatewayPort(); "📊 网关${if (r) "运行中" else "已停止"} | 端口: $p" }
-                                        "queryRanking" -> { if (GatewayScheduler.pipelineSortedModelIds.isEmpty()) "⚠️ 暂无测速数据" else "📈 排行: ${GatewayScheduler.pipelineSortedModelIds.joinToString(" → ")}" }
-                                        "forceModel" -> { 
-                                        val actionJson = try { proxyJson.parseToJsonElement(brainContent).jsonObject } catch (_: Exception) { null }
-                                        val m = actionJson?.get("params")?.jsonObject?.get("modelId")?.jsonPrimitive?.content
-                                        if (m != null) { GatewayForegroundService.saveForcedModel(m); "✅ 已切换到: $m" } else "⚠️ 请指定模型名" 
-                                    }
-                                        "switchPrev" -> { ToolExecutor.execute(ToolAction.SwitchPrevModel, null); "✅ 已切换上一个" }
-                                        "switchNext" -> { ToolExecutor.execute(ToolAction.SwitchNextModel, null); "✅ 已切换下一个" }
-                                        else -> null
-                                    }
-                                    
-                                    if (brainResult != null) {
-                                        val respText = if (stream) brainResult else brainResult
-                                        if (stream) {
-                                            // SSE输出
-                                            call.respondBytesWriter(contentType = ContentType.Text.EventStream) {
-                                                val chunkId = "chatcmpl-brain-${UUID.randomUUID().toString().take(8)}"
-                                                val created = System.currentTimeMillis() / 1000
-                                                for (char in respText) {
-                                                    val chunk = proxyJson.encodeToString(buildJsonObject {
-                                                        put("id", JsonPrimitive(chunkId))
-                                                        put("object", JsonPrimitive("chat.completion.chunk"))
-                                                        put("created", JsonPrimitive(created))
-                                                        put("model", JsonPrimitive("qtai-sj"))
-                                                        put("choices", JsonArray(listOf(buildJsonObject {
-                                                            put("index", JsonPrimitive(0))
-                                                            put("delta", buildJsonObject { put("content", JsonPrimitive(char.toString())) })
-                                                            put("finish_reason", JsonNull)
-                                                        })))
-                                                    })
-                                                    writeFully(("data: $chunk\n\n").toByteArray())
-                                                    delay(20)
-                                                }
-                                                writeFully("data: [DONE]\n\n".toByteArray())
-                                            }
-                                        } else {
-                                            call.respondText(contentType = ContentType.Application.Json.withCharset(Charsets.UTF_8), text = makeChatCompletionResponse("qtai-sj", respText, false))
+                                // ★ 解析脑子返回的响应（直接输出脑子回复，不透传） ★
+                                if (brainContent.isNotBlank()) {
+                                    if (stream) {
+                                        val chunkId = "chatcmpl-brain-${UUID.randomUUID().toString().take(8)}"
+                                        val created = System.currentTimeMillis() / 1000
+                                        call.respondBytesWriter(contentType = ContentType.Text.EventStream) {
+                                            val roleChunk = proxyJson.encodeToString(buildJsonObject {
+                                                put("id", JsonPrimitive(chunkId))
+                                                put("object", JsonPrimitive("chat.completion.chunk"))
+                                                put("created", JsonPrimitive(created))
+                                                put("model", JsonPrimitive("qtai-sj"))
+                                                put("choices", JsonArray(listOf(buildJsonObject {
+                                                    put("index", JsonPrimitive(0))
+                                                    put("delta", buildJsonObject { put("role", JsonPrimitive("assistant")) })
+                                                    put("finish_reason", JsonNull)
+                                                })))
+                                            })
+                                            writeFully((roleChunk + "\n\n").toByteArray())
+                                            val contentChunk = proxyJson.encodeToString(buildJsonObject {
+                                                put("id", JsonPrimitive(chunkId))
+                                                put("object", JsonPrimitive("chat.completion.chunk"))
+                                                put("created", JsonPrimitive(created))
+                                                put("model", JsonPrimitive("qtai-sj"))
+                                                put("choices", JsonArray(listOf(buildJsonObject {
+                                                    put("index", JsonPrimitive(0))
+                                                    put("delta", buildJsonObject { put("content", JsonPrimitive(brainContent)) })
+                                                    put("finish_reason", JsonNull)
+                                                })))
+                                            })
+                                            writeFully(("data: $contentChunk\n\n").toByteArray())
+                                            val stopChunk = proxyJson.encodeToString(buildJsonObject {
+                                                put("id", JsonPrimitive(chunkId))
+                                                put("object", JsonPrimitive("chat.completion.chunk"))
+                                                put("created", JsonPrimitive(created))
+                                                put("model", JsonPrimitive("qtai-sj"))
+                                                put("choices", JsonArray(listOf(buildJsonObject {
+                                                    put("index", JsonPrimitive(0))
+                                                    put("delta", buildJsonObject {})
+                                                    put("finish_reason", JsonPrimitive("stop"))
+                                                })))
+                                            })
+                                            writeFully(("data: $stopChunk\n\n").toByteArray())
+                                            writeFully("data: [DONE]\n\n".toByteArray())
                                         }
-                                        return
+                                    } else {
+                                        call.respondText(contentType = ContentType.Application.Json.withCharset(Charsets.UTF_8), text = makeChatCompletionResponse("qtai-sj", brainContent, false))
                                     }
-                                }
-                                // ★ 脑子说不是指令 → 清除强制模型走正常路由
-                                // ★★ 不扫描文字切换模型，避免误设强制模型 ★★
-                                if (GatewayForegroundService.getForcedModel().isNotBlank()) {
-                                    GatewayForegroundService.saveForcedModel("")
+                                    // ★★ 检查脑子回复中是否有指令需要执行 ★★
+                                    val cmdMatch = Regex("【指令:(.+?)】").find(brainContent)
+                                    if (cmdMatch != null) {
+                                        val cmdText = cmdMatch.groupValues[1]
+                                        val cmdActions = ToolExecutor.parseCommand(cmdText)
+                                        cmdActions.forEach { action -> ToolExecutor.execute(action, null) }
+                                        GatewayForegroundService.addDebugLog("🧠 执行脑子指令: $cmdText")
+                                    }
+                                    return
                                 }
                             } catch (_: Exception) { /* 脑子模型失败 */ }
                         }
