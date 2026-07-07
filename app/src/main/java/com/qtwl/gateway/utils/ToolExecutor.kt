@@ -26,41 +26,37 @@ object ToolExecutor {
             }
         }
         
-        val modelKeywords = mapOf(
-            "claude" to "claude",
-            "gemini" to "gemini",
-            "gpt" to "gpt",
-            "deepseek" to "deepseek",
-            "qw" to "qw",
-            "通义" to "通义",
-            "openai" to "openai",
-            "groq" to "groq",
-            "ollama" to "ollama"
-        )
-        for ((keyword, modelId) in modelKeywords) {
-            if (lower.contains(keyword)) {
-                actions.add(ToolAction.ForceModel(modelId))
-                break
-            }
-        }
-        
-        // 切换指定模型ID — 支持"切换 step-3.7-flash", "切换 google/diffusiongemma-26b"等
+        // ★ 第一步：先精确匹配完整模型ID，避免被关键词简写抢跑
         val switchModelRegex = Regex("切换(?:至|到|\\s+)?\\s+([\\w./-]+)")
         val switchModelMatch = switchModelRegex.find(lower)
         if (switchModelMatch != null) {
             val targetModelId = switchModelMatch.groupValues[1]
-            if (targetModelId !in modelKeywords.values) {
-                actions.add(ToolAction.ForceModel(targetModelId))
-            }
+            actions.add(ToolAction.ForceModel(targetModelId))
+            return actions
         }
         
-        // 数字编号切换 — 支持"切1"、"2"等
+        // ★ 第二步：数字编号切换
         val numRegex = Regex("(?:切|切换)?\\s*(\\d+)\\s*$")
         val numMatch = numRegex.find(text.trim())
         if (numMatch != null) {
             val num = numMatch.groupValues[1].toIntOrNull()
             if (num != null && num > 0 && num <= GatewayScheduler.pipelineSortedModelIds.size) {
                 actions.add(ToolAction.ForceModel(GatewayScheduler.pipelineSortedModelIds[num - 1]))
+                return actions
+            }
+        }
+        
+        // ★ 第三步：关键词模糊匹配（在排行榜中搜索完整模型ID）
+        val modelKeywords = listOf("claude", "gemini", "gpt", "deepseek", "qwen", "通义", "llama", "mistral", "kimi", "moonshot", "step", "qw")
+        for (keyword in modelKeywords) {
+            if (lower.contains(keyword)) {
+                val matched = GatewayScheduler.pipelineSortedModelIds.firstOrNull {
+                    it.contains(keyword, ignoreCase = true)
+                }
+                if (matched != null) {
+                    actions.add(ToolAction.ForceModel(matched))
+                    break
+                }
             }
         }
         

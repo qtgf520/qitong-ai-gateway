@@ -341,5 +341,14 @@ val trafficDownloadBytes = java.util.concurrent.atomic.AtomicLong(0L)
         fun stop() {
             GatewayApplication.getInstance().stopService(Intent(GatewayApplication.getInstance(), GatewayForegroundService::class.java))
         }
+
+        // ★ API密钥验证配置
+        fun getRequireApiKey(): Boolean = getGatewayConfig("require_api_key", "false").toBooleanStrictOrNull() ?: false
+        fun saveRequireApiKey(enabled: Boolean) = saveGatewayConfig("require_api_key", enabled.toString())
+        fun getAllowedApiKeys(): Set<String> {
+            val keysStr = getGatewayConfig("allowed_api_keys", "")
+            return keysStr.split(",").map { it.trim() }.filter { it.isNotBlank() }.toSet()
+        }
+        fun saveAllowedApiKeys(keys: Set<String>) = saveGatewayConfig("allowed_api_keys", keys.joinToString(","))
     }
 }

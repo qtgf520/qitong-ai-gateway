@@ -1,7 +1,7 @@
 # 綦桐AI网关 | QiTong AI Gateway
 
 > **包名 / Package：** `com.qtwl.gateway`  
-> **最新版本 / Latest：** v3.6.6 (versionCode=87)  
+> **最新版本 / Latest：** v3.7.2 (versionCode=93)  
 > **开源协议 / License：** Apache 2.0  
 > **语言 / Languages：** 🌐 15 languages (CN/EN/JP/KR/FR/DE/ES/RU/PT/VN/TH/AR/HI/ID)
 > **官方QQ群 / QQ Group：** [1007488535](https://qm.qq.com/q/1007488535) 💬
@@ -122,6 +122,12 @@ See [CHANGELOG.md](CHANGELOG.md) for full changelog.
 
 | Version | Key Features |
 |:--------|:-------------|
+| v3.7.2 | 🛡️ 代码审查修复：API密钥验证+访问日志+健康检查完善 |
+| v3.7.1 | 🐛 豆包调试报告6项修复：SSE格式/500错误体/多模态 |
+| v3.7.0 | 🧑 人格名称全程脑子处理，自由对话智能体 |
+| v3.6.9 | 🏗️ 进程树重构：拆分GatewayScheduler调度层 |
+| v3.6.8 | ⚡ qtai-sj透传转发修复 |
+| v3.6.7 | ⚡ SSE流式卡顿修复+指定模型切换 |
 | v3.6.6 | 🧠 模型能力标记+脑子智能推荐+非chat路径修复 |
 | v3.6.5 | 🧠 全智能思考系统：脑子带排行榜分析，自动推荐模型并切换 |
 | v3.6.4 | 🧠 大脑记忆注入网关，记忆内容完整+短期补充 |

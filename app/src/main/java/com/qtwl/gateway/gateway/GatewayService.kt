@@ -72,7 +72,7 @@ class GatewayService(private val database: AppDatabase) {
 
         val embedded = embeddedServer(CIO, port = port) {
             routing {
-                // 健康检查
+                // 健康检查（不需要验证）
                 get("/health") {
                     val running = GatewayForegroundService.isServiceRunning
                     val port = GatewayForegroundService.getGatewayPort()
@@ -80,17 +80,25 @@ class GatewayService(private val database: AppDatabase) {
                     val healthJson = buildJsonObject {
                         put("status", JsonPrimitive("ok"))
                         put("service", JsonPrimitive("qitong-ai-gateway"))
-                        put("version", JsonPrimitive("3.7.1"))
+                        put("version", JsonPrimitive("3.7.2"))
                         put("running", JsonPrimitive(running))
                         put("port", JsonPrimitive(port))
                         put("failover", JsonPrimitive(failover))
                         put("models_count", JsonPrimitive(database.aiModelDao().getEnabledModelsList().size))
+                        put("uptime_seconds", JsonPrimitive((System.currentTimeMillis() - startTime) / 1000))
+                        put("log_entries", JsonPrimitive(synchronized(accessLog) { accessLog.size }))
+                        put("require_api_key", JsonPrimitive(GatewayForegroundService.getRequireApiKey()))
                     }
                     call.respondText(healthJson.toString(), ContentType.Application.Json.withCharset(Charsets.UTF_8))
                 }
 
                 // 获取模型列表 (OpenAI Compatible)
                 get("/v1/models") {
+                    if (!validateApiKey(call)) {
+                        val (s, b) = openAIError(HttpStatusCode.Unauthorized, "Invalid or missing API key", "invalid_api_key")
+                        call.respondText(contentType = ContentType.Application.Json, status = s, text = b)
+                        return@get
+                    }
                     try {
                         val models = database.aiModelDao().getEnabledModelsList()
                         val modelList = models.map { model ->
@@ -130,10 +138,33 @@ class GatewayService(private val database: AppDatabase) {
                 // === 通用代理转发：拦截所有 /v1/* 请求 ===
                 // ★★ 去掉了 runBlocking！Ktor 路由 handler 本身就在协程中
                 post("/v1/{path...}") {
+                    if (!validateApiKey(call)) {
+                        val (s, b) = openAIError(HttpStatusCode.Unauthorized, "Invalid or missing API key", "invalid_api_key")
+                        call.respondText(contentType = ContentType.Application.Json, status = s, text = b)
+                        return@post
+                    }
                     proxyRequest(call, database)
                 }
                 get("/v1/{path...}") {
+                    if (!validateApiKey(call)) {
+                        val (s, b) = openAIError(HttpStatusCode.Unauthorized, "Invalid or missing API key", "invalid_api_key")
+                        call.respondText(contentType = ContentType.Application.Json, status = s, text = b)
+                        return@get
+                    }
                     proxyRequest(call, database)
+                }
+                // 访问日志（需要API密钥验证）
+                get("/v1/logs") {
+                    if (!validateApiKey(call)) {
+                        val (s, b) = openAIError(HttpStatusCode.Unauthorized, "Invalid or missing API key", "invalid_api_key")
+                        call.respondText(contentType = ContentType.Application.Json, status = s, text = b)
+                        return@get
+                    }
+                    val logs = synchronized(accessLog) { accessLog.toList() }
+                    val logJson = proxyJson.encodeToString(buildJsonObject {
+                        put("total", JsonPrimitive(logs.size))
+                    })
+                    call.respondText(logJson, ContentType.Application.Json.withCharset(Charsets.UTF_8))
                 }
             }
         }
@@ -151,6 +182,37 @@ class GatewayService(private val database: AppDatabase) {
 // ================== 通用代理转发核心 ==================
 
 /** 智能故障转移：模型健康状态缓存 */
+
+// ★ API密钥验证 + 访问日志（顶层，供proxyRequest使用）
+private val startTime = System.currentTimeMillis()
+private val accessLog = mutableListOf<Map<String, Any>>()
+private const val logMaxSize = 1000
+
+private fun validateApiKey(call: ApplicationCall): Boolean {
+    val requireKey = GatewayForegroundService.getRequireApiKey()
+    if (!requireKey) return true
+    val authHeader = call.request.headers["Authorization"]
+    if (authHeader.isNullOrBlank()) return false
+    val apiKey = authHeader.removePrefix("Bearer ").trim()
+    val allowedKeys = GatewayForegroundService.getAllowedApiKeys()
+    return apiKey in allowedKeys
+}
+
+private fun logAccess(call: ApplicationCall, modelId: String, statusCode: Int, durationMs: Long) {
+    val entry = mapOf<String, Any>(
+        "time" to System.currentTimeMillis(),
+        "ip" to (call.request.local.remoteHost ?: ""),
+        "method" to (call.request.httpMethod.value ?: ""),
+        "path" to (call.parameters.getAll("path")?.joinToString("/") ?: ""),
+        "model" to modelId,
+        "status" to statusCode,
+        "duration_ms" to durationMs
+    )
+    synchronized(accessLog) {
+        accessLog.add(entry)
+        if (accessLog.size > logMaxSize) accessLog.removeAt(0)
+    }
+}
 
 private val proxyJson = Json { ignoreUnknownKeys = true; prettyPrint = false }
 private val DEFAULT_CT = "application/json".toMediaType()
@@ -222,6 +284,28 @@ private fun openAIError(status: HttpStatusCode, message: String, type: String = 
     return status to errorJson.toString()
 }
 
+/**
+ * 从消息content中提取纯文本（支持字符串和多模态数组）
+ */
+private fun extractTextContent(content: kotlinx.serialization.json.JsonElement?): String {
+    if (content == null) return ""
+    return try {
+        content.jsonPrimitive.content
+    } catch (_: Exception) {
+        try {
+            val array = content.jsonArray
+            array.joinToString("\n") { part ->
+                try {
+                    val obj = part.jsonObject
+                    if (obj["type"]?.jsonPrimitive?.content == "text") {
+                        obj["text"]?.jsonPrimitive?.content ?: ""
+                    } else ""
+                } catch (_: Exception) { "" }
+            }.trim()
+        } catch (_: Exception) { "" }
+    }
+}
+
 /** 生成 OpenAI 标准 chat.completion 响应（用于回退/测试） */
 private fun makeChatCompletionResponse(modelId: String, content: String, stream: Boolean = false): String {
     val id = "chatcmpl-${UUID.randomUUID().toString().take(8)}"
@@ -283,14 +367,15 @@ private fun recordSessionModel(call: ApplicationCall, modelId: String) {
 
 /** ★ 获取会话标识（优先用 API Key，其次用客户端IP） */
 private fun getSessionKey(call: ApplicationCall): String {
-    // 用 Authorization header 作为会话标识（同一 API Key 视为同一用户）
-    val auth = call.request.headers["Authorization"]
-    if (!auth.isNullOrBlank()) return auth.take(20)
-    // 用客户端 IP
-    val ip = call.request.local.remoteHost
-    if (ip.isNotBlank()) return "ip:$ip"
-    return ""
-}
+        val auth = call.request.headers["Authorization"]
+        if (!auth.isNullOrBlank()) {
+            val key = auth.removePrefix("Bearer ").trim()
+            return "auth:${key.hashCode()}"
+        }
+        val ip = call.request.local.remoteHost
+        if (ip.isNotBlank()) return "ip:$ip"
+        return "unknown:${UUID.randomUUID().toString().take(8)}"
+    }
 
 /**
  * 通用代理转发：读取请求体 → 查找模型(如果是chat请求) → 转发到上游 → 管道式流回客户端
@@ -300,6 +385,7 @@ private fun getSessionKey(call: ApplicationCall): String {
  */
 private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
     // 1. 读取原始请求体（二进制，兼容所有 Content-Type）
+    val startMs = System.currentTimeMillis()
     val rawBytes = call.receive<ByteArray>()
     val requestBodyStr = String(rawBytes, Charsets.UTF_8)
 
@@ -335,20 +421,7 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
                     val lastUserMsg = msgs.lastOrNull {
                         it?.jsonObject?.get("role")?.jsonPrimitive?.content == "user"
                     }?.jsonObject
-                    if (lastUserMsg != null) {
-                        val contentElem = lastUserMsg["content"]
-                        if (contentElem is JsonPrimitive) {
-                            contentElem.content
-                        } else if (contentElem is JsonArray) {
-                            // ★ 多模态消息：提取所有文本拼接
-                            contentElem.mapNotNull { part ->
-                                val obj = part?.jsonObject
-                                if (obj?.get("type")?.jsonPrimitive?.content == "text") {
-                                    obj["text"]?.jsonPrimitive?.content
-                                } else null
-                            }.joinToString(" ")
-                        } else ""
-                    } else ""
+                    extractTextContent(lastUserMsg?.get("content"))
                 } else ""
             } catch (_: Exception) { "" }
             
@@ -423,13 +496,14 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
                                     put("finish_reason", JsonPrimitive("stop"))
                                 })))
                                 put("usage", buildJsonObject {
-                                    put("prompt_tokens", JsonPrimitive(0))
-                                    put("completion_tokens", JsonPrimitive(results.length))
-                                    put("total_tokens", JsonPrimitive(results.length))
+                                    put("prompt_tokens", JsonPrimitive(userMsg.length / 4))
+                                    put("completion_tokens", JsonPrimitive(results.length / 4))
+                                    put("total_tokens", JsonPrimitive((userMsg.length + results.length) / 4))
                                 })
                             }
                             call.respondText(contentType = ContentType.Application.Json.withCharset(Charsets.UTF_8), text = toolResponse.toString())
                         }
+                        logAccess(call, "qtai-sj", 200, System.currentTimeMillis() - startMs)
                         return
                     }
                 
@@ -537,7 +611,27 @@ $rankingInfo
                                             writeFully("data: [DONE]\n\n".toByteArray())
                                         }
                                     } else {
-                                        call.respondText(contentType = ContentType.Application.Json.withCharset(Charsets.UTF_8), text = makeChatCompletionResponse("qtai-sj", brainContent, false))
+                                        val brainUsage = brainJson?.get("usage")?.jsonObject
+                                        val promptTokens = brainUsage?.get("prompt_tokens")?.jsonPrimitive?.content?.toIntOrNull() ?: (brainPrompt.length / 4)
+                                        val completionTokens = brainUsage?.get("completion_tokens")?.jsonPrimitive?.content?.toIntOrNull() ?: (brainContent.length / 4)
+                                        val totalTokens = brainUsage?.get("total_tokens")?.jsonPrimitive?.content?.toIntOrNull() ?: (promptTokens + completionTokens)
+                                        val resp = buildJsonObject {
+                                            put("id", JsonPrimitive("chatcmpl-brain-${UUID.randomUUID().toString().take(8)}"))
+                                            put("object", JsonPrimitive("chat.completion"))
+                                            put("created", JsonPrimitive(System.currentTimeMillis() / 1000))
+                                            put("model", JsonPrimitive("qtai-sj"))
+                                            put("choices", JsonArray(listOf(buildJsonObject {
+                                                put("index", JsonPrimitive(0))
+                                                put("message", buildJsonObject { put("role", JsonPrimitive("assistant")); put("content", JsonPrimitive(brainContent)) })
+                                                put("finish_reason", JsonPrimitive("stop"))
+                                            })))
+                                            put("usage", buildJsonObject {
+                                                put("prompt_tokens", JsonPrimitive(promptTokens))
+                                                put("completion_tokens", JsonPrimitive(completionTokens))
+                                                put("total_tokens", JsonPrimitive(totalTokens))
+                                            })
+                                        }
+                                        call.respondText(contentType = ContentType.Application.Json.withCharset(Charsets.UTF_8), text = resp.toString())
                                     }
                                     // ★★ 检查脑子回复中是否有指令需要执行 ★★
                                     val cmdMatch = Regex("【指令:(.+?)】").find(brainContent)
@@ -561,8 +655,22 @@ $rankingInfo
             // 找最适合的模型
             val allEnabledModels = database.aiModelDao().getEnabledModelsList().filter { it.isEnabled }
             val forced = GatewayForegroundService.getForcedModel()
+            // ★ 检测是否有多模态图片内容
+            val hasImage = requestJson?.get("messages")?.jsonArray?.any { msg ->
+                try {
+                    val content = msg?.jsonObject?.get("content")
+                    content is JsonArray && content.any { part ->
+                        part?.jsonObject?.get("type")?.jsonPrimitive?.content == "image_url"
+                    }
+                } catch (_: Exception) { false }
+            } ?: false
             val bestModel = if (forced.isNotBlank()) {
                 allEnabledModels.find { it.modelId == forced }
+            } else if (hasImage) {
+                allEnabledModels.firstOrNull { ModelCapabilityManager.getCapabilities(it.modelId).second }
+                    ?: GatewayScheduler.pipelineSortedModelIds.firstNotNullOfOrNull { id ->
+                        allEnabledModels.find { it.modelId == id && ModelCapabilityManager.getCapabilities(it.modelId).second }
+                    }
             } else null
             val targetModel = bestModel ?: GatewayScheduler.pipelineSortedModelIds.firstNotNullOfOrNull { id -> 
                 allEnabledModels.find { it.modelId == id } 
