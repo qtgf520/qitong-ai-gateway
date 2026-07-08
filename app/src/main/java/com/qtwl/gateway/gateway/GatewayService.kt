@@ -80,7 +80,7 @@ class GatewayService(private val database: AppDatabase) {
                     val healthJson = buildJsonObject {
                         put("status", JsonPrimitive("ok"))
                         put("service", JsonPrimitive("qitong-ai-gateway"))
-                        put("version", JsonPrimitive("3.7.2"))
+                        put("version", JsonPrimitive("3.7.4"))
                         put("running", JsonPrimitive(running))
                         put("port", JsonPrimitive(port))
                         put("failover", JsonPrimitive(failover))
@@ -436,6 +436,10 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
                     // ★★ 先尝试硬指令匹配 ★★
                     val actions = ToolExecutor.parseCommand(actualCmd)
                     if (actions.isNotEmpty()) {
+                        // ★★★ qtai-sj工具指令统计：上传流量+模型名 ★★★
+                        GatewayForegroundService.trafficUploadBytes.addAndGet(rawBytes.size.toLong())
+                        GatewayForegroundService.activeNodeName = "qtai-sj"
+                        GatewayScheduler.recordModelUsage("qtai-sj")
                         val results = actions.map { action ->
                             ToolExecutor.execute(action, null)
                         }.joinToString("\n")

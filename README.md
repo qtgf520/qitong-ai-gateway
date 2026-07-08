@@ -1,7 +1,7 @@
 # 綦桐AI网关 | QiTong AI Gateway
 
 > **包名 / Package：** `com.qtwl.gateway`  
-> **最新版本 / Latest：** v3.7.3 (versionCode=94)  
+> **最新版本 / Latest：** v3.7.4 (versionCode=95)  
 > **开源协议 / License：** Apache 2.0  
 > **语言 / Languages：** 🌐 15 languages (CN/EN/JP/KR/FR/DE/ES/RU/PT/VN/TH/AR/HI/ID)
 > **官方QQ群 / QQ Group：** [1007488535](https://qm.qq.com/q/1007488535) 💬
@@ -122,6 +122,7 @@ See [CHANGELOG.md](CHANGELOG.md) for full changelog.
 
 | Version | Key Features |
 |:--------|:-------------|
+| v3.7.4 | 🚀 修复总输入为0 + 全路径统计覆盖 |
 | v3.7.3 | 🔥 qtai-sj统计修复 + 通知栏实时更新 |
 | v3.7.2 | 🛡️ 代码审查修复：API密钥验证+访问日志+健康检查完善 |
 | v3.7.1 | 🐛 豆包调试报告6项修复：SSE格式/500错误体/多模态 |
