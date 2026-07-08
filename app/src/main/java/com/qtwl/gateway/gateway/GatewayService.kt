@@ -684,6 +684,8 @@ if (brainContent.isNotBlank()) {
             // 找最适合的模型
             val allEnabledModels = database.aiModelDao().getEnabledModelsList().filter { it.isEnabled }
             val forced = GatewayForegroundService.getForcedModel()
+            // ★ 如果强制模型是qtai-sj（虚拟模型），用上一次切换的模型或排行榜
+            val effectiveForced = if (forced == "qtai-sj") GatewayForegroundService.activeNodeName.ifBlank { null } else forced.ifBlank { null }
             // ★ 检测是否有多模态图片内容
             val hasImage = requestJson?.get("messages")?.jsonArray?.any { msg ->
                 try {
@@ -693,8 +695,8 @@ if (brainContent.isNotBlank()) {
                     }
                 } catch (_: Exception) { false }
             } ?: false
-            val bestModel = if (forced.isNotBlank()) {
-                allEnabledModels.find { it.modelId == forced }
+            val bestModel = if (!effectiveForced.isNullOrBlank()) {
+                allEnabledModels.find { it.modelId == effectiveForced }
             } else if (hasImage) {
                 allEnabledModels.firstOrNull { ModelCapabilityManager.getCapabilities(it.modelId).second }
                     ?: GatewayScheduler.pipelineSortedModelIds.firstNotNullOfOrNull { id ->
