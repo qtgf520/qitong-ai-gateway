@@ -1513,28 +1513,29 @@ fun getDisplayModelName(model: AiModel): String {
 
 // 2. 获取服务商信息
                     val provider = if (model.modelId == "qtai-sj") {
-                        // ★★ qtai-sj 直连通道：先检查强制模型，再用测速排行
-                        val forcedModelId = GatewayForegroundService.getForcedModel()
-                        if (forcedModelId.isNotBlank()) {
-                            val bestModels = database.aiModelDao().getEnabledModelsList()
-                            val forcedModel = bestModels.find { it.modelId == forcedModelId }
-                            if (forcedModel != null) {
-                                database.providerDao().getProviderById(forcedModel.providerId)
-                            } else null
-                        } else {
-                            val sortedIds = com.qtwl.gateway.gateway.GatewayScheduler.pipelineSortedModelIds
-                            if (sortedIds.isNotEmpty()) {
-                                val bestId = sortedIds.first()
-                                val bestModels = database.aiModelDao().getEnabledModelsList()
-                                val bestModel = bestModels.find { it.modelId == bestId }
-                                if (bestModel != null) {
-                                    database.providerDao().getProviderById(bestModel.providerId)
-                                } else null
-                            } else null
-                        }
-                    } else {
-                        database.providerDao().getProviderById(model.providerId)
-                    }
+            // ★★ qtai-sj 直连通道：强制模型可能是"qtai-sj"（虚拟），改用 activeNodeName
+            val forcedModelId = GatewayForegroundService.getForcedModel()
+            val effectiveModelId = if (forcedModelId == "qtai-sj") GatewayForegroundService.activeNodeName else forcedModelId
+            if (effectiveModelId.isNotBlank()) {
+                val bestModels = database.aiModelDao().getEnabledModelsList()
+                val targetModel = bestModels.find { it.modelId == effectiveModelId }
+                if (targetModel != null) {
+                    database.providerDao().getProviderById(targetModel.providerId)
+                } else null
+            } else {
+                val sortedIds = com.qtwl.gateway.gateway.GatewayScheduler.pipelineSortedModelIds
+                if (sortedIds.isNotEmpty()) {
+                    val bestId = sortedIds.first()
+                    val bestModels = database.aiModelDao().getEnabledModelsList()
+                    val bestModel = bestModels.find { it.modelId == bestId }
+                    if (bestModel != null) {
+                        database.providerDao().getProviderById(bestModel.providerId)
+                    } else null
+                } else null
+            }
+        } else {
+            database.providerDao().getProviderById(model.providerId)
+        }
                     if (provider == null || !provider.isEnabled) {
                     _chatError.value = if (model.modelId == "qtai-sj") "⚠️ 请先启动测速获取可用模型排行" else "⚠️ 服务商不可用或已禁用"
                     _isSending.value = false
@@ -1543,19 +1544,19 @@ fun getDisplayModelName(model: AiModel): String {
 
 // ★★ qtai-sj 用强制模型ID或测速最优模型的实际ID ★★
                     val actualModelId = if (model.modelId == "qtai-sj") {
-                        val forcedModelId = GatewayForegroundService.getForcedModel()
-                        if (forcedModelId.isNotBlank()) forcedModelId
-                        else {
-                            // ★★ 会话记忆：优先用上次对话成功的模型 ★★
-                            val convModelId = _currentConversation.value?.modelId
-                            if (!convModelId.isNullOrBlank() && convModelId != "qtai-sj") {
-                                convModelId
-                            } else {
-                                val sortedIds = com.qtwl.gateway.gateway.GatewayScheduler.pipelineSortedModelIds
-                                if (sortedIds.isNotEmpty()) sortedIds.first() else model.modelId
-                            }
-                        }
-                    } else model.modelId
+            val forcedModelId = GatewayForegroundService.getForcedModel()
+            val effectiveModelId = if (forcedModelId == "qtai-sj") GatewayForegroundService.activeNodeName else forcedModelId
+            if (effectiveModelId.isNotBlank()) effectiveModelId
+            else {
+                val convModelId = _currentConversation.value?.modelId
+                if (!convModelId.isNullOrBlank() && convModelId != "qtai-sj") {
+                    convModelId
+                } else {
+                    val sortedIds = com.qtwl.gateway.gateway.GatewayScheduler.pipelineSortedModelIds
+                    if (sortedIds.isNotEmpty()) sortedIds.first() else model.modelId
+                }
+            }
+        } else model.modelId
 
                 // 3. 构造请求体
                 val messagesJson = buildMessagesJson(_currentMessages.value)

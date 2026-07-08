@@ -6,6 +6,12 @@
 
 ---
 
+## 🔄 v3.7.7（正式发布）
+### 🚀 qtai-sj无前缀转发修复 + 通知栏模型兼容
+- 🆕 **修复qtai-sj无前缀转发模型错误** — 有前缀脑子回复后不再覆盖 activeNodeName，确保无前缀转发走用户选中的真实模型（如deepseek-v4-flash）
+- 🆕 **统一ViewModel转发逻辑** — GatewayViewModel中qtai-sj路径均改用 activeNodeName 替代虚拟模型ID，避免查库失败
+- 🆕 **lastRealModel备份机制** — 用户切换qtai-sj时自动保存上一个真实模型，防止丢失
+
 ## 🔄 v3.7.6（正式发布）
 ### 🚀 qtai-sj无前缀转发修复 + 超时优化
 - 🆕 **修复qtai-sj无前缀不回复** — 选qtai-sj不喊綦小桐时，用 `activeNodeName`（已切换的真实模型）转发上游

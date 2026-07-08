@@ -189,6 +189,7 @@ class GatewayForegroundService : Service() {
         private const val KEY_QTAI_SJ_BRAIN = "qtai_sj_brain_model"
         private const val KEY_QTAI_SJ_NAME = "qtai_sj_name"
         private const val KEY_FORCED_MODEL = "forced_model"
+        private const val KEY_LAST_REAL_MODEL = "last_real_model"
         private const val EXTRA_TOGGLE_WAKE = "toggle_wake"
         private const val DEFAULT_PORT = 8889
         private const val DEFAULT_PROXY_PORT = 7890
@@ -291,9 +292,21 @@ val trafficDownloadBytes = java.util.concurrent.atomic.AtomicLong(0L)
     fun getQtaiSjName(): String = GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).getString(KEY_QTAI_SJ_NAME, "") ?: ""
     
     fun saveForcedModel(modelId: String) {
-            GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).edit().putString(KEY_FORCED_MODEL, modelId).apply()
+        // ★ 保存上一个真实模型（用于qtai-sj选中时知道用户选过什么模型）
+        val current = getForcedModel()
+        if (current != "qtai-sj" && current.isNotBlank() && current != modelId) {
+            saveLastRealModel(current)
         }
-        fun getForcedModel(): String = GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).getString(KEY_FORCED_MODEL, "") ?: ""
+        if (modelId == "qtai-sj" && current != "qtai-sj" && current.isNotBlank()) {
+            saveLastRealModel(current)
+        }
+        GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).edit().putString(KEY_FORCED_MODEL, modelId).apply()
+    }
+    fun getForcedModel(): String = GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).getString(KEY_FORCED_MODEL, "") ?: ""
+    fun saveLastRealModel(modelId: String) {
+        GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).edit().putString(KEY_LAST_REAL_MODEL, modelId).apply()
+    }
+    fun getLastRealModel(): String = GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).getString(KEY_LAST_REAL_MODEL, "") ?: ""
 
         fun saveFailoverModel(modelId: String) {
             GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).edit().putString(KEY_FAILOVER_MODEL, modelId).apply()

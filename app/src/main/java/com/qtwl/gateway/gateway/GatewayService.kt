@@ -518,10 +518,9 @@ if (brainModelId.isNotBlank()) {
     val brainProvider = if (brainModel != null) database.providerDao().getProviderById(brainModel.providerId) else null
 
     if (brainModel != null && brainProvider != null && brainProvider.isEnabled) {
-        // ★★★ qtai-sj统计：写模型名+流量+记录使用 ★★★
-        GatewayForegroundService.activeNodeName = brainModelId
-        GatewayForegroundService.trafficUploadBytes.addAndGet(rawBytes.size.toLong())
-        GatewayScheduler.recordModelUsage(brainModelId)
+// ★★★ qtai-sj统计：流量+记录使用（不覆盖activeNodeName，保持用户选的真实模型）★★★
+            GatewayForegroundService.trafficUploadBytes.addAndGet(rawBytes.size.toLong())
+            GatewayScheduler.recordModelUsage(brainModelId)
         // ★ 用脑子模型分析用户意图（带排行榜+模型能力标记）★★
         val rankingInfo = if (GatewayScheduler.pipelineSortedModelIds.isEmpty()) "暂无测速数据" 
                                 else "当前测速排行（按速度排序）：\n" + GatewayScheduler.pipelineSortedModelIds.mapIndexed { i, id -> 
