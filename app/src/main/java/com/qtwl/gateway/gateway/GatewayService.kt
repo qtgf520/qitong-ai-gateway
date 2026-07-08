@@ -671,7 +671,17 @@ if (brainContent.isNotBlank()) {
                                     }
                                     return
                                 }
-                            } catch (_: Exception) { /* 脑子模型失败 */ }
+                            } catch (_: Exception) {
+            // 【刀4+刀8】脑子失败，返回明确错误而不是静默空转
+            val errorResp = buildJsonObject {
+                put("error", buildJsonObject {
+                    put("message", JsonPrimitive("脑子模型请求失败，请检查服务商配置或稍后重试"))
+                    put("type", JsonPrimitive("brain_error"))
+                })
+            }
+            call.respondText(contentType = ContentType.Application.Json.withCharset(Charsets.UTF_8), text = errorResp.toString())
+            logAccess(call, "qtai-sj", 502, System.currentTimeMillis() - startMs)
+        }
                         }
                     }
                 }
@@ -695,7 +705,16 @@ if (brainContent.isNotBlank()) {
                 } catch (_: Exception) { false }
             } ?: false
             val bestModel = if (!effectiveForced.isNullOrBlank()) {
-                allEnabledModels.find { it.modelId == effectiveForced }
+                // 支持两种格式：完整前缀(deepseek-ai/deepseek-v4-flash) 和 短ID(deepseek-v4-flash)
+                val directMatch = allEnabledModels.find { it.modelId == effectiveForced }
+                if (directMatch != null) {
+                    directMatch
+                } else {
+                    val shortId = effectiveForced.substringAfterLast('/')
+                    if (shortId != effectiveForced) {
+                        allEnabledModels.find { it.modelId == shortId }
+                    } else null
+                }
             } else if (hasImage) {
                 allEnabledModels.firstOrNull { ModelCapabilityManager.getCapabilities(it.modelId).second }
                     ?: GatewayScheduler.pipelineSortedModelIds.firstNotNullOfOrNull { id ->
