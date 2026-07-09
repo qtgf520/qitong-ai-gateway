@@ -2,9 +2,26 @@
 
 > 包名：com.qtwl.gateway
 > 签名证书：qitong.jks (别名: qitong)
-> 最后更新：2026-07-09
+> 最后更新：2026-07-10
 
 ---
+
+## 🔄 v3.8.5（正式发布）
+### 🐛 修复
+- **群聊选模型弹窗列表跳动** — 弹窗打开时使用 `remember` 快照数据（`viewModel.enabledModels.value` + `pipelineSortedModelIds.toList()`），避免测速排行榜实时刷新导致勾选位置不断跳动
+
+---
+
+## 🔄 v3.8.4（正式发布）
+### ✨ 新功能
+- **通知栏流量统计策略优化** — 软件重启或切换模型时，通知栏流量清零重新累计（按会话/按模型）；APP内存储统计保持不变（持久化不重置）
+- **群聊模式改进** — 选模型方式从手动输入模型ID改为读取测速排行榜弹窗勾选添加，参与模型+总结模型均支持排行榜排序显示
+- **清理旧APK文件** — `/sdcard/Download/` 中的38个旧版本APK已清理，仅保留最新版
+
+### 🛠️ 技术改进
+- 新增 `totalUploadBytes`/`totalDownloadBytes` 持久化总统计字段，与 `trafficUploadBytes`/`trafficDownloadBytes`（通知栏可重置）分离
+- 新增 `resetNotificationTraffic()` 方法，切换模型时自动重置通知栏流量
+- 流量统计双轨制：上传/下载均同时计入通知栏 + 总统计
 
 ## 🔄 v3.8.0（正式发布）
 ### 🚀 多模态+思考引导+群聊模式+全模型统计+短ID恢复
