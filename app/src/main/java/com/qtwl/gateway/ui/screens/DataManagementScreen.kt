@@ -953,10 +953,16 @@ fun DataManagementScreen(
             }
             // ★ 参与模型选择弹窗（排行榜列表勾选）★★
             if (showGroupChatModelPicker) {
-                val allModels = viewModel.enabledModels.collectAsState().value
-                val sortedIds = com.qtwl.gateway.gateway.GatewayScheduler.pipelineSortedModelIds
-                // 按排行榜排序，未在排行榜的放后面
-                val sortedModels = allModels.sortedByDescending { sortedIds.indexOf(it.modelId) }.reversed()
+                // ★★★ 弹窗打开时快照数据，避免实时刷新导致列表跳动 ★★★
+                val snapshotModels = remember(viewModel) {
+                    viewModel.enabledModels.value.ifEmpty {
+                        listOf<com.qtwl.gateway.data.model.AiModel>()
+                    }
+                }
+                val snapshotSortedIds = remember { com.qtwl.gateway.gateway.GatewayScheduler.pipelineSortedModelIds.toList() }
+                val sortedModels = remember { 
+                    snapshotModels.sortedByDescending { snapshotSortedIds.indexOf(it.modelId) }.reversed()
+                }
                 val currentParticipants = remember { mutableStateListOf<String>().apply { addAll(GroupChatManager.getParticipantModels()) } }
                 AlertDialog(
                     onDismissRequest = { showGroupChatModelPicker = false },
@@ -968,7 +974,7 @@ fun DataManagementScreen(
                             LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {
                                 items(sortedModels) { model ->
                                     val isSelected = model.modelId in currentParticipants
-                                    val rank = sortedIds.indexOf(model.modelId)
+                                    val rank = snapshotSortedIds.indexOf(model.modelId)
                                     val rankStr = if (rank >= 0) " #${rank + 1}" else ""
                                     Row(modifier = Modifier.fillMaxWidth().clickable {
                                         if (isSelected) currentParticipants.remove(model.modelId)
@@ -1003,9 +1009,16 @@ fun DataManagementScreen(
             }
             // ★ 总结模型选择弹窗 ★★
             if (showGroupChatSummarizerPicker) {
-                val allModels = viewModel.enabledModels.collectAsState().value
-                val sortedIds = com.qtwl.gateway.gateway.GatewayScheduler.pipelineSortedModelIds
-                val sortedModels = allModels.sortedByDescending { sortedIds.indexOf(it.modelId) }.reversed()
+                // ★★★ 弹窗打开时快照数据，避免实时刷新导致列表跳动 ★★★
+                val snapshotModels = remember(viewModel) {
+                    viewModel.enabledModels.value.ifEmpty {
+                        listOf<com.qtwl.gateway.data.model.AiModel>()
+                    }
+                }
+                val snapshotSortedIds = remember { com.qtwl.gateway.gateway.GatewayScheduler.pipelineSortedModelIds.toList() }
+                val sortedModels = remember { 
+                    snapshotModels.sortedByDescending { snapshotSortedIds.indexOf(it.modelId) }.reversed()
+                }
                 var selectedSummarizer by remember { mutableStateOf(GroupChatManager.getSummarizerModel()) }
                 AlertDialog(
                     onDismissRequest = { showGroupChatSummarizerPicker = false },
@@ -1025,7 +1038,7 @@ fun DataManagementScreen(
                                 }
                                 item { HorizontalDivider() }
                                 items(sortedModels) { model ->
-                                    val rank = sortedIds.indexOf(model.modelId)
+                                    val rank = snapshotSortedIds.indexOf(model.modelId)
                                     val rankStr = if (rank >= 0) " #${rank + 1}" else ""
                                     Row(modifier = Modifier.fillMaxWidth().clickable { selectedSummarizer = model.modelId }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                                         RadioButton(selected = selectedSummarizer == model.modelId, onClick = { selectedSummarizer = model.modelId })
