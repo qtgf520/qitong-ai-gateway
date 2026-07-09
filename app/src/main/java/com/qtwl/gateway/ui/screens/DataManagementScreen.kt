@@ -931,11 +931,11 @@ fun DataManagementScreen(
                                 )
                             }
                         } else {
-                            LazyColumn(
-                                modifier = Modifier.fillMaxSize(),
+                            Column(
+                                modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
                                 verticalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                items(filteredRecords) { record ->
+                                filteredRecords.forEach { record ->
                                     var showDetail by remember(record.id) { mutableStateOf(false) }
                                     val isError = record.response?.httpStatus ?: 0 >= 400
 
