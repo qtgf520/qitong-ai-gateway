@@ -232,11 +232,25 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                 Spacer(modifier = Modifier.height(8.dp))
                 
                 InfoRow("监听端口", gatewayPort.toString())
-                InfoRow(
-                    "服务状态",
+InfoRow("服务状态",
                     if (serviceRunning) "运行中" else "已停止",
                     if (serviceRunning) Online else Error
                 )
+                // ★★ 实时活跃模型显示
+                var activeModel by remember { mutableStateOf("") }
+                LaunchedEffect(serviceRunning) {
+                    while (serviceRunning) {
+                        activeModel = com.qtwl.gateway.service.GatewayForegroundService.activeNodeName
+                        delay(2000)
+                    }
+                }
+                if (activeModel.isNotBlank()) {
+                    InfoRow(
+                        "🧠 当前活跃模型",
+                        activeModel,
+                        MaterialTheme.colorScheme.primary
+                    )
+                }
                 // 本地地址（可复制）
                 val context = LocalContext.current
                 val localAddr = "http://localhost:$gatewayPort"

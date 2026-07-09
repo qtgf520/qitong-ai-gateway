@@ -408,6 +408,17 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
 
     if (GatewayForegroundService.getDebugMode()) {
         GatewayForegroundService.addDebugLog("→ ${call.request.httpMethod.value} /$effectivePath (${rawBytes.size}B)")
+        com.qtwl.gateway.capture.PacketCapture.begin()
+        com.qtwl.gateway.capture.PacketCapture.captureIn(
+            sourceIp = call.request.local.remoteHost ?: "",
+            method = call.request.httpMethod.value ?: "",
+            path = "/$effectivePath",
+            headers = call.request.headers.entries()
+                .filter { it.key in listOf("Authorization", "Content-Type", "User-Agent") }
+                .joinToString("; ") { "${it.key}: ${it.value.take(40)}" },
+            body = requestBodyStr,
+            bodySize = rawBytes.size
+        )
     }
 
     val isChat = effectivePath == "chat/completions" || effectivePath == "completions"
@@ -1105,6 +1116,17 @@ private suspend fun pipeNormalResponse(
             }
             .build()
 
+        // ★★ 出站抓包
+        if (GatewayForegroundService.getDebugMode()) {
+            com.qtwl.gateway.capture.PacketCapture.captureOut(
+                targetUrl = url,
+                modelId = call.proxyModelId ?: "unknown",
+                headers = "Authorization: ***",
+                body = rawBody.decodeToString().take(1000),
+                bodySize = rawBody.size
+            )
+        }
+
         val httpClient = if (useProxy) UpstreamClient.getOkHttpClient() else UpstreamClient.getDirectClient()
         
         var respBytes: ByteArray = byteArrayOf()
@@ -1188,6 +1210,23 @@ private suspend fun pipeNormalResponse(
                 try { "model=${proxyJson.parseToJsonElement(respBytes.decodeToString()).jsonObject["model"]?.jsonPrimitive?.content}" } catch (_: Exception) { "" }
             } else ""
             GatewayForegroundService.addDebugLog("← $respCode /v1/$path (${respBytes.size}B) $modelPreview")
+            // ★★ 响应抓包
+            val tokens = try {
+                val usage = proxyJson.parseToJsonElement(respBytes.decodeToString()).jsonObject["usage"]?.jsonObject
+                Pair(usage?.get("prompt_tokens")?.jsonPrimitive?.content?.toIntOrNull() ?: 0,
+                     usage?.get("completion_tokens")?.jsonPrimitive?.content?.toIntOrNull() ?: 0)
+            } catch (_: Exception) { Pair(0, 0) }
+            com.qtwl.gateway.capture.PacketCapture.captureResp(
+                httpStatus = respCode,
+                elapsedMs = System.currentTimeMillis() - pipeStartTime,
+                headers = "Content-Type: application/json",
+                body = respBytes.decodeToString().take(1000),
+                bodySize = respBytes.size,
+                modelId = call.proxyModelId ?: "",
+                promptTokens = tokens.first,
+                completionTokens = tokens.second,
+                isStream = false
+            )
         }
     } catch (e: Exception) {
         if (GatewayForegroundService.getDebugMode()) GatewayForegroundService.addDebugLog("✗ ERR /v1/$path: ${e.message?.take(80)}")
@@ -1210,6 +1249,7 @@ private suspend fun pipeStreamResponse(
     database: AppDatabase,
     useProxy: Boolean = true
 ) {
+    val pipeStartTime = System.currentTimeMillis()
     // 1. 在 IO 线程执行 HTTP 请求，获取响应流
     val resolvedUrl = provider.resolvedBaseUrl.trimEnd('/')
     val url = resolvedUrl + path
@@ -1279,8 +1319,32 @@ private suspend fun pipeStreamResponse(
                 }
             }
         } catch (e: Exception) {
-            if (GatewayForegroundService.getDebugMode()) GatewayForegroundService.addDebugLog("✗ STREAM WRITE ERR: ${e.message?.take(80)}")
+            if (GatewayForegroundService.getDebugMode()) {
+                GatewayForegroundService.addDebugLog("✗ STREAM WRITE ERR: ${e.message?.take(80)}")
+                com.qtwl.gateway.capture.PacketCapture.captureResp(
+                    httpStatus = response.code,
+                    elapsedMs = System.currentTimeMillis() - pipeStartTime,
+                    headers = "Content-Type: ${ct}",
+                    body = "Stream error: ${e.message?.take(200) ?: "unknown"}",
+                    bodySize = 0,
+                    modelId = modelId,
+                    isStream = true
+                )
+            }
         } finally {
+            // ★★ 流式响应抓包
+            if (GatewayForegroundService.getDebugMode()) {
+                val totalBytes = GatewayForegroundService.trafficDownloadBytes.get()
+                com.qtwl.gateway.capture.PacketCapture.captureResp(
+                    httpStatus = response.code,
+                    elapsedMs = System.currentTimeMillis() - pipeStartTime,
+                    headers = "Content-Type: $ct",
+                    body = "[Stream: 流式响应内容，未记录]",
+                    bodySize = 0,
+                    modelId = modelId,
+                    isStream = true
+                )
+            }
             withContext(Dispatchers.IO) { try { bodyStream.close(); response.close() } catch (_: Exception) { } }
         }
     }
