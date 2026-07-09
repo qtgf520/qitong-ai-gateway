@@ -391,8 +391,9 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
     val rawBytes = call.receive<ByteArray>()
     val requestBodyStr = String(rawBytes, Charsets.UTF_8)
 
-    // ★★★ 全模型统计：所有请求都计上传流量 ★★★
+    // ★★★ 全模型统计：所有请求都计上传流量（通知栏+总统计）★★★
     GatewayForegroundService.trafficUploadBytes.addAndGet(rawBytes.size.toLong())
+    GatewayForegroundService.totalUploadBytes.addAndGet(rawBytes.size.toLong())
 
     val path = call.parameters.getAll("path")?.joinToString("/") ?: ""
 
@@ -452,8 +453,7 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
                     // ★★ 先尝试硬指令匹配 ★★
                     val actions = ToolExecutor.parseCommand(actualCmd)
                     if (actions.isNotEmpty()) {
-                        // ★★★ qtai-sj工具指令统计：模型名 ★★★
-                        GatewayForegroundService.activeNodeName = "qtai-sj"
+                        // ★★★ qtai-sj工具指令统计：模型名（不覆盖通知栏真实模型名）★★★
                         GatewayScheduler.recordModelUsage("qtai-sj")
                         val results = actions.map { action ->
                             ToolExecutor.execute(action, null)
@@ -664,6 +664,7 @@ if (promptTokens > 0) GatewayForegroundService.tokenPromptInput += promptTokens
 if (completionTokens > 0) GatewayForegroundService.tokenCompletionOutput += completionTokens
 val brainRespBytes = brainBodyStr.toByteArray(Charsets.UTF_8)
 GatewayForegroundService.trafficDownloadBytes.addAndGet(brainRespBytes.size.toLong())
+GatewayForegroundService.totalDownloadBytes.addAndGet(brainRespBytes.size.toLong())
 GatewayForegroundService.addLiveSession(LiveSession(
     modelName = brainModelId,
     requestPreview = userMsg.take(30),
@@ -859,6 +860,7 @@ if (brainContent.isNotBlank()) {
                     // 记录切换日志，继续用原始modelId发起请求（用户选的）
                     // 但在转发时会自动替换model字段
                     GatewayForegroundService.activeNodeName = visionModel.modelId
+                    GatewayForegroundService.resetNotificationTraffic()
                     GatewayForegroundService.addDebugLog("👁️ 图片检测→自动切视觉: $modelId → ${visionModel.modelId}")
                     visionModel.modelId
                 } else modelId
@@ -964,6 +966,7 @@ val attemptModels: List<AiModel> = if (allEnabled.isNotEmpty()) {
                     call.attributes.put(MODEL_ID_KEY, primaryModel.modelId)
                     call.attributes.put(PROVIDER_ID_KEY, primaryModel.providerId)
                     GatewayForegroundService.activeNodeName = primaryModel.modelId
+                    GatewayForegroundService.resetNotificationTraffic()
                     GatewayScheduler.recordModelUsage(primaryModel.modelId)
                     val useProxy = primaryModel.useProxy
 
@@ -1017,6 +1020,7 @@ val attemptModels: List<AiModel> = if (allEnabled.isNotEmpty()) {
                     call.attributes.put(MODEL_ID_KEY, matchedModel.modelId)
                     call.attributes.put(PROVIDER_ID_KEY, matchedModel.providerId)
                     GatewayForegroundService.activeNodeName = matchedModel.modelId
+                    GatewayForegroundService.resetNotificationTraffic()
                     GatewayScheduler.recordModelUsage(matchedModel.modelId)
                     val useProxy = matchedModel.useProxy
 
@@ -1138,6 +1142,7 @@ private suspend fun pipeNormalResponse(
             response.use { resp ->
                 respBytes = resp.body?.bytes() ?: byteArrayOf()
                 GatewayForegroundService.trafficDownloadBytes.addAndGet(respBytes.size.toLong())
+                GatewayForegroundService.totalDownloadBytes.addAndGet(respBytes.size.toLong())
                 contentType = resp.header("Content-Type") ?: "application/json"
                 statusCode = HttpStatusCode.fromValue(resp.code)
                 respCode = resp.code

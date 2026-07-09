@@ -45,9 +45,12 @@ class GatewayForegroundService : Service() {
         val app = application as GatewayApplication
         gatewayService = GatewayService(app.database)
         wakeEnabled = getWakeEnabled()
-        // ★★★ 恢复持久化的流量统计 ★★★
-        trafficUploadBytes.set(getSavedTraffic("upload"))
-        trafficDownloadBytes.set(getSavedTraffic("download"))
+        // ★★★ 恢复持久化的总流量统计（APP内使用）★★★ 通知栏流量不从持久化恢复，重启即清零
+        totalUploadBytes.set(getSavedTraffic("total_upload"))
+        totalDownloadBytes.set(getSavedTraffic("total_download"))
+        // 通知栏流量从零开始（重启清零）
+        trafficUploadBytes.set(0L)
+        trafficDownloadBytes.set(0L)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -204,8 +207,10 @@ class GatewayForegroundService : Service() {
         // 运行时流量统计（由gateway更新）
         @Volatile var tokenPromptInput: Long = 0L
 @Volatile var tokenCompletionOutput: Long = 0L
-val trafficUploadBytes = java.util.concurrent.atomic.AtomicLong(0L)
-val trafficDownloadBytes = java.util.concurrent.atomic.AtomicLong(0L)
+val trafficUploadBytes = java.util.concurrent.atomic.AtomicLong(0L)   // ★ 通知栏显示（可重置）
+val trafficDownloadBytes = java.util.concurrent.atomic.AtomicLong(0L) // ★ 通知栏显示（可重置）
+val totalUploadBytes = java.util.concurrent.atomic.AtomicLong(0L)     // ★ APP内总统计（持久化不重置）
+val totalDownloadBytes = java.util.concurrent.atomic.AtomicLong(0L)   // ★ APP内总统计（持久化不重置）
         @Volatile var isServiceRunning: Boolean = false  // 由 start/stop 同步更新
 
         @Volatile var activeNodeName: String = ""
@@ -371,20 +376,26 @@ val trafficDownloadBytes = java.util.concurrent.atomic.AtomicLong(0L)
         }
         fun saveAllowedApiKeys(keys: Set<String>) = saveGatewayConfig("allowed_api_keys", keys.joinToString(","))
 
-        // ★★★ 流量统计持久化 ★★★
+        // ★★★ 流量统计持久化（总流量持久化，通知栏流量不持久化）★★★
         fun saveTraffic() {
             GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).edit()
-                .putLong(KEY_TRAFFIC_UPLOAD, trafficUploadBytes.get())
-                .putLong(KEY_TRAFFIC_DOWNLOAD, trafficDownloadBytes.get())
+                .putLong(KEY_TRAFFIC_UPLOAD + "_total", totalUploadBytes.get())
+                .putLong(KEY_TRAFFIC_DOWNLOAD + "_total", totalDownloadBytes.get())
                 .apply()
         }
         fun getSavedTraffic(type: String): Long {
             val sp = GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0)
             return when (type) {
-                "upload" -> sp.getLong(KEY_TRAFFIC_UPLOAD, 0L)
-                "download" -> sp.getLong(KEY_TRAFFIC_DOWNLOAD, 0L)
+                "total_upload" -> sp.getLong(KEY_TRAFFIC_UPLOAD + "_total", 0L)
+                "total_download" -> sp.getLong(KEY_TRAFFIC_DOWNLOAD + "_total", 0L)
                 else -> 0L
             }
+        }
+        
+        /** ★★ 切换模型时调用：通知栏流量清零重新累计，APP内总统计不变 ★★ */
+        fun resetNotificationTraffic() {
+            trafficUploadBytes.set(0L)
+            trafficDownloadBytes.set(0L)
         }
     }
 }

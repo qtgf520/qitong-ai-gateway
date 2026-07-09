@@ -111,18 +111,20 @@ fun DataManagementScreen(
 
     var showResetConfirm by remember { mutableStateOf(false) }
     var showAddServiceDialog by remember { mutableStateOf(false) }
+    var showDebugLogs by remember { mutableStateOf(false) }
 
-    Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) }
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        Scaffold(
+            snackbarHost = { SnackbarHost(snackbarHostState) }
+        ) { padding ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
             // 标题
             Text("📋 数据管理", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
             Text("备份、恢复和重置应用数据，以及添加新的 AI 服务商",
@@ -812,7 +814,6 @@ fun DataManagementScreen(
 
             // ★ Debug 抓包模式
             val debugMode by viewModel.debugMode.collectAsState()
-            var showDebugLogs by remember { mutableStateOf(false) }
             Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -842,256 +843,6 @@ fun DataManagementScreen(
             }
 
             // ★★ 抓包日志页面（全屏覆盖）★★
-            if (showDebugLogs) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.background)
-                        .padding(8.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(8.dp)
-                    ) {
-                        // 标题栏
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = "🔍 网关抓包日志",
-                                style = MaterialTheme.typography.headlineSmall,
-                                fontWeight = FontWeight.Bold
-                            )
-                            TextButton(onClick = { showDebugLogs = false }) { Text("✕ 关闭") }
-                        }
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        // 实时刷新抓包记录
-                        val (records, setRecords) = remember { mutableStateOf(com.qtwl.gateway.capture.PacketCapture.records) }
-                        LaunchedEffect(Unit) {
-                            while (true) {
-                                delay(1500)
-                                setRecords(com.qtwl.gateway.capture.PacketCapture.records)
-                            }
-                        }
-
-                        // 筛选栏
-                        var filterText by remember { mutableStateOf("") }
-                        var statusFilter by remember { mutableStateOf<String?>(null) }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            OutlinedTextField(
-                                value = filterText,
-                                onValueChange = { filterText = it },
-                                placeholder = { Text("🔍 搜索") },
-                                singleLine = true,
-                                modifier = Modifier.weight(2f),
-                                textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp)
-                            )
-                            TextButton(onClick = { statusFilter = null }) { Text(if (statusFilter == null) "全部" else "全部") }
-                            TextButton(onClick = { statusFilter = "200" }) { Text("200") }
-                            TextButton(onClick = { statusFilter = "ERR" }) { Text("ERR") }
-                        }
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        // 记录列表
-                        val filteredRecords = remember(records, filterText, statusFilter) {
-                            var list = records
-                            if (statusFilter == "200") list = list.filter { it.response?.httpStatus == 200 }
-                            else if (statusFilter == "ERR") list = list.filter { it.response?.httpStatus ?: 0 >= 400 || it.failover != null }
-                            if (filterText.isNotBlank()) list = list.filter {
-                                it.summary.contains(filterText, ignoreCase = true) ||
-                                it.outbound?.body?.contains(filterText, ignoreCase = true) == true ||
-                                it.inbound?.body?.contains(filterText, ignoreCase = true) == true
-                            }
-                            list
-                        }
-
-                        val timeFmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
-
-                        if (filteredRecords.isEmpty()) {
-                            Box(
-                                modifier = Modifier.fillMaxSize(),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = "📭 暂无抓包记录\n先开启抓包模式再发请求",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        } else {
-                            Column(
-                                modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
-                                verticalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                filteredRecords.forEach { record ->
-                                    var showDetail by remember(record.id) { mutableStateOf(false) }
-                                    val isError = record.response?.httpStatus ?: 0 >= 400
-
-                                    Card(
-                                        modifier = Modifier.fillMaxWidth().clickable { showDetail = true },
-                                        colors = CardDefaults.cardColors(
-                                            containerColor = if (isError)
-                                                MaterialTheme.colorScheme.error.copy(alpha = 0.05f)
-                                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-                                        )
-                                    ) {
-                                        Column(modifier = Modifier.padding(10.dp)) {
-                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                                Text(
-                                                    text = if (isError) "❌" else if (record.failover != null) "🔄" else "✅",
-                                                    style = MaterialTheme.typography.bodyMedium
-                                                )
-                                                Text(
-                                                    text = record.summary,
-                                                    style = MaterialTheme.typography.bodyMedium,
-                                                    fontWeight = FontWeight.Medium,
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
-                                            }
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Text(
-                                                    text = timeFmt.format(record.timestamp),
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                    fontFamily = FontFamily.Monospace
-                                                )
-                                                record.response?.let { resp ->
-                                                    if (resp.promptTokens > 0) {
-                                                        Text(
-                                                            text = "↑${resp.promptTokens} ↓${resp.completionTokens}",
-                                                            style = MaterialTheme.typography.labelSmall,
-                                                            color = MaterialTheme.colorScheme.secondary
-                                                        )
-                                                    }
-                                                }
-                                                Spacer(modifier = Modifier.weight(1f))
-                                                Text(
-                                                    text = record.outbound?.modelId ?: "?",
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = MaterialTheme.colorScheme.tertiary
-                                                )
-                                            }
-                                        }
-                                    }
-
-                                    // 详情弹窗
-                                    if (showDetail) {
-                                        AlertDialog(
-                                            onDismissRequest = { showDetail = false },
-                                            title = { Text("📦 抓包详情 #${record.id}") },
-                                            text = {
-                                                LazyColumn(
-                                                    modifier = Modifier.heightIn(max = 400.dp),
-                                                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                                                ) {
-                                                    record.inbound?.let { inbound ->
-                                                        item {
-                                                            Text("📥 入站", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                                                            Surface(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), shape = MaterialTheme.shapes.small) {
-                                                                Text(
-                                                                    text = buildString {
-                                                                        appendLine("时间: ${timeFmt.format(record.timestamp)}")
-                                                                        appendLine("方法: ${inbound.method} ${inbound.path}")
-                                                                        appendLine("头部: ${inbound.headers}")
-                                                                        appendLine("--- 请求体 (${inbound.bodySize}B) ---")
-                                                                        appendLine(inbound.body)
-                                                                    },
-                                                                    fontFamily = FontFamily.Monospace, fontSize = 10.sp,
-                                                                    modifier = Modifier.padding(8.dp)
-                                                                )
-                                                            }
-                                                        }
-                                                    }
-
-                                                    record.outbound?.let { outbound ->
-                                                        item {
-                                                            Text("📤 出站", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
-                                                            Surface(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), shape = MaterialTheme.shapes.small) {
-                                                                Text(
-                                                                    text = buildString {
-                                                                        appendLine("URL: ${outbound.targetUrl}")
-                                                                        appendLine("模型: ${outbound.modelId}")
-                                                                        appendLine("头部: ${outbound.headers}")
-                                                                        appendLine("--- 请求体 (${outbound.bodySize}B) ---")
-                                                                        appendLine(outbound.body)
-                                                                    },
-                                                                    fontFamily = FontFamily.Monospace, fontSize = 10.sp,
-                                                                    modifier = Modifier.padding(8.dp)
-                                                                )
-                                                            }
-                                                        }
-                                                    }
-
-                                                    record.response?.let { resp ->
-                                                        item {
-                                                            Text(
-                                                                "📥 响应",
-                                                                fontWeight = FontWeight.Bold,
-                                                                color = if (resp.httpStatus >= 500) MaterialTheme.colorScheme.error
-                                                                        else if (resp.httpStatus >= 400) MaterialTheme.colorScheme.tertiary
-                                                                        else MaterialTheme.colorScheme.primary
-                                                            )
-                                                            Surface(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), shape = MaterialTheme.shapes.small) {
-                                                                Text(
-                                                                    text = buildString {
-                                                                        appendLine("状态码: ${resp.httpStatus} | 耗时: ${resp.elapsedMs}ms")
-                                                                        appendLine("模型: ${resp.modelId} | Tokens: ↑${resp.promptTokens} ↓${resp.completionTokens}")
-                                                                        appendLine("头部: ${resp.headers}")
-                                                                        appendLine("--- 响应体 (${resp.bodySize}B) ---")
-                                                                        appendLine(resp.body)
-                                                                    },
-                                                                    fontFamily = FontFamily.Monospace, fontSize = 10.sp,
-                                                                    modifier = Modifier.padding(8.dp)
-                                                                )
-                                                            }
-                                                        }
-                                                    }
-
-                                                    record.failover?.let { failover ->
-                                                        item {
-                                                            Text("🔄 故障转移", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
-                                                            Surface(color = MaterialTheme.colorScheme.error.copy(alpha = 0.08f), shape = MaterialTheme.shapes.small) {
-                                                                Text(
-                                                                    text = buildString {
-                                                                        appendLine("最终模型: ${failover.finalModel} | 状态: ${failover.finalStatus}")
-                                                                        failover.attempts.forEach { attempt ->
-                                                                            appendLine("[${attempt.index}] ${attempt.modelId}: ${attempt.error} (${attempt.elapsedMs}ms)")
-                                                                        }
-                                                                    },
-                                                                    fontFamily = FontFamily.Monospace, fontSize = 10.sp,
-                                                                    modifier = Modifier.padding(8.dp)
-                                                                )
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            },
-                                            confirmButton = {}
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
 
             Spacer(modifier = Modifier.height(8.dp))
             HorizontalDivider()
@@ -1143,9 +894,10 @@ fun DataManagementScreen(
 
             // ★★ 群聊模式配置 ★★
             val groupChatEnabled = remember { mutableStateOf(GroupChatManager.isEnabled()) }
-            val groupChatModels = remember { mutableStateOf(GroupChatManager.getParticipantModels().joinToString(", ")) }
             val groupChatSummarizer = remember { mutableStateOf(GroupChatManager.getSummarizerModel()) }
             val groupChatMaxRounds = remember { mutableStateOf(GroupChatManager.getMaxRounds().toString()) }
+            var showGroupChatModelPicker by remember { mutableStateOf(false) }
+            var showGroupChatSummarizerPicker by remember { mutableStateOf(false) }
             Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1162,13 +914,35 @@ fun DataManagementScreen(
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (groupChatEnabled.value) {
                         Spacer(modifier = Modifier.height(8.dp))
-                        OutlinedTextField(value = groupChatModels.value, onValueChange = { groupChatModels.value = it
-                            GroupChatManager.setParticipantModels(it.split(",").map { s -> s.trim() }.filter { s -> s.isNotBlank() })
-                        }, label = { Text("参与模型ID（逗号分隔）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                        // ★ 参与模型（从排行榜勾选）★★
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("参与模型: ", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(GroupChatManager.getParticipantModels().joinToString(", ").take(30) + if (GroupChatManager.getParticipantModels().joinToString(", ").length > 30) "..." else "",
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                         Spacer(modifier = Modifier.height(4.dp))
-                        OutlinedTextField(value = groupChatSummarizer.value, onValueChange = { groupChatSummarizer.value = it
-                            GroupChatManager.setSummarizerModel(it.trim())
-                        }, label = { Text("总结模型ID") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                        Button(onClick = { showGroupChatModelPicker = true }, modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)) {
+                            Icon(Icons.Default.List, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("📊 从测速排行榜选择模型 (${GroupChatManager.getParticipantModels().size}个)")
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        // ★ 总结模型（从排行榜勾选）★★
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("总结模型: ", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(GroupChatManager.getSummarizerModel().ifBlank { "未设置" },
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Button(onClick = { showGroupChatSummarizerPicker = true }, modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)) {
+                            Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("🎯 选择总结模型")
+                        }
                         Spacer(modifier = Modifier.height(4.dp))
                         OutlinedTextField(value = groupChatMaxRounds.value, onValueChange = { v ->
                             groupChatMaxRounds.value = v
@@ -1176,6 +950,108 @@ fun DataManagementScreen(
                         }, label = { Text("轮次") }, singleLine = true, modifier = Modifier.width(100.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                     }
                 }
+            }
+            // ★ 参与模型选择弹窗（排行榜列表勾选）★★
+            if (showGroupChatModelPicker) {
+                val allModels = viewModel.enabledModels.collectAsState().value
+                val sortedIds = com.qtwl.gateway.gateway.GatewayScheduler.pipelineSortedModelIds
+                // 按排行榜排序，未在排行榜的放后面
+                val sortedModels = allModels.sortedByDescending { sortedIds.indexOf(it.modelId) }.reversed()
+                val currentParticipants = remember { mutableStateListOf<String>().apply { addAll(GroupChatManager.getParticipantModels()) } }
+                AlertDialog(
+                    onDismissRequest = { showGroupChatModelPicker = false },
+                    title = { Text("选择参与模型", fontWeight = FontWeight.Bold) },
+                    text = {
+                        if (sortedModels.isEmpty()) {
+                            Text("暂无可用模型，请先添加服务商和启用模型")
+                        } else {
+                            LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {
+                                items(sortedModels) { model ->
+                                    val isSelected = model.modelId in currentParticipants
+                                    val rank = sortedIds.indexOf(model.modelId)
+                                    val rankStr = if (rank >= 0) " #${rank + 1}" else ""
+                                    Row(modifier = Modifier.fillMaxWidth().clickable {
+                                        if (isSelected) currentParticipants.remove(model.modelId)
+                                        else currentParticipants.add(model.modelId)
+                                    }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Checkbox(checked = isSelected, onCheckedChange = { c ->
+                                            if (c) currentParticipants.add(model.modelId)
+                                            else currentParticipants.remove(model.modelId)
+                                        })
+                                        Spacer(Modifier.width(4.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(model.modelId, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                                            Text(model.displayName.ifBlank { model.customAlias }, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                        if (rank >= 0) {
+                                            Text(rankStr, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                        }
+                                    }
+                                    HorizontalDivider()
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        Button(onClick = {
+                            GroupChatManager.setParticipantModels(currentParticipants.toList())
+                            showGroupChatModelPicker = false
+                        }) { Text("确定 (${currentParticipants.size}个)") }
+                    },
+                    dismissButton = { TextButton(onClick = { showGroupChatModelPicker = false }) { Text("取消") } }
+                )
+            }
+            // ★ 总结模型选择弹窗 ★★
+            if (showGroupChatSummarizerPicker) {
+                val allModels = viewModel.enabledModels.collectAsState().value
+                val sortedIds = com.qtwl.gateway.gateway.GatewayScheduler.pipelineSortedModelIds
+                val sortedModels = allModels.sortedByDescending { sortedIds.indexOf(it.modelId) }.reversed()
+                var selectedSummarizer by remember { mutableStateOf(GroupChatManager.getSummarizerModel()) }
+                AlertDialog(
+                    onDismissRequest = { showGroupChatSummarizerPicker = false },
+                    title = { Text("选择总结模型", fontWeight = FontWeight.Bold) },
+                    text = {
+                        if (sortedModels.isEmpty()) {
+                            Text("暂无可用模型")
+                        } else {
+                            LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {
+                                // 加一个"无总结者"选项
+                                item {
+                                    Row(modifier = Modifier.fillMaxWidth().clickable { selectedSummarizer = "" }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        RadioButton(selected = selectedSummarizer == "", onClick = { selectedSummarizer = "" })
+                                        Spacer(Modifier.width(4.dp))
+                                        Text("无总结者", style = MaterialTheme.typography.bodySmall)
+                                    }
+                                }
+                                item { HorizontalDivider() }
+                                items(sortedModels) { model ->
+                                    val rank = sortedIds.indexOf(model.modelId)
+                                    val rankStr = if (rank >= 0) " #${rank + 1}" else ""
+                                    Row(modifier = Modifier.fillMaxWidth().clickable { selectedSummarizer = model.modelId }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        RadioButton(selected = selectedSummarizer == model.modelId, onClick = { selectedSummarizer = model.modelId })
+                                        Spacer(Modifier.width(4.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(model.modelId, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                                            Text(model.displayName.ifBlank { model.customAlias }, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                        if (rank >= 0) {
+                                            Text(rankStr, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                        }
+                                    }
+                                    HorizontalDivider()
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        Button(onClick = {
+                            GroupChatManager.setSummarizerModel(selectedSummarizer)
+                            groupChatSummarizer.value = selectedSummarizer
+                            showGroupChatSummarizerPicker = false
+                        }) { Text("确定") }
+                    },
+                    dismissButton = { TextButton(onClick = { showGroupChatSummarizerPicker = false }) { Text("取消") } }
+                )
             }
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -1192,7 +1068,173 @@ fun DataManagementScreen(
             Spacer(modifier = Modifier.height(80.dp))
         }
     }
+// ★★ 抓包日志全屏覆盖（脱离 verticalScroll）★★
+        if (showDebugLogs) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background)
+            ) {
+                Column(modifier = Modifier.fillMaxSize().padding(12.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("🔍 网关抓包日志", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                        TextButton(onClick = { showDebugLogs = false }) { Text("✕ 关闭") }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
 
+                    var filterText by remember { mutableStateOf("") }
+                    var statusFilter by remember { mutableStateOf<String?>(null) }
+
+                    // ★ 筛选后的记录列表
+                    val filteredRecords = remember(filterText, statusFilter) {
+                        var list = com.qtwl.gateway.capture.PacketCapture.records.toList()
+                        if (statusFilter == "200") list = list.filter { it.response?.httpStatus == 200 }
+                        else if (statusFilter == "ERR") list = list.filter { it.response?.httpStatus ?: 0 >= 400 || it.failover != null }
+                        if (filterText.isNotBlank()) list = list.filter {
+                            it.summary.contains(filterText, ignoreCase = true) ||
+                            it.outbound?.body?.contains(filterText, ignoreCase = true) == true ||
+                            it.inbound?.body?.contains(filterText, ignoreCase = true) == true
+                        }
+                        list
+                    }
+
+                    val timeFmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedTextField(value = filterText, onValueChange = { filterText = it },
+                            placeholder = { Text("🔍 搜索") }, singleLine = true, modifier = Modifier.weight(2f),
+                            textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp))
+                        TextButton(onClick = { statusFilter = null }) { Text(if (statusFilter == null) "全部" else "全部") }
+                        TextButton(onClick = { statusFilter = "200" }) { Text("200") }
+                        TextButton(onClick = { statusFilter = "ERR" }) { Text("ERR") }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        items(filteredRecords) { record ->
+                            val isError = record.response?.httpStatus ?: 0 >= 400
+                            var showDetail by remember(record.id) { mutableStateOf(false) }
+                            Card(
+                                modifier = Modifier.fillMaxWidth().clickable { showDetail = true },
+                                colors = CardDefaults.cardColors(containerColor = if (isError) MaterialTheme.colorScheme.error.copy(alpha = 0.05f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Text(text = if (isError) "❌" else if (record.failover != null) "🔄" else "✅", style = MaterialTheme.typography.bodyMedium)
+                                        Text(text = record.summary, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    }
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Text(text = timeFmt.format(record.timestamp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, fontFamily = FontFamily.Monospace)
+                                        record.response?.let { resp -> if (resp.promptTokens > 0) Text(text = "↑${resp.promptTokens} ↓${resp.completionTokens}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary) }
+                                        Spacer(modifier = Modifier.weight(1f))
+                                        Text(text = record.outbound?.modelId ?: "?", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
+                                    }
+                                }
+                            }
+                            if (showDetail) {
+                                AlertDialog(
+                                    onDismissRequest = { showDetail = false },
+                                    title = { Text("📦 抓包详情 #${record.id}") },
+                                    text = {
+                                        LazyColumn(modifier = Modifier.heightIn(max = 400.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            record.inbound?.let { inbound -> item {
+                                                Text("📥 入站", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                                Surface(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), shape = MaterialTheme.shapes.small) {
+                                                    Text(buildString {
+                                                        appendLine("方法: ${inbound.method} ${inbound.path}")
+                                                        appendLine("头部: ${inbound.headers}")
+                                                        appendLine("--- 请求体 (${inbound.bodySize}B) ---")
+                                                        appendLine(inbound.body)
+                                                    }, fontFamily = FontFamily.Monospace, fontSize = 10.sp, modifier = Modifier.padding(8.dp))
+                                                }
+                                            }}
+                                            record.outbound?.let { outbound -> item {
+                                                Text("📤 出站", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
+                                                Surface(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), shape = MaterialTheme.shapes.small) {
+                                                    Text(buildString {
+                                                        appendLine("URL: ${outbound.targetUrl}")
+                                                        appendLine("模型: ${outbound.modelId}")
+                                                        appendLine("--- 请求体 (${outbound.bodySize}B) ---")
+                                                        appendLine(outbound.body)
+                                                    }, fontFamily = FontFamily.Monospace, fontSize = 10.sp, modifier = Modifier.padding(8.dp))
+                                                }
+                                            }}
+                                            record.response?.let { resp -> item {
+                                                Text("📥 响应", fontWeight = FontWeight.Bold, color = if (resp.httpStatus >= 500) MaterialTheme.colorScheme.error else if (resp.httpStatus >= 400) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary)
+                                                Surface(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), shape = MaterialTheme.shapes.small) {
+                                                    Text(buildString {
+                                                        appendLine("状态: ${resp.httpStatus} | ${resp.elapsedMs}ms")
+                                                        appendLine("Tokens: ↑${resp.promptTokens} ↓${resp.completionTokens}")
+                                                        appendLine("--- 响应体 (${resp.bodySize}B) ---")
+                                                        appendLine(resp.body)
+                                                    }, fontFamily = FontFamily.Monospace, fontSize = 10.sp, modifier = Modifier.padding(8.dp))
+                                                }
+                                            }}
+                                            record.failover?.let { failover -> item {
+                                                Text("🔄 故障转移", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
+                                                Surface(color = MaterialTheme.colorScheme.error.copy(alpha = 0.08f), shape = MaterialTheme.shapes.small) {
+                                                    Text(buildString {
+                                                        failover.attempts.forEach { attempt ->
+                                                            appendLine("[${attempt.index}] ${attempt.modelId}: ${attempt.error} (${attempt.elapsedMs}ms)")
+                                                        }
+                                                    }, fontFamily = FontFamily.Monospace, fontSize = 10.sp, modifier = Modifier.padding(8.dp))
+                                                }
+                                            }}
+                                        }
+                                    },
+                                    confirmButton = {
+                                        val ctx = LocalContext.current
+                                        Button(onClick = {
+                                            val detailText = buildString {
+                                                appendLine("📦 抓包详情 #${record.id}")
+                                                appendLine("时间: ${timeFmt.format(record.timestamp)}")
+                                                record.inbound?.let { inbound ->
+                                                    appendLine("\n📥 入站")
+                                                    appendLine("方法: ${inbound.method} ${inbound.path}")
+                                                    appendLine("头部: ${inbound.headers}")
+                                                    appendLine("--- 请求体 (${inbound.bodySize}B) ---")
+                                                    appendLine(inbound.body)
+                                                }
+                                                record.outbound?.let { outbound ->
+                                                    appendLine("\n📤 出站")
+                                                    appendLine("URL: ${outbound.targetUrl}")
+                                                    appendLine("模型: ${outbound.modelId}")
+                                                    appendLine("--- 请求体 (${outbound.bodySize}B) ---")
+                                                    appendLine(outbound.body)
+                                                }
+                                                record.response?.let { resp ->
+                                                    appendLine("\n📥 响应")
+                                                    appendLine("状态: ${resp.httpStatus} | ${resp.elapsedMs}ms")
+                                                    appendLine("Tokens: ↑${resp.promptTokens} ↓${resp.completionTokens}")
+                                                    appendLine("--- 响应体 (${resp.bodySize}B) ---")
+                                                    appendLine(resp.body)
+                                                }
+                                                record.failover?.let { failover ->
+                                                    appendLine("\n🔄 故障转移")
+                                                    failover.attempts.forEach { attempt ->
+                                                        appendLine("[${attempt.index}] ${attempt.modelId}: ${attempt.error} (${attempt.elapsedMs}ms)")
+                                                    }
+                                                }
+                                            }
+                                            val clipboard = ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("抓包详情", detailText))
+                                        }) { Text("📋 复制") }
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        } // end showDebugLogs
+    } // end Box
     // 代理管理弹窗（AboutScreen 连点触发）
     val showProxyDialog by viewModel.showProxyConfigDialog.collectAsState()
     if (showProxyDialog) {
