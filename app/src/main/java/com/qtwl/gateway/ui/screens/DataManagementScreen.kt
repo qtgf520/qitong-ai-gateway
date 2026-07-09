@@ -31,6 +31,8 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.qtwl.gateway.service.GatewayForegroundService
+import com.qtwl.gateway.service.ThinkingConfigManager
+import com.qtwl.gateway.service.GroupChatManager
 import com.qtwl.gateway.ui.theme.Error
 import com.qtwl.gateway.ui.theme.Online
 import com.qtwl.gateway.ui.theme.Warning
@@ -867,6 +869,88 @@ fun DataManagementScreen(
             Spacer(modifier = Modifier.height(8.dp))
             HorizontalDivider()
             Spacer(modifier = Modifier.height(8.dp))
+
+            // ★★ 思考引导配置 ★★
+            val thinkingEnabled = remember { mutableStateOf(ThinkingConfigManager.isEnabled()) }
+            val thinkingDepth = remember { mutableStateOf(ThinkingConfigManager.getDepth().label) }
+            val depthOptions = listOf("关闭", "轻度", "深度")
+            var depthExpanded by remember { mutableStateOf(false) }
+            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Psychology, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("🧠 思考引导", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                        Switch(checked = thinkingEnabled.value, onCheckedChange = { e ->
+                            thinkingEnabled.value = e
+                            ThinkingConfigManager.setEnabled(e)
+                        })
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text("在 qtai-sj 回复前注入思考引导，让 AI 先分析再回答",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (thinkingEnabled.value) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        ExposedDropdownMenuBox(expanded = depthExpanded, onExpandedChange = { depthExpanded = it }) {
+                            OutlinedTextField(value = thinkingDepth.value, onValueChange = {}, readOnly = true,
+                                label = { Text("思考深度") }, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = depthExpanded) },
+                                modifier = Modifier.fillMaxWidth().menuAnchor())
+                            ExposedDropdownMenu(expanded = depthExpanded, onDismissRequest = { depthExpanded = false }) {
+                                depthOptions.forEach { opt ->
+                                    DropdownMenuItem(text = { Text(opt) }, onClick = {
+                                        thinkingDepth.value = opt
+                                        when (opt) {
+                                            "关闭" -> { ThinkingConfigManager.setEnabled(false); thinkingEnabled.value = false; ThinkingConfigManager.setDepth(ThinkingConfigManager.ThinkingDepth.OFF) }
+                                            "轻度" -> ThinkingConfigManager.setDepth(ThinkingConfigManager.ThinkingDepth.LIGHT)
+                                            "深度" -> ThinkingConfigManager.setDepth(ThinkingConfigManager.ThinkingDepth.DEEP)
+                                        }
+                                        depthExpanded = false
+                                    })
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // ★★ 群聊模式配置 ★★
+            val groupChatEnabled = remember { mutableStateOf(GroupChatManager.isEnabled()) }
+            val groupChatModels = remember { mutableStateOf(GroupChatManager.getParticipantModels().joinToString(", ")) }
+            val groupChatSummarizer = remember { mutableStateOf(GroupChatManager.getSummarizerModel()) }
+            val groupChatMaxRounds = remember { mutableStateOf(GroupChatManager.getMaxRounds().toString()) }
+            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Group, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("💬 群聊模式", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                        Switch(checked = groupChatEnabled.value, onCheckedChange = { e ->
+                            groupChatEnabled.value = e
+                            GroupChatManager.setEnabled(e)
+                        })
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text("虚拟沙箱：用户发消息 → AI依次发言 → 总结者输出",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (groupChatEnabled.value) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedTextField(value = groupChatModels.value, onValueChange = { groupChatModels.value = it
+                            GroupChatManager.setParticipantModels(it.split(",").map { s -> s.trim() }.filter { s -> s.isNotBlank() })
+                        }, label = { Text("参与模型ID（逗号分隔）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                        Spacer(modifier = Modifier.height(4.dp))
+                        OutlinedTextField(value = groupChatSummarizer.value, onValueChange = { groupChatSummarizer.value = it
+                            GroupChatManager.setSummarizerModel(it.trim())
+                        }, label = { Text("总结模型ID") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                        Spacer(modifier = Modifier.height(4.dp))
+                        OutlinedTextField(value = groupChatMaxRounds.value, onValueChange = { v ->
+                            groupChatMaxRounds.value = v
+                            v.toIntOrNull()?.let { GroupChatManager.setMaxRounds(it) }
+                        }, label = { Text("轮次") }, singleLine = true, modifier = Modifier.width(100.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
 
             // 添加服务
             Text("🔌 添加服务", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)

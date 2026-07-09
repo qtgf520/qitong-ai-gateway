@@ -45,9 +45,11 @@ fun StatsScreen(viewModel: GatewayViewModel) {
     val totalTokensAll by viewModel.totalTokensAll.collectAsState()
     val providers by viewModel.providers.collectAsState()
     val snackbarMessage by viewModel.snackbarMessage.collectAsState()
-    // 网关流量统计
+// 网关流量统计
     val gwUpload = com.qtwl.gateway.service.GatewayForegroundService.trafficUploadBytes.get()
-val gwDownload = com.qtwl.gateway.service.GatewayForegroundService.trafficDownloadBytes.get()
+    val gwDownload = com.qtwl.gateway.service.GatewayForegroundService.trafficDownloadBytes.get()
+    // 当前活跃模型
+    val activeModel = com.qtwl.gateway.service.GatewayForegroundService.activeNodeName
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -159,6 +161,13 @@ val gwDownload = com.qtwl.gateway.service.GatewayForegroundService.trafficDownlo
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text("⬇ 下载", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(formatBytes(gwDownload), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                        }
+                        if (activeModel.isNotBlank()) {
+                            Spacer(Modifier.height(4.dp))
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("🧠 当前模型", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(activeModel, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                            }
                         }
                     }
                 }

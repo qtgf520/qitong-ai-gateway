@@ -45,6 +45,9 @@ class GatewayForegroundService : Service() {
         val app = application as GatewayApplication
         gatewayService = GatewayService(app.database)
         wakeEnabled = getWakeEnabled()
+        // ★★★ 恢复持久化的流量统计 ★★★
+        trafficUploadBytes.set(getSavedTraffic("upload"))
+        trafficDownloadBytes.set(getSavedTraffic("download"))
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -66,6 +69,8 @@ class GatewayForegroundService : Service() {
             while (isActive) {
                 delay(1000)
                 updateNotification()
+                // ★★★ 每10秒持久化流量统计 ★★★
+                if (System.currentTimeMillis() % 10000 < 1000) saveTraffic()
             }
         }
 
@@ -191,6 +196,8 @@ class GatewayForegroundService : Service() {
         private const val KEY_FORCED_MODEL = "forced_model"
         private const val KEY_LAST_REAL_MODEL = "last_real_model"
         private const val EXTRA_TOGGLE_WAKE = "toggle_wake"
+        private const val KEY_TRAFFIC_UPLOAD = "traffic_upload"
+        private const val KEY_TRAFFIC_DOWNLOAD = "traffic_download"
         private const val DEFAULT_PORT = 8889
         private const val DEFAULT_PROXY_PORT = 7890
 
@@ -363,5 +370,21 @@ val trafficDownloadBytes = java.util.concurrent.atomic.AtomicLong(0L)
             return keysStr.split(",").map { it.trim() }.filter { it.isNotBlank() }.toSet()
         }
         fun saveAllowedApiKeys(keys: Set<String>) = saveGatewayConfig("allowed_api_keys", keys.joinToString(","))
+
+        // ★★★ 流量统计持久化 ★★★
+        fun saveTraffic() {
+            GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).edit()
+                .putLong(KEY_TRAFFIC_UPLOAD, trafficUploadBytes.get())
+                .putLong(KEY_TRAFFIC_DOWNLOAD, trafficDownloadBytes.get())
+                .apply()
+        }
+        fun getSavedTraffic(type: String): Long {
+            val sp = GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0)
+            return when (type) {
+                "upload" -> sp.getLong(KEY_TRAFFIC_UPLOAD, 0L)
+                "download" -> sp.getLong(KEY_TRAFFIC_DOWNLOAD, 0L)
+                else -> 0L
+            }
+        }
     }
 }

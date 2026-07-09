@@ -9,6 +9,8 @@ import com.qtwl.gateway.data.model.TokenUsage
 import com.qtwl.gateway.network.UpstreamClient
 import com.qtwl.gateway.service.GatewayForegroundService
 import com.qtwl.gateway.service.LiveSession
+import com.qtwl.gateway.service.ThinkingConfigManager
+import com.qtwl.gateway.service.GroupChatManager
 import com.qtwl.gateway.ui.viewmodel.BrainMemoryManager
 import com.qtwl.gateway.ui.viewmodel.ModelCapabilityManager
 import com.qtwl.gateway.utils.ToolAction
@@ -389,6 +391,9 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
     val rawBytes = call.receive<ByteArray>()
     val requestBodyStr = String(rawBytes, Charsets.UTF_8)
 
+    // ★★★ 全模型统计：所有请求都计上传流量 ★★★
+    GatewayForegroundService.trafficUploadBytes.addAndGet(rawBytes.size.toLong())
+
     val path = call.parameters.getAll("path")?.joinToString("/") ?: ""
 
     // ★★ 如果 path 为空但 body 是 JSON 且有 model 字段 → 自动转成 /v1/chat/completions
@@ -410,7 +415,7 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
     // ★★ 工具指令检测：在转发前先解析并执行操作指令 ★★
     if (isChat && requestBodyStr.isNotBlank()) {
         val requestJson = try { proxyJson.parseToJsonElement(requestBodyStr).jsonObject } catch (_: Exception) { null }
-        val modelId = requestJson?.get("model")?.jsonPrimitive?.content
+        var modelId = requestJson?.get("model")?.jsonPrimitive?.content
         val stream = requestJson?.get("stream")?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false
         
         if (modelId == "qtai-sj") {
@@ -436,8 +441,7 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
                     // ★★ 先尝试硬指令匹配 ★★
                     val actions = ToolExecutor.parseCommand(actualCmd)
                     if (actions.isNotEmpty()) {
-                        // ★★★ qtai-sj工具指令统计：上传流量+模型名 ★★★
-                        GatewayForegroundService.trafficUploadBytes.addAndGet(rawBytes.size.toLong())
+                        // ★★★ qtai-sj工具指令统计：模型名 ★★★
                         GatewayForegroundService.activeNodeName = "qtai-sj"
                         GatewayScheduler.recordModelUsage("qtai-sj")
                         val results = actions.map { action ->
@@ -513,13 +517,81 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
                 
                     // ★★ 硬指令未命中 → 用脑子模型理解自然语言 ★★
 val brainModelId = GatewayForegroundService.getQtaiSjBrain()
-if (brainModelId.isNotBlank()) {
+if (actualCmd.isNotBlank() && brainModelId.isNotBlank()) {
     val brainModel = database.aiModelDao().getEnabledModelsList().find { it.modelId == brainModelId && it.isEnabled }
     val brainProvider = if (brainModel != null) database.providerDao().getProviderById(brainModel.providerId) else null
 
     if (brainModel != null && brainProvider != null && brainProvider.isEnabled) {
-// ★★★ qtai-sj统计：流量+记录使用（不覆盖activeNodeName，保持用户选的真实模型）★★★
-            GatewayForegroundService.trafficUploadBytes.addAndGet(rawBytes.size.toLong())
+        // ★★★ 群聊模式：如果开启则走群聊引擎 ★★★
+        if (GroupChatManager.isEnabled()) {
+            GatewayScheduler.recordModelUsage(brainModelId)
+            val groupChatResult = GroupChatManager.executeGroupChat(database, userMsg, brainModel, brainProvider)
+            val stream = requestJson?.get("stream")?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false
+            if (stream) {
+                val chunkId = "chatcmpl-group-${UUID.randomUUID().toString().take(8)}"
+                val created = System.currentTimeMillis() / 1000
+                call.respondBytesWriter(contentType = ContentType.Text.EventStream) {
+                    val roleChunk = proxyJson.encodeToString(buildJsonObject {
+                        put("id", JsonPrimitive(chunkId))
+                        put("object", JsonPrimitive("chat.completion.chunk"))
+                        put("created", JsonPrimitive(created))
+                        put("model", JsonPrimitive("qtai-sj"))
+                        put("choices", JsonArray(listOf(buildJsonObject {
+                            put("index", JsonPrimitive(0))
+                            put("delta", buildJsonObject { put("role", JsonPrimitive("assistant")) })
+                            put("finish_reason", JsonNull)
+                        })))
+                    })
+                    writeFully(("data: $roleChunk\n\n").toByteArray())
+                    val contentChunk = proxyJson.encodeToString(buildJsonObject {
+                        put("id", JsonPrimitive(chunkId))
+                        put("object", JsonPrimitive("chat.completion.chunk"))
+                        put("created", JsonPrimitive(created))
+                        put("model", JsonPrimitive("qtai-sj"))
+                        put("choices", JsonArray(listOf(buildJsonObject {
+                            put("index", JsonPrimitive(0))
+                            put("delta", buildJsonObject { put("content", JsonPrimitive(groupChatResult)) })
+                            put("finish_reason", JsonNull)
+                        })))
+                    })
+                    writeFully(("data: $contentChunk\n\n").toByteArray())
+                    val stopChunk = proxyJson.encodeToString(buildJsonObject {
+                        put("id", JsonPrimitive(chunkId))
+                        put("object", JsonPrimitive("chat.completion.chunk"))
+                        put("created", JsonPrimitive(created))
+                        put("model", JsonPrimitive("qtai-sj"))
+                        put("choices", JsonArray(listOf(buildJsonObject {
+                            put("index", JsonPrimitive(0))
+                            put("delta", buildJsonObject {})
+                            put("finish_reason", JsonPrimitive("stop"))
+                        })))
+                    })
+                    writeFully(("data: $stopChunk\n\n").toByteArray())
+                    writeFully("data: [DONE]\n\n".toByteArray())
+                }
+            } else {
+                val resp = buildJsonObject {
+                    put("id", JsonPrimitive("chatcmpl-group-${UUID.randomUUID().toString().take(8)}"))
+                    put("object", JsonPrimitive("chat.completion"))
+                    put("created", JsonPrimitive(System.currentTimeMillis() / 1000))
+                    put("model", JsonPrimitive("qtai-sj"))
+                    put("choices", JsonArray(listOf(buildJsonObject {
+                        put("index", JsonPrimitive(0))
+                        put("message", buildJsonObject { put("role", JsonPrimitive("assistant")); put("content", JsonPrimitive(groupChatResult)) })
+                        put("finish_reason", JsonPrimitive("stop"))
+                    })))
+                    put("usage", buildJsonObject {
+                        put("prompt_tokens", JsonPrimitive(userMsg.length / 4))
+                        put("completion_tokens", JsonPrimitive(groupChatResult.length / 4))
+                        put("total_tokens", JsonPrimitive((userMsg.length + groupChatResult.length) / 4))
+                    })
+                }
+                call.respondText(contentType = ContentType.Application.Json.withCharset(Charsets.UTF_8), text = resp.toString())
+            }
+            logAccess(call, "qtai-sj", 200, System.currentTimeMillis() - startMs)
+            return
+        }
+// ★★★ qtai-sj统计：记录使用（不覆盖activeNodeName，保持用户选的真实模型）★★★
             GatewayScheduler.recordModelUsage(brainModelId)
         // ★ 用脑子模型分析用户意图（带排行榜+模型能力标记）★★
         val rankingInfo = if (GatewayScheduler.pipelineSortedModelIds.isEmpty()) "暂无测速数据" 
@@ -552,9 +624,9 @@ $rankingInfo
 - 查状态/排行 → 执行查询
 - 其他聊天 → 自由回复
 
-记住：你是${customName.ifBlank { "綦小桐" }}，要有自己的思考和个性，像真人一样回复用户。如果需要执行网关操作，在回复末尾加上【指令:xxx】。"""
+记住：你是${customName.ifBlank { "綦小桐" }}，要有自己的思考和个性，像真人一样回复用户。如果需要执行网关操作，在回复末尾加上【指令:xxx】。""" + ThinkingConfigManager.buildThinkingPrompt()
 
-                            val brainBody = """{"model":"${brainModel.modelId}","messages":[{"role":"system","content":${proxyJson.encodeToString(JsonPrimitive(brainPrompt))}},{"role":"user","content":${proxyJson.encodeToString(JsonPrimitive(userMsg))}}],"max_tokens":500,"stream":false,"temperature":0.7}"""
+                            val brainBody = """{"model":"${brainModel.modelId}","messages":[{"role":"system","content":${proxyJson.encodeToString(JsonPrimitive(brainPrompt))}},{"role":"user","content":${proxyJson.encodeToString(JsonPrimitive(userMsg))}}],"max_tokens":500,"stream":${stream},"temperature":0.7}"""
                         
                             try {
                                 val brainClient = okhttp3.OkHttpClient.Builder()
@@ -672,16 +744,16 @@ if (brainContent.isNotBlank()) {
                                     return
                                 }
                             } catch (_: Exception) {
-            // 【刀4+刀8】脑子失败，返回明确错误而不是静默空转
-            val errorResp = buildJsonObject {
-                put("error", buildJsonObject {
-                    put("message", JsonPrimitive("脑子模型请求失败，请检查服务商配置或稍后重试"))
-                    put("type", JsonPrimitive("brain_error"))
-                })
-            }
-            call.respondText(contentType = ContentType.Application.Json.withCharset(Charsets.UTF_8), text = errorResp.toString())
-            logAccess(call, "qtai-sj", 502, System.currentTimeMillis() - startMs)
-        }
+ // 【刀4+刀8】脑子失败，返回502而不是静默空转
+ val errorResp = buildJsonObject {
+  put("error", buildJsonObject {
+   put("message", JsonPrimitive("脑子模型请求失败，请检查服务商配置或稍后重试"))
+   put("type", JsonPrimitive("brain_error"))
+  })
+ }
+ call.respondText(contentType = ContentType.Application.Json.withCharset(Charsets.UTF_8), text = errorResp.toString())
+ logAccess(call, "qtai-sj", 502, System.currentTimeMillis() - startMs)
+}
                         }
                     }
                 }
@@ -750,10 +822,42 @@ if (brainContent.isNotBlank()) {
 
     if (isChat && requestBodyStr.isNotBlank()) {
         val requestJson = try { proxyJson.parseToJsonElement(requestBodyStr).jsonObject } catch (_: Exception) { null }
-        val modelId = requestJson?.get("model")?.jsonPrimitive?.content
+        var modelId = requestJson?.get("model")?.jsonPrimitive?.content
         val stream = requestJson?.get("stream")?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false
 
         if (modelId != null) {
+            // ★★ 多模态支持：检测图片并自动切换视觉模型 ★★
+            val hasImage = requestJson?.get("messages")?.jsonArray?.any { msg ->
+                try {
+                    val content = msg?.jsonObject?.get("content")
+                    content is kotlinx.serialization.json.JsonArray && content.any { part ->
+                        part?.jsonObject?.get("type")?.jsonPrimitive?.content == "image_url"
+                    }
+                } catch (_: Exception) { false }
+            } ?: false
+            // ★ 如果请求含图片但目标模型不支持视觉 → 就地切换为视觉模型 ★
+            val effectiveModelId = if (hasImage && modelId != "qtai-sj") {
+                val allModels = database.aiModelDao().getEnabledModelsList().filter { it.isEnabled }
+                val visionModel = allModels.firstOrNull { ModelCapabilityManager.getCapabilities(it.modelId).second }
+                    ?: allModels.firstNotNullOfOrNull { m ->
+                        GatewayScheduler.pipelineSortedModelIds.firstNotNullOfOrNull { id ->
+                            allModels.find { it.modelId == id && ModelCapabilityManager.getCapabilities(it.modelId).second }
+                        }
+                    }
+                if (visionModel != null && modelId != visionModel.modelId) {
+                    // 记录切换日志，继续用原始modelId发起请求（用户选的）
+                    // 但在转发时会自动替换model字段
+                    GatewayForegroundService.activeNodeName = visionModel.modelId
+                    GatewayForegroundService.addDebugLog("👁️ 图片检测→自动切视觉: $modelId → ${visionModel.modelId}")
+                    visionModel.modelId
+                } else modelId
+            } else modelId
+            modelId = effectiveModelId
+            // ★ 如果model被覆盖（多模态切换），同步修改请求体中的model字段 ★
+            val finalRequestBodyStr = if (modelId != (requestJson?.get("model")?.jsonPrimitive?.content ?: "")) {
+                requestBodyStr.replace(Regex("\"model\":\".*?\""), "\"model\":\"${modelId}\"")
+            } else requestBodyStr
+            val finalRawBytes = finalRequestBodyStr.toByteArray()
             val autoFailover = GatewayForegroundService.getAutoFailover()
 
             if (autoFailover) {
@@ -846,14 +950,13 @@ val attemptModels: List<AiModel> = if (allEnabled.isNotEmpty()) {
             val provider = database.providerDao().getProviderById(primaryModel.providerId)
             if (provider != null && provider.isEnabled) {
                 try {
-                    GatewayForegroundService.trafficUploadBytes.addAndGet(rawBytes.size.toLong())
                     call.attributes.put(MODEL_ID_KEY, primaryModel.modelId)
                     call.attributes.put(PROVIDER_ID_KEY, primaryModel.providerId)
                     GatewayForegroundService.activeNodeName = primaryModel.modelId
                     GatewayScheduler.recordModelUsage(primaryModel.modelId)
                     val useProxy = primaryModel.useProxy
 
-                    val sanitizedBody = sanitizeRequestBody(requestBodyStr)
+                    val sanitizedBody = sanitizeRequestBody(finalRequestBodyStr)
                     // ★★ 人格+记忆注入 ★★
                     val bodyWithPersona = if (BrainMemoryManager.getConfig().enabled) {
                         val personaText = BrainMemoryManager.buildPersonaPrompt()
@@ -900,7 +1003,6 @@ val attemptModels: List<AiModel> = if (allEnabled.isNotEmpty()) {
 
                 // ★★ 故障转移：不预检测，直接转发（信任已有测速+健康缓存）★★
                 try {
-                    GatewayForegroundService.trafficUploadBytes.addAndGet(rawBytes.size.toLong())
                     call.attributes.put(MODEL_ID_KEY, matchedModel.modelId)
                     call.attributes.put(PROVIDER_ID_KEY, matchedModel.providerId)
                     GatewayForegroundService.activeNodeName = matchedModel.modelId
@@ -974,7 +1076,6 @@ val attemptModels: List<AiModel> = if (allEnabled.isNotEmpty()) {
         call.respondText(contentType = ContentType.Application.Json, status = status, text = body)
         return
     }
-    GatewayForegroundService.trafficUploadBytes.addAndGet(rawBytes.size.toLong())
     pipeNormalResponse(call, defaultProvider, rawBytes, "/v1/$effectivePath", database)
 }
 
