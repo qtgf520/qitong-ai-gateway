@@ -517,7 +517,7 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
                 
                     // ★★ 硬指令未命中 → 用脑子模型理解自然语言 ★★
 val brainModelId = GatewayForegroundService.getQtaiSjBrain()
-if (actualCmd.isNotBlank() && brainModelId.isNotBlank()) {
+if (brainModelId.isNotBlank()) {
     val brainModel = database.aiModelDao().getEnabledModelsList().find { it.modelId == brainModelId && it.isEnabled }
     val brainProvider = if (brainModel != null) database.providerDao().getProviderById(brainModel.providerId) else null
 
@@ -525,7 +525,7 @@ if (actualCmd.isNotBlank() && brainModelId.isNotBlank()) {
         // ★★★ 群聊模式：如果开启则走群聊引擎 ★★★
         if (GroupChatManager.isEnabled()) {
             GatewayScheduler.recordModelUsage(brainModelId)
-            val groupChatResult = GroupChatManager.executeGroupChat(database, userMsg, brainModel, brainProvider)
+            val groupChatResult = GroupChatManager.executeGroupChat(database, userMsg)
             val stream = requestJson?.get("stream")?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false
             if (stream) {
                 val chunkId = "chatcmpl-group-${UUID.randomUUID().toString().take(8)}"

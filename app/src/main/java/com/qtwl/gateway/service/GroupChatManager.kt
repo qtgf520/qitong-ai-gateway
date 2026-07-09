@@ -1,111 +1,78 @@
 package com.qtwl.gateway.service
 
+import android.content.Context
+import android.content.SharedPreferences
 import com.qtwl.gateway.GatewayApplication
 import com.qtwl.gateway.data.db.AppDatabase
 import com.qtwl.gateway.data.model.AiModel
-import com.qtwl.gateway.gateway.GatewayScheduler
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.encodeToString
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.RequestBody.Companion.toRequestBody
-import android.content.Context
-import android.content.SharedPreferences
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import java.util.UUID
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 
 /**
  * 群聊模式（虚拟沙箱 + AI互聊 + 总结）
- *
- * 架构：
- * 用户选择 N 个 AI 模型 + 1 个总结模型 → 开启群聊
- * 用户发消息 → AI-A → AI-B → AI-C ... → 总结者输出最终结论
- *
- * 每个 AI 能看到完整对话历史，AI 之间用 [@AI名称] 互相引用
+ * - 支持 N 个参与模型 + 1 个总结者（可选）
+ * - 用户消息 → 参与者并发回复 → 总结者生成结论
+ * - AI 之间用 [@模型名称] 互相引用
  */
 object GroupChatManager {
 
     private const val PREFS = "gateway_config"
     private const val KEY_GROUP_CHAT_ENABLED = "group_chat_enabled"
-    private const val KEY_GROUP_CHAT_MODELS = "group_chat_models"   // JSON array of model IDs
-    private const val KEY_GROUP_CHAT_SUMMARIZER = "group_chat_summarizer" // model ID for summarizer
-    private const val KEY_GROUP_CHAT_MAX_ROUNDS = "group_chat_max_rounds"
+    private const val KEY_GROUP_CHAT_MODELS = "group_chat_models"
+    private const val KEY_GROUP_CHAT_SUMMARIZER = "group_chat_summarizer"
+    private const val KEY_GROUP_CHAT_MAX_ROUND = "group_chat_max_rounds"
 
-    private val DEFAULT_CT = "application/json".toMediaType()
-    private val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true; prettyPrint = false }
+    private val DEFAULT_CT = "application/json; charset=utf-8".toMediaType()
+    private val json = Json { ignoreUnknownKeys = true; prettyPrint = false }
 
-    // 当前群聊会话（运行时）
-    data class GroupChatSession(
-        val messages: MutableList<String> = mutableListOf(),     // 完整对话记录
-        val participants: List<String> = emptyList(),             // 参与模型ID列表
-        val currentRound: Int = 0,
-        val maxRounds: Int = 2
-    )
-
-    private var currentSession: GroupChatSession? = null
+    // ============ 配置 ============
 
     private fun prefs(): SharedPreferences =
         GatewayApplication.getInstance().getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    // ==================== 配置 ====================
-
-    /** 群聊是否开启 */
     fun isEnabled(): Boolean = prefs().getBoolean(KEY_GROUP_CHAT_ENABLED, false)
-
     fun setEnabled(enabled: Boolean) {
         prefs().edit().putBoolean(KEY_GROUP_CHAT_ENABLED, enabled).apply()
-        if (!enabled) currentSession = null
     }
 
-    /** 获取参与群聊的模型ID列表 */
     fun getParticipantModels(): List<String> {
-        val raw = prefs().getString(KEY_GROUP_CHAT_MODELS, "[]") ?: "[]"
-        return try {
-            json.decodeFromString<kotlinx.serialization.json.JsonArray>(raw).map { it.jsonPrimitive.content }
-        } catch (_: Exception) { emptyList() }
+        val raw = prefs().getString(KEY_GROUP_CHAT_MODELS, "") ?: ""
+        return raw.split(",").filter { it.isNotBlank() }.map { it.trim() }
     }
 
-    /** 设置参与群聊的模型ID列表 */
     fun setParticipantModels(models: List<String>) {
-        val arr = json.encodeToString(JsonArray(models.map { JsonPrimitive(it) }))
-        prefs().edit().putString(KEY_GROUP_CHAT_MODELS, arr).apply()
+        prefs().edit().putString(KEY_GROUP_CHAT_MODELS, models.joinToString(",")).apply()
     }
 
-    /** 获取总结模型ID */
     fun getSummarizerModel(): String = prefs().getString(KEY_GROUP_CHAT_SUMMARIZER, "") ?: ""
+    fun setSummarizerModel(modelId: String) = prefs().edit().putString(KEY_GROUP_CHAT_SUMMARIZER, modelId).apply()
 
-    fun setSummarizerModel(modelId: String) {
-        prefs().edit().putString(KEY_GROUP_CHAT_SUMMARIZER, modelId).apply()
-    }
+    fun getMaxRounds(): Int = prefs().getInt(KEY_GROUP_CHAT_MAX_ROUND, 2)
+    fun setMaxRounds(rounds: Int) = prefs().edit().putInt(KEY_GROUP_CHAT_MAX_ROUND, rounds.coerceIn(1, 8)).apply()
 
-    /** 获取最大轮次 */
-    fun getMaxRounds(): Int = prefs().getInt(KEY_GROUP_CHAT_MAX_ROUNDS, 2)
+    // ============ 核心逻辑 ============
 
-    fun setMaxRounds(rounds: Int) {
-        prefs().edit().putInt(KEY_GROUP_CHAT_MAX_ROUNDS, rounds).apply()
-    }
-
-    // ==================== 运行逻辑 ====================
-
-    /**
-     * 执行群聊：用户消息 → AI依次回复 → 总结者总结
-     *
-     * @return 返回最终拼接的群聊结果文本
-     */
     suspend fun executeGroupChat(
         database: AppDatabase,
         userMsg: String,
-        brainModel: AiModel,
-        brainProvider: com.qtwl.gateway.data.model.Provider
     ): String = withContext(Dispatchers.IO) {
-        val participants = getParticipantModels()
-        if (participants.isEmpty()) {
+        val participantIds = getParticipantModels()
+        if (participantIds.isEmpty()) {
             return@withContext "群聊模式已开启，但未选择参与模型。请在管理页配置。"
         }
 
@@ -113,111 +80,168 @@ object GroupChatManager {
         val summarizerId = getSummarizerModel()
         val maxRounds = getMaxRounds()
 
-        val sb = StringBuilder()
-        sb.appendLine("📋 **群聊开始**")
-        sb.appendLine("用户提问：$userMsg")
-        sb.appendLine("---")
+        val fullLog = mutableListOf<String>().apply {
+            add("📋 **群聊开始**")
+            add("用户提问：$userMsg")
+            add("---")
+        }
 
-        // 每轮按参与者顺序发言
+        val semaphore = Semaphore(3) // 最多3个并发
+
+        // ===== 每轮 =====
         for (round in 1..maxRounds) {
-            sb.appendLine("\n## 第 $round 轮")
-            for (modelId in participants) {
-                val model = allModels.find { it.modelId == modelId } ?: continue
-                val provider = database.providerDao().getProviderById(model.providerId) ?: continue
-                if (!provider.isEnabled) continue
+            fullLog.add("")
+            fullLog.add("## 第 $round 轮")
 
-                // 构造 prompt：携带完整对话历史
-                val history = sb.toString().take(3000) // 截断避免超长
-                val prompt = """你是 ${model.displayName}，正在参与一个AI群聊讨论。
-用户的问题：$userMsg
+            val futures = participantIds.mapNotNull { modelId ->
+                val model = allModels.firstOrNull { it.modelId == modelId } ?: return@mapNotNull null
+                val provider = database.providerDao().getProviderById(model.providerId) ?: return@mapNotNull null
+                if (!provider.isEnabled) return@mapNotNull null
 
-当前讨论记录：
-$history
-
-请根据以上讨论，${if (round == 1) "首先发表你的看法" else "结合前面的AI发言，提出你的补充、反驳或新观点"}。
-如果你同意或不同意某位AI的观点，请用 [@模型名称] 格式点名。
-保持简洁专业，200字以内。"""
-
-                val body = """{"model":"${model.modelId}","messages":[{"role":"system","content":"你是一个专业的AI助手，正在参与群聊讨论。"},{"role":"user","content":${json.encodeToString(JsonPrimitive(prompt))}}],"max_tokens":300,"temperature":0.7}"""
-
-                try {
-                    val client = okhttp3.OkHttpClient.Builder()
-                        .connectTimeout(15000, java.util.concurrent.TimeUnit.MILLISECONDS)
-                        .readTimeout(30000, java.util.concurrent.TimeUnit.MILLISECONDS)
-                        .build()
-                    val req = okhttp3.Request.Builder()
-                        .url("${provider.resolvedBaseUrl.trimEnd('/')}/v1/chat/completions")
-                        .post(body.toByteArray().toRequestBody(DEFAULT_CT))
-                        .apply { if (!provider.apiKey.isNullOrBlank()) header("Authorization", "Bearer ${provider.apiKey}") }
-                        .build()
-                    val resp = client.newCall(req).execute()
-                    val respBody = resp.body?.string() ?: "{}"
-                    resp.close()
-
-                    val reply = try {
-                        json.parseToJsonElement(respBody).jsonObject
-                            .get("choices")?.jsonArray?.firstOrNull()?.jsonObject
-                            ?.get("message")?.jsonObject?.get("content")?.jsonPrimitive?.content ?: ""
-                    } catch (_: Exception) { "" }
-
-                    if (reply.isNotBlank()) {
-                        sb.appendLine("\n**${model.displayName}**：$reply")
+                launch {
+                    semaphore.withPermit {
+                        try {
+                            val bodyJson = buildGroupTurnJson(
+                                model.modelId, model.displayName, userMsg,
+                                fullLog.joinToString("\n"), round == 1
+                            )
+                            val (reply, _) = callUpstream(provider, bodyJson.toString())
+                            if (reply.isNotBlank()) {
+                                fullLog.add("\n**${model.displayName}**：$reply")
+                            }
+                        } catch (e: Exception) {
+                            fullLog.add("\n**${model.displayName}**：（请求失败: ${e.message?.take(50) ?: "unknown"}）")
+                        }
                     }
-                } catch (e: Exception) {
-                    sb.appendLine("\n**${model.displayName}**：（请求失败: ${e.message?.take(50)}）")
                 }
             }
+
+            futures.forEach { it.join() }
         }
 
-        // === 总结 ===
+        // ===== 总结者 =====
         if (summarizerId.isNotBlank()) {
-            val summarizerModel = allModels.find { it.modelId == summarizerId }
-            val summarizerProvider = if (summarizerModel != null) database.providerDao().getProviderById(summarizerModel.providerId) else null
-
-            if (summarizerModel != null && summarizerProvider != null && summarizerProvider.isEnabled) {
-                val fullHistory = sb.toString().take(4000)
-                val summaryPrompt = """你是总结者，请阅读以下AI群聊讨论记录，输出一份简洁的总结报告：
-
-$fullHistory
-
-总结要求：
-1. 用户的核心问题是什么
-2. 各位AI的主要观点
-3. 存在的分歧点
-4. 最终的综合结论
-
-请用结构化格式输出。"""
-                val summaryBody = """{"model":"${summarizerModel.modelId}","messages":[{"role":"system","content":"你是专业的群聊总结者。"},{"role":"user","content":${json.encodeToString(JsonPrimitive(summaryPrompt))}}],"max_tokens":500,"temperature":0.5}"""
-
+            val sumModel = allModels.firstOrNull { it.modelId == summarizerId }
+            val sumProvider = sumModel?.let { database.providerDao().getProviderById(it.providerId) }
+            if (sumModel != null && sumProvider != null && sumProvider.isEnabled) {
                 try {
-                    val client = okhttp3.OkHttpClient.Builder()
-                        .connectTimeout(15000, java.util.concurrent.TimeUnit.MILLISECONDS)
-                        .readTimeout(60000, java.util.concurrent.TimeUnit.MILLISECONDS)
-                        .build()
-                    val req = okhttp3.Request.Builder()
-                        .url("${summarizerProvider.resolvedBaseUrl.trimEnd('/')}/v1/chat/completions")
-                        .post(summaryBody.toByteArray().toRequestBody(DEFAULT_CT))
-                        .apply { if (!summarizerProvider.apiKey.isNullOrBlank()) header("Authorization", "Bearer ${summarizerProvider.apiKey}") }
-                        .build()
-                    val resp = client.newCall(req).execute()
-                    val respBody = resp.body?.string() ?: "{}"
-                    resp.close()
-
-                    val summary = try {
-                        json.parseToJsonElement(respBody).jsonObject
-                            .get("choices")?.jsonArray?.firstOrNull()?.jsonObject
-                            ?.get("message")?.jsonObject?.get("content")?.jsonPrimitive?.content ?: ""
-                    } catch (_: Exception) { "" }
-
+                    val summaryPrompt = buildSummationPrompt(fullLog.joinToString("\n"))
+                    val summaryBody = buildJsonObject {
+                        put("model", JsonPrimitive(sumModel.modelId))
+                        put("messages", buildJsonArray {
+                            add(buildJsonObject { put("role", JsonPrimitive("system")); put("content", JsonPrimitive("你是专业的群聊总结者。输出结构化总结。")) })
+                            add(buildJsonObject { put("role", JsonPrimitive("user")); put("content", JsonPrimitive(summaryPrompt)) })
+                        })
+                        put("max_tokens", JsonPrimitive(600))
+                        put("temperature", JsonPrimitive(0.5))
+                    }.toString()
+                    val (summary, _) = callUpstream(sumProvider, summaryBody)
                     if (summary.isNotBlank()) {
-                        sb.appendLine("\n\n---\n## 📝 总结报告\n$summary")
+                        fullLog.add("")
+                        fullLog.add("---")
+                        fullLog.add("## 📝 总结报告")
+                        fullLog.add(summary)
                     }
                 } catch (e: Exception) {
-                    sb.appendLine("\n\n---\n## ⚠️ 总结失败: ${e.message?.take(50)}")
+                    fullLog.add("")
+                    fullLog.add("---")
+                    fullLog.add("## 📝 总结失败: ${e.message?.take(100) ?: "unknown"}")
                 }
             }
         }
 
-        sb.toString()
+        fullLog.joinToString("\n")
+    }
+
+    // ============ 内部构造 ============
+
+    private fun buildGroupTurnJson(
+        modelId: String, modelName: String, userMsg: String,
+        history: String, isFirstRound: Boolean
+    ): JsonObject = buildJsonObject {
+        val systemMsg = buildString {
+            append("你是 $modelName，正在参与一个AI群聊讨论。\n")
+            append("用户的问题：$userMsg\n")
+            append("当前讨论记录：\n")
+            append(history.takeLast(4000))
+            if (isFirstRound) append("\n请首先发表你的看法。如需点名，用 [@模型名称] 格式。")
+            else append("\n结合以上讨论，提出你的补充、反驳或新观点。使用 [@模型名称] 点名。")
+        }
+
+        put("model", JsonPrimitive(modelId))
+        put("messages", buildJsonArray {
+            add(buildJsonObject { put("role", JsonPrimitive("system")); put("content", JsonPrimitive("你是一个专业的AI助手，正在参与群聊讨论。输出简洁专业。")) })
+            add(buildJsonObject { put("role", JsonPrimitive("user")); put("content", JsonPrimitive(systemMsg)) })
+        })
+        put("max_tokens", JsonPrimitive(400))
+        put("temperature", JsonPrimitive(0.7))
+    }
+
+    private fun buildSummationPrompt(fullLog: String): String = buildString {
+        appendLine("请阅读以下AI群聊讨论记录，输出一份简洁的总结报告：")
+        appendLine()
+        appendLine(fullLog.takeLast(5000))
+        appendLine()
+        appendLine("总结要求：")
+        appendLine("1. 用户的核心问题是什么")
+        appendLine("2. 各位AI的主要观点")
+        appendLine("3. 存在的分歧点")
+        appendLine("4. 最终的综合结论")
+        appendLine()
+        appendLine("请用结构化格式输出。")
+    }
+
+    // ============ 上游调用 ============
+
+    private suspend fun callUpstream(
+        provider: com.qtwl.gateway.data.model.Provider,
+        bodyJson: String
+    ): Pair<String, String> {
+        val client = okhttp3.OkHttpClient.Builder()
+            .connectTimeout(15000L, java.util.concurrent.TimeUnit.MILLISECONDS)
+            .readTimeout(60000L, java.util.concurrent.TimeUnit.MILLISECONDS)
+            .build()
+
+        val url = (provider.chatPath ?: "/v1/chat/completions").run {
+            if (startsWith("/")) this else "/$this"
+        }
+        val resolvedUrl = "${provider.resolvedBaseUrl.trimEnd('/')}${url}"
+
+        val req = okhttp3.Request.Builder()
+            .url(resolvedUrl)
+            .header("Authorization", "Bearer ${provider.apiKey}")
+            .header("Content-Type", "application/json")
+            .post(bodyJson.toByteArray().toRequestBody(DEFAULT_CT))
+            .build()
+
+        val resp = client.newCall(req).execute()
+        val bodyStr = resp.body?.string() ?: "{}"
+        resp.close()
+
+        val content: String = try {
+            val root = json.parseToJsonElement(bodyStr).jsonObject
+            choicesContentOrNull(root) ?: root["content"]?.jsonPrimitive?.content ?: ""
+        } catch (e: Exception) {
+            println("GroupChat JSON解析失败, status=${resp.code}, body=${bodyStr.take(200)}, error=${e.message}")
+            ""
+        }
+
+        return content to bodyStr
+    }
+
+    private fun choicesContentOrNull(obj: JsonObject): String? {
+        val choices = obj["choices"]?.jsonArray ?: return null
+        for (choiceRaw in choices) {
+            try {
+                val choice = choiceRaw.jsonObject
+                // method 1: choices[].message.content
+                choice["message"]?.jsonObject?.get("content")?.jsonPrimitive?.content?.let { return it }
+                // method 2: choices[].delta.content (streaming)
+                choice["delta"]?.jsonObject?.get("content")?.jsonPrimitive?.content?.let { return it }
+            } catch (e: Exception) {
+                // skip malformed choice
+            }
+        }
+        return null
     }
 }

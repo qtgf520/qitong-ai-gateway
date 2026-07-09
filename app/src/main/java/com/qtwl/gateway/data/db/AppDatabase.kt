@@ -14,15 +14,15 @@ import com.qtwl.gateway.data.model.Provider
 import com.qtwl.gateway.data.model.TokenUsage
 
     @Database(
-    entities = [
-        Provider::class,
-        AiModel::class,
-        Conversation::class,
-        ChatMessage::class,
-        TokenUsage::class
-    ],
-    version = 5,
-    exportSchema = false
+entities = [
+    Provider::class,
+    AiModel::class,
+    Conversation::class,
+    ChatMessage::class,
+    TokenUsage::class
+],
+version = 6,
+exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun providerDao(): ProviderDao
@@ -43,9 +43,9 @@ abstract class AppDatabase : RoomDatabase() {
                     "ai_gateway.db"
                 )
                     .addMigrations(MIGRATION_2_TO_3)
-                    .addMigrations(MIGRATION_3_TO_4)
-                    .addMigrations(MIGRATION_4_TO_5)
-                    .fallbackToDestructiveMigration()
+                .addMigrations(MIGRATION_3_TO_4)
+                .addMigrations(MIGRATION_5_TO_6)
+//                .addMigrations(MIGRATION_4_TO_5)// 已被 MIGRATION_5_TO_6 覆盖
                     .build()
                 INSTANCE = instance
                 instance
@@ -67,11 +67,12 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        private val MIGRATION_4_TO_5 = object : Migration(4, 5) {
-            override fun migrate(db: SupportSQLiteDatabase) {
-                // 添加按模型粒度控制代理字段（默认=1 走代理）
-                db.execSQL("ALTER TABLE models ADD COLUMN use_proxy INTEGER NOT NULL DEFAULT 1")
-            }
-        }
+        private val MIGRATION_5_TO_6 = object : Migration(5, 6) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE providers ADD COLUMN chat_path TEXT")
+        db.execSQL("ALTER TABLE providers ADD COLUMN supports_system_role INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE models ADD COLUMN context_window INTEGER NOT NULL DEFAULT 4096")
+    }
+}
     }
 }

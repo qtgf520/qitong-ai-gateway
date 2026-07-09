@@ -13,7 +13,7 @@ data class Provider(
     @ColumnInfo(name = "name")
     val name: String,
     @ColumnInfo(name = "type")
-    val type: String,          // "OpenAI Compatible" / "Ollama" / "Custom"
+    val type: String, // "OpenAI Compatible" / "Ollama" / "Custom"
     @ColumnInfo(name = "base_url")
     val baseUrl: String,
     @ColumnInfo(name = "port")
@@ -23,7 +23,11 @@ data class Provider(
     @ColumnInfo(name = "is_enabled")
     val isEnabled: Boolean = true,
     @ColumnInfo(name = "order_index")
-    val orderIndex: Int = 0
+    val orderIndex: Int = 0,
+    @ColumnInfo(name = "chat_path")
+    val chatPath: String? = null,          // e.g. /v1/chat/completions (default)
+    @ColumnInfo(name = "supports_system_role")  
+    val supportsSystemRole: Boolean = false  // true → 允许在 messages[] 里加 {role:"system"};
 ) {
     /**
      * 解析合并端口后的完整 Base URL
