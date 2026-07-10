@@ -1,103 +1,103 @@
 # 🚀 綦桐AI网关 — 超级开发指南（自教文件）
 
-> ⚡ **最高优先级：** 本文件是 AI 代理开发綦桐AI网关的**自教指南**，每次迭代必须优先阅读和执行  
-> **核心规则：优先启动 Debug 编译**（`./gradlew assembleDebug`），快速验证，Release 版仅在正式发布时编译
+> ⚡ **最高优先级：** 本文件是 AI 代理开发綦桐AI网关的**自教指南**，每次迭代必须优先阅读和执行
+> **核心规则：优先启动 Debug 编译**（`./gradlew assembleDebug`），快速验证
+
+---
 
 ## 📌 开发铁律（每次必读）
 
-1. **🔥 优先 Debug 编译** — 所有修改先 `assembleDebug` 验证通过，最后才 `assembleRelease`
-2. **💾 先备份再改** — 整个工作区备份 + 单文件备份，改错了能恢复
-3. **🔍 先理解再动手** — 读代码 → 理解上下文 → 用户确认 → 改代码
-4. **✅ 编译必须通过** — `BUILD SUCCESSFUL` 才能交付，警告允许但报错必须修
-5. **🚿 Git 提交前必须清理** — 删 `.bak`、`backup_*`、临时文件
-6. **📖 每次改代码前先看本文件** — 严格按流程走，不跳步
+1. **🔥 优先 Debug 编译** — 所有修改先 `assembleDebug` 验证通过
+2. **💾 改前先备份单个文件** — 改哪个文件就备份哪个文件（`cp xxx.kt xxx.kt.bak`）
+3. **🔍 参照备份开发** — 打开备份文件（xxx.kt.bak）参考，修改现有文件（xxx.kt），避免花括号等格式错误
+4. **❌ 编译报错时先恢复备份** — 从刚备份的 `.bak` 文件恢复，**禁止直接从Git拉取**
+5. **✅ 编译必须通过** — `BUILD SUCCESSFUL` 才能交付
+6. **🚿 Git提交前清理** — 删 `.bak`、`backup_*`、临时文件
+7. **📖 每次改代码前先看本文件** — 严格按流程走，不跳步
 
 ---
 
-# 綦桐AI网关 — 完整开发/编译/发布流程 v12
+## 1. 版本号规则
 
-> 本文档记录从代码修改到最终 GitHub Release 的完整开发流程，适用于綦桐AI网关（包名 `com.qtwl.gateway`）的日常迭代。
-
----
-
-## 1. 前置准备
-
-### 工作区路径
+### 测试版
 ```
-/data/user/0/com.ai.assistance.operit/files/workspace/app621
+格式：3.x.x-N  （N是测试序号，每次测试递增）
+例如：3.8.5-1 → 3.8.5-2 → 3.8.5-3 ...
+```
+- **测试版** = 只编译安装本地验证，不发Git
+- 每次测试 versionCode 递增1，versionName 的 -N 数字递增
+
+### 正式版
+```
+格式：3.x.x  （去掉 -N）
+例如：3.8.5-3 测试通过 → 发布 3.8.5
+```
+- **正式版** = 编译 + 复制到sdcard + 安装本地 + 推Git + 打标签 + GitHub Release
+- 正式发布时删掉 -N 后缀
+- versionCode 直接对应当前值
+
+### 示例
+| 阶段 | versionName | versionCode | 操作 |
+|------|-------------|-------------|------|
+| 测试1 | 3.8.5-1 | 109 | 编译安装验证 |
+| 测试2 | 3.8.5-2 | 110 | 编译安装验证 |
+| 测试3 | 3.8.5-3 | 111 | 编译安装验证 |
+| 正式发布 | 3.8.5 | 111 | 编译+安装+Git+Release |
+
+---
+
+## 2. 修改代码（对照备份法）
+
+### 2.1 核心修改流程
+```
+① 备份要改的文件  →  cp TargetFile.kt TargetFile.kt.bak
+② 打开备份文件       →  参考其结构
+③ 修改原文件         →  照着备份的逻辑去改
+④ 编译验证           →  ./gradlew assembleDebug
+⑤ 编译失败？         →  cp TargetFile.kt.bak TargetFile.kt（恢复备份）
+⑥ 重新修改再编译
 ```
 
-### 签名证书
-app/qitong.jks (别名: qitong, 密码: 配置有 )
+### 2.2 对照备份法详解
+```
+备份文件 TargetFile.kt.bak  ← 打开参考（不改它）
+                ↓ 对照
+现有文件 TargetFile.kt       ← 实际修改（编译它）
+```
+- 备份文件是**已知能编译通过的**，打开它看花括号、函数结构
+- 照着备份的结构去改现有文件
+- 这样就**不会出现花括号错乱、函数被吃**等问题
 
-### 版本号规则
-| 版本类型 | 示例 | versionCode |
-|---------|------|-------------|
-| 测试版 | 3.8.3-1 | 106 |
-| 测试版 | 3.8.3-2 | 107 |
-| 正式版 | 3.8.4 | 108 |
-| 正式版 | 3.8.5 | 109 |
+### 2.3 关键源文件
+| 文件 | 路径相对 app/src/main/java/... |
+|------|-------------------------------|
+| 版本号 | app/build.gradle.kts |
+| 网关转发 | gateway/GatewayService.kt |
+| 通知栏 | service/GatewayForegroundService.kt |
+| 管理页UI | ui/screens/DataManagementScreen.kt |
+| 群聊管理器 | service/GroupChatManager.kt |
+| 调度器 | gateway/GatewayScheduler.kt |
+| ViewModel | ui/viewmodel/GatewayViewModel.kt |
 
----
-
-## 2. 开发规范
-
-### 2.1 备份优先
-每次改代码前先备份整个工作区，每次改文件前先备份单个文件。
-
-### 2.2 先理解再修改
-- 先读代码理解上下文，确认无歧义再动手
-- 不改动原有功能
-
-### 2.3 编译验证
-- BUILD SUCCESSFUL 才能交付
-- 编译警告可允许，报错必须阻塞并修复
-
-### 2.4 Git 提交前清理
-删除备份文件（.bak、backup_* 目录）再 commit
-
----
-
-## 3. 修改代码
-
-### 3.1 关键源文件
-- 版本号: app/build.gradle.kts
-- 网关服务: GatewayService.kt
-- 通知栏: GatewayForegroundService.kt
-- 管理页UI: DataManagementScreen.kt
-- 群聊管理器: GroupChatManager.kt
-- 调度器: GatewayScheduler.kt
-- ViewModel: GatewayViewModel.kt
-
-### 3.2 常用修改
-
-#### 版本号升级
-versionCode += 1, versionName = 新版本号
-
-#### 通知栏流量
-通知栏用 trafficUploadBytes/trafficDownloadBytes（可重置）
-APP内总统计用 totalUploadBytes/totalDownloadBytes（持久化）
-切模型时调用: resetNotificationTraffic()
-
-#### 群聊弹窗（排行榜勾选）
-弹窗打开时用 remember 快照数据，避免列表跳动
-- viewModel.enabledModels.value（只取一次）
-- GatewayScheduler.pipelineSortedModelIds.toList()（只取一次）
-
-#### 流量统计双轨制
-每处都同时加两行: traffic + total
+### 2.4 编译报错时**绝对禁止**的操作
+```
+❌ git checkout -- xxx.kt         ← 禁止！会丢失本地修改
+❌ git restore xxx.kt             ← 禁止！会丢失本地修改
+✅ cp xxx.kt.bak xxx.kt          ← 正确！从备份恢复
+```
+备份文件就是用来兜底的，`.bak` 就是你的安全网。
 
 ---
 
-## 4. 编译
+## 3. 编译
 
 ```bash
 cd /data/user/0/com.ai.assistance.operit/files/workspace/app621
 
-# Debug 版 优先 
+# Debug 版（测试用，优先）
 ./gradlew assembleDebug
 
-# Release 版
+# Release 版（正式发布用）
 ./gradlew clean assembleRelease
 ```
 
@@ -105,22 +105,7 @@ cd /data/user/0/com.ai.assistance.operit/files/workspace/app621
 
 ---
 
-## 5. 签名
-
-项目已配置自动签名（qitong.jks），Debug 和 Release 用同一签名。
-
-手动重签名:
-```bash
-apksigner sign --ks qitong.jks \
-    --ks-pass pass:qitongwangluo \
-    --ks-key-alias qitong \
-    --key-pass pass:qitongwangluo \
-    --in input.apk --out signed.apk
-```
-
----
-
-## 6. 安装到设备
+## 4. 安装到设备
 
 ```bash
 # 复制到 sdcard
@@ -137,7 +122,7 @@ dumpsys package com.qtwl.gateway | grep -E 'versionName|versionCode'
 
 ---
 
-## 7. 验证
+## 5. 验证清单
 
 - 启动网关 -> 通知栏显示端口
 - 抓包日志 -> 不闪退，筛选有效
@@ -147,8 +132,35 @@ dumpsys package com.qtwl.gateway | grep -E 'versionName|versionCode'
 
 ---
 
-## 8. 推送 Git
+## 6. 测试版 vs 正式版
 
+### 测试模式（我说"测试"时）
+```
+① 改版本号 → 3.x.x-N（N递增）
+② 改代码（对照备份法）
+③ ./gradlew assembleDebug
+④ 复制APK到sdcard
+⑤ 安装到设备
+⑥ 验证功能
+```
+**不发Git，不打标签，不发Release**
+
+### 正式模式（我说"发布"时）
+```
+① 改版本号 → 3.x.x（去掉 -N）
+② 改代码（对照备份法）
+③ ./gradlew assembleDebug（或 assembleRelease）
+④ 复制APK到sdcard
+⑤ 安装到设备
+⑥ 验证功能
+⑦ 推Git + 标签 + GitHub Release
+```
+
+---
+
+## 7. 推送 Git & 发布
+
+### 7.1 推送 Git
 ```bash
 cd /data/user/0/com.ai.assistance.operit/files/workspace/app621
 
@@ -158,52 +170,50 @@ find . -name '*.before_py' -delete
 
 # 提交
 git add -A
-git commit -m 'v3.8.x - 更新说明'
+git commit -m 'v3.x.x - 更新说明'
 git push
 
 # 打标签
-git tag -f v3.8.x
-git push origin v3.8.x -f
+git tag -f v3.x.x
+git push origin v3.x.x -f
 ```
 
----
-
-## 9. 发布 GitHub Release
-
+### 7.2 GitHub Release
 ```bash
-GIT_TOKEN=\$(git remote -v | head -1 | sed 's/.*qtgf520://;s/@.*//')
+GIT_TOKEN=$(git remote -v | head -1 | sed 's/.*qtgf520://;s/@.*//')
 API_URL='https://api.github.com/repos/qtgf520/qitong-ai-gateway/releases'
 
 # 创建 Release
-curl -s -X POST "\$API_URL" \
-  -H "Authorization: Bearer \$GIT_TOKEN" \
-  -d '{"tag_name":"v3.8.x","name":"v3.8.x","prerelease":false}'
+curl -s -X POST "$API_URL" \
+  -H "Authorization: Bearer $GIT_TOKEN" \
+  -d '{"tag_name":"v3.x.x","name":"v3.x.x","prerelease":false}'
 
 # 上传 APK
-RELEASE_ID=\$(curl -s -H "Authorization: Bearer \$GIT_TOKEN" \
-  "\$API_URL/tags/v3.8.x" | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
+RELEASE_ID=$(curl -s -H "Authorization: Bearer $GIT_TOKEN" \
+  "$API_URL/tags/v3.x.x" | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
 
 curl -s -X POST \
-  "https://uploads.github.com/.../releases/\$RELEASE_ID/assets?name=QiTongAI.apk" \
-  -H "Authorization: Bearer \$GIT_TOKEN" \
+  "https://uploads.github.com/repos/qtgf520/qitong-ai-gateway/releases/$RELEASE_ID/assets?name=QiTongAI.apk" \
+  -H "Authorization: Bearer $GIT_TOKEN" \
   --data-binary @app/build/outputs/apk/debug/app-debug.apk
 ```
 
 ---
 
-## 10. 清理旧文件
+## 8. 清理旧文件
 
 ```bash
-# 清理旧APK
+# 清理旧APK（保留最新）
 cd /sdcard/Download
-ls QiTongAI*.apk 2>/dev/null | grep -v 'QiTongAI-v3.8.x.apk' | while read f; do rm -f "\$f"; done
+ls QiTongAI*.apk 2>/dev/null | grep -v 'QiTongAI-v3.x.x.apk' | while read f; do rm -f "$f"; done
 
-# 清理旧备份
+# 清理旧备份（保留最新）
 cd /data/user/0/com.ai.assistance.operit/files/workspace/app621
 ls -dt backup_*/ | tail -n +2 | xargs rm -rf 2>/dev/null
 ```
 
 ---
 
-> 文档版本: v12 - 2026-07-10
-> 适用于: 綦桐AI网关 v3.8.x+
+> **文档版本:** v13 — 2026-07-10
+> **适用于:** 綦桐AI网关 v3.8.x+
+> **核心改动:** 对照备份法开发 + 测试版/正式版分离
