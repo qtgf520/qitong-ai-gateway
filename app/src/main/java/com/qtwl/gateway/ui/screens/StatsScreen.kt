@@ -48,6 +48,8 @@ fun StatsScreen(viewModel: GatewayViewModel) {
 // 网关流量统计
     val gwUpload = com.qtwl.gateway.service.GatewayForegroundService.trafficUploadBytes.get()
     val gwDownload = com.qtwl.gateway.service.GatewayForegroundService.trafficDownloadBytes.get()
+    val gwTotalUpload = com.qtwl.gateway.service.GatewayForegroundService.totalUploadBytes.get()
+    val gwTotalDownload = com.qtwl.gateway.service.GatewayForegroundService.totalDownloadBytes.get()
     // 当前活跃模型
     val activeModel = com.qtwl.gateway.service.GatewayForegroundService.activeNodeName
 
@@ -161,6 +163,16 @@ fun StatsScreen(viewModel: GatewayViewModel) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text("⬇ 下载", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(formatBytes(gwDownload), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                        }
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("📈 总上传", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(formatBytes(gwTotalUpload), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("📈 总下载", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(formatBytes(gwTotalDownload), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
                         }
                         if (activeModel.isNotBlank()) {
                             Spacer(Modifier.height(4.dp))

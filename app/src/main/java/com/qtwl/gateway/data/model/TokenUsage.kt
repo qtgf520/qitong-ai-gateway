@@ -37,6 +37,10 @@ data class TokenUsage(
     val completionTokens: Int = 0,
     @ColumnInfo(name = "total_tokens")
     val totalTokens: Int = 0,
+    @ColumnInfo(name = "upload_bytes")
+    val uploadBytes: Long = 0,
+    @ColumnInfo(name = "download_bytes")
+    val downloadBytes: Long = 0,
     @ColumnInfo(name = "timestamp")
     val timestamp: Long = System.currentTimeMillis()
 )

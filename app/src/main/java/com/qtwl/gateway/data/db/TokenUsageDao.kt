@@ -39,6 +39,18 @@ interface TokenUsageDao {
     @Query("SELECT SUM(total_tokens) FROM token_usage WHERE model_id = :modelId")
     suspend fun getTotalTokensByModel(modelId: String): Long
 
+    @Query("SELECT SUM(upload_bytes) FROM token_usage")
+    suspend fun getTotalUploadBytes(): Long
+
+    @Query("SELECT SUM(download_bytes) FROM token_usage")
+    suspend fun getTotalDownloadBytes(): Long
+
+    @Query("SELECT SUM(upload_bytes) FROM token_usage WHERE model_id = :modelId")
+    suspend fun getTotalUploadBytesByModel(modelId: String): Long
+
+    @Query("SELECT SUM(download_bytes) FROM token_usage WHERE model_id = :modelId")
+    suspend fun getTotalDownloadBytesByModel(modelId: String): Long
+
     @Query("DELETE FROM token_usage WHERE timestamp < :before")
     suspend fun deleteOlderThan(before: Long)
 

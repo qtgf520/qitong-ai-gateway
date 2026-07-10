@@ -15,6 +15,7 @@ import com.qtwl.gateway.ui.viewmodel.BrainMemoryManager
 import com.qtwl.gateway.ui.viewmodel.ModelCapabilityManager
 import com.qtwl.gateway.utils.ToolAction
 import com.qtwl.gateway.utils.ToolExecutor
+import com.qtwl.gateway.utils.SkillRegistry
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.withCharset
@@ -450,6 +451,10 @@ private fun cleanupExpiredSessions() {
     if (expiredKeys.isNotEmpty()) {
         GatewayForegroundService.addDebugLog("🧹 清理 ${expiredKeys.size} 个过期会话")
     }
+    // ★★ 所有会话都过期了 → 通知栏流量清零 ★★
+    if (sessionLastActive.isEmpty()) {
+        GatewayForegroundService.resetNotificationTraffic()
+    }
 }
 
 /** 启动会话清理协程 */
@@ -525,7 +530,7 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
         
         if (modelId == "qtai-sj") {
             // 从 messages 中提取用户最后一句指令
-            val userMsg = try {
+            var userMsg = try {
                 val msgs = requestJson?.get("messages")?.jsonArray
                 if (msgs != null && msgs.isNotEmpty()) {
                     val lastUserMsg = msgs.lastOrNull {
@@ -723,12 +728,17 @@ $rankingInfo
 
 能力标记：🎨图片生成 🛠️工具调用 👁️视觉识别 💬纯文本聊天
 
-控制指令格式：
-- 切换模型 → 执行切换（用排行榜中的模型ID）
-- 查状态/排行 → 执行查询
-- 其他聊天 → 自由回复
+${SkillRegistry.buildSkillPrompt()}
 
-记住：你是${customName.ifBlank { "綦小桐" }}，要有自己的思考和个性，像真人一样回复用户。如果需要执行网关操作，在回复末尾加上【指令:xxx】。""" + ThinkingConfigManager.buildThinkingPrompt()
+注意：
+- 你使用自然语言理解用户的意图，然后从技能池中选择最合适的技能来执行
+- 用户永远不需要知道编码数字，完全由你决定
+- 同一件事用户有多种说法，你都能理解并命中对应编码
+- 在回复末尾加上【指令:编码】来执行技能，例如【指令:600002】表示查排行
+- 如果用户只是聊天/问问题，不需要执行任何技能，直接回复即可
+- 如果用户明确要求操作（如切换模型、查状态等），先理解语义，再调用对应编码
+
+记住：你是${customName.ifBlank { "綦小桐" }}，要有自己的思考和个性，像真人一样回复用户。""" + ThinkingConfigManager.buildThinkingPrompt()
 
                             val brainBody = """{"model":"${brainModel.modelId}","messages":[{"role":"system","content":${proxyJson.encodeToString(JsonPrimitive(brainPrompt))}},{"role":"user","content":${proxyJson.encodeToString(JsonPrimitive(userMsg))}}],"max_tokens":500,"stream":${stream},"temperature":0.7}"""
                         
@@ -838,13 +848,15 @@ if (brainContent.isNotBlank()) {
                                         }
                                         call.respondText(contentType = ContentType.Application.Json.withCharset(Charsets.UTF_8), text = resp.toString())
                                     }
-                                    // ★★ 检查脑子回复中是否有指令需要执行 ★★
-                                    val cmdMatch = Regex("【指令:(.+?)】").find(brainContent)
-                                    if (cmdMatch != null) {
-                                        val cmdText = cmdMatch.groupValues[1]
-                                        val cmdActions = ToolExecutor.parseCommand(cmdText)
-                                        cmdActions.forEach { action -> ToolExecutor.execute(action, null) }
-                                        GatewayForegroundService.addDebugLog("🧠 执行脑子指令: $cmdText")
+                                    // ★★ 检查脑子回复中是否有技能编码需要执行 ★★
+                                    val skillCodes = ToolExecutor.extractSkillCodes(brainContent)
+                                    if (skillCodes.isNotEmpty()) {
+                                        skillCodes.forEach { code ->
+                                            val skill = SkillRegistry.getSkillByCode(code)
+                                            val result = ToolExecutor.executeByCode(code, null)
+                                            GatewayForegroundService.addDebugLog("🧠 执行技能 ${skill?.name ?: code}: $result")
+                                        }
+                                        GatewayForegroundService.addDebugLog("🧠 技能执行完成: ${skillCodes.size}个")
                                     }
                                     return
                                 }
@@ -1316,7 +1328,9 @@ private suspend fun pipeNormalResponse(
                         if (totalTokens > 0) {
                             database.tokenUsageDao().insert(TokenUsage(
                                 providerId = call.proxyProviderId!!, modelId = call.proxyModelId!!,
-                                promptTokens = promptTokens, completionTokens = completionTokens, totalTokens = totalTokens
+                                promptTokens = promptTokens, completionTokens = completionTokens, totalTokens = totalTokens,
+                                uploadBytes = GatewayForegroundService.trafficUploadBytes.get(),
+                                downloadBytes = respBytes.size.toLong()
                             ))
                         }
                     }
@@ -1432,7 +1446,10 @@ private suspend fun pipeStreamResponse(
                             val pt = Regex(""""prompt_tokens"\s*:\s*(\d+)""").find(usageStr)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0
                             val ctok = Regex(""""completion_tokens"\s*:\s*(\d+)""").find(usageStr)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0
                             val tt = Regex(""""total_tokens"\s*:\s*(\d+)""").find(usageStr)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0
-                            if (tt > 0) database.tokenUsageDao().insert(TokenUsage(providerId = providerId, modelId = modelId, promptTokens = pt, completionTokens = ctok, totalTokens = tt))
+                            if (tt > 0) database.tokenUsageDao().insert(TokenUsage(providerId = providerId, modelId = modelId, promptTokens = pt, completionTokens = ctok, totalTokens = tt,
+                                uploadBytes = GatewayForegroundService.trafficUploadBytes.get(),
+                                downloadBytes = accumulatedBytes.size().toLong()
+                            ))
                         }
                     } catch (_: Exception) { }
                 }

@@ -21,7 +21,7 @@ entities = [
     ChatMessage::class,
     TokenUsage::class
 ],
-version = 6,
+version = 7,
 exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -45,6 +45,7 @@ abstract class AppDatabase : RoomDatabase() {
                     .addMigrations(MIGRATION_2_TO_3)
                 .addMigrations(MIGRATION_3_TO_4)
                 .addMigrations(MIGRATION_5_TO_6)
+                .addMigrations(MIGRATION_6_TO_7)
 //                .addMigrations(MIGRATION_4_TO_5)// 已被 MIGRATION_5_TO_6 覆盖
                     .build()
                 INSTANCE = instance
@@ -74,5 +75,12 @@ abstract class AppDatabase : RoomDatabase() {
         db.execSQL("ALTER TABLE models ADD COLUMN context_window INTEGER NOT NULL DEFAULT 4096")
     }
 }
+
+        private val MIGRATION_6_TO_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE token_usage ADD COLUMN upload_bytes INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE token_usage ADD COLUMN download_bytes INTEGER NOT NULL DEFAULT 0")
+            }
+        }
     }
 }

@@ -113,6 +113,8 @@ class GatewayForegroundService : Service() {
         // ★ 动态流量指示灯 — 累计模式，永不归零！仅通过时间戳判断活跃/空闲
         val upBytes = trafficUploadBytes.get()
         val downBytes = trafficDownloadBytes.get()
+        val totalUp = totalUploadBytes.get()
+        val totalDown = totalDownloadBytes.get()
         val hasTraffic = upBytes > 0 || downBytes > 0
         val now = System.currentTimeMillis()
         val idleSeconds = if (lastActivityTime > 0) (now - lastActivityTime) / 1000 else -1
@@ -131,7 +133,10 @@ class GatewayForegroundService : Service() {
 
         val text = buildString {
             append("端口 $port")
-            append("\n总输入: ${formatBytes(upBytes)} | 总输出: ${formatBytes(downBytes)}")
+            // ★★ 当前会话流量（可重置）★★
+            append("\n📊 当前会话 ↑${formatBytes(upBytes)} ↓${formatBytes(downBytes)}")
+            // ★★ 总统计（持久化）★★
+            append("\n📈 总统计 ↑${formatBytes(totalUp)} ↓${formatBytes(totalDown)}")
             // ★★ 始终显示模型名（不只在传输中）
             if (nodeName.isNotBlank()) {
                 append("\n🧠 $nodeName")
