@@ -71,6 +71,9 @@ class GatewayService(private val database: AppDatabase) {
      */
     fun start(port: Int = 8889) {
         if (server != null) return
+        
+        // ★★ 启动会话清理协程（闲置超时自动断开）★★
+        startSessionCleanup()
 
         val embedded = embeddedServer(CIO, port = port) {
             routing {
@@ -213,6 +216,13 @@ private fun logAccess(call: ApplicationCall, modelId: String, statusCode: Int, d
     synchronized(accessLog) {
         accessLog.add(entry)
         if (accessLog.size > logMaxSize) accessLog.removeAt(0)
+    }
+    // ★★ 记录会话延迟（自适应超时用）★★
+    if (durationMs > 0 && modelId != "unknown") {
+        val sessionKey = "ip:${call.request.local.remoteHost ?: ""}"
+        if (sessionKey.isNotBlank()) {
+            recordSessionLatency(sessionKey, durationMs)
+        }
     }
 }
 
@@ -367,7 +377,7 @@ private fun recordSessionModel(call: ApplicationCall, modelId: String) {
     }
 }
 
-/** ★ 获取会话标识（优先用 API Key，其次用客户端IP） */
+/** ★ 会话标识（优先用 API Key，其次用客户端IP） */
 private fun getSessionKey(call: ApplicationCall): String {
         val auth = call.request.headers["Authorization"]
         if (!auth.isNullOrBlank()) {
@@ -378,6 +388,83 @@ private fun getSessionKey(call: ApplicationCall): String {
         if (ip.isNotBlank()) return "ip:$ip"
         return "unknown:${UUID.randomUUID().toString().take(8)}"
     }
+
+// ═══════════════════════════════════════════
+// ★★ 会话延迟断开（闲置超时+自适应）★★
+// ═══════════════════════════════════════════
+
+/** 会话最后活跃时间戳 */
+private val sessionLastActive = mutableMapOf<String, Long>()
+
+/** 会话历史延迟（毫秒），用于自适应计算超时 */
+private val sessionLatencyHistory = mutableMapOf<String, MutableList<Long>>()
+
+/** 默认闲置超时基数（秒） */
+private const val SESSION_IDLE_BASE_SECONDS = 30
+
+/** 最大闲置超时（秒） */
+private const val SESSION_IDLE_MAX_SECONDS = 120
+
+/** 最小闲置超时（秒） */
+private const val SESSION_IDLE_MIN_SECONDS = 10
+
+/** 更新会话活跃时间 */
+private fun updateSessionActivity(sessionKey: String) {
+    sessionLastActive[sessionKey] = System.currentTimeMillis()
+}
+
+/** 记录会话延迟，用于自适应调节超时 */
+private fun recordSessionLatency(sessionKey: String, latencyMs: Long) {
+    val history = sessionLatencyHistory.getOrPut(sessionKey) { mutableListOf() }
+    history.add(latencyMs)
+    // 只保留最近5次
+    if (history.size > 5) history.removeAt(0)
+}
+
+/** 根据历史延迟计算自适应超时（秒） */
+private fun getAdaptiveTimeout(sessionKey: String): Int {
+    val history = sessionLatencyHistory[sessionKey]
+    if (history.isNullOrEmpty()) return SESSION_IDLE_BASE_SECONDS
+    // 取平均延迟
+    val avgLatency = history.average().toLong()
+    // 超时 = 基数 + 平均延迟*2（转换为秒），确保延迟高的会话有更长超时
+    val adaptive = SESSION_IDLE_BASE_SECONDS + (avgLatency * 2 / 1000).toInt()
+    return adaptive.coerceIn(SESSION_IDLE_MIN_SECONDS, SESSION_IDLE_MAX_SECONDS)
+}
+
+/** 清理过期会话缓存（由协程定期调用） */
+private fun cleanupExpiredSessions() {
+    val now = System.currentTimeMillis()
+    val expiredKeys = mutableListOf<String>()
+    sessionLastActive.forEach { (key, lastActive) ->
+        val timeoutMs = getAdaptiveTimeout(key) * 1000L
+        if (now - lastActive > timeoutMs) {
+            expiredKeys.add(key)
+        }
+    }
+    expiredKeys.forEach { key ->
+        sessionModelCache.remove(key)
+        sessionLastActive.remove(key)
+        sessionLatencyHistory.remove(key)
+    }
+    if (expiredKeys.isNotEmpty()) {
+        GatewayForegroundService.addDebugLog("🧹 清理 ${expiredKeys.size} 个过期会话")
+    }
+}
+
+/** 启动会话清理协程 */
+private val sessionCleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+private fun startSessionCleanup() {
+    sessionCleanupScope.launch {
+        while (true) {
+            delay(10000) // 每10秒检查一次
+            cleanupExpiredSessions()
+        }
+    }
+}
+
+// 在 GatewayService 的 start 中调用
+// startSessionCleanup() 已在 start() 中调用
 
 /**
  * 通用代理转发：读取请求体 → 查找模型(如果是chat请求) → 转发到上游 → 管道式流回客户端
@@ -423,6 +510,12 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
     }
 
     val isChat = effectivePath == "chat/completions" || effectivePath == "completions"
+    
+    // ★★ 更新会话活跃时间（闲置超时用）★★
+    if (isChat) {
+        val sessionKey = getSessionKey(call)
+        updateSessionActivity(sessionKey)
+    }
 
     // ★★ 工具指令检测：在转发前先解析并执行操作指令 ★★
     if (isChat && requestBodyStr.isNotBlank()) {
@@ -809,26 +902,47 @@ if (brainContent.isNotBlank()) {
                 allEnabledModels.find { it.modelId == id } 
             } ?: allEnabledModels.firstOrNull()
             
-            if (targetModel != null) {
-                val provider = database.providerDao().getProviderById(targetModel.providerId)
+            // ★★★ 如果仍然找不到目标模型，尝试用 activeNodeName 或任意已启用模型 ★★★
+            val finalTarget = targetModel ?: run {
+                if (GatewayForegroundService.activeNodeName.isNotBlank()) {
+                    allEnabledModels.find { it.modelId == GatewayForegroundService.activeNodeName }
+                } else null
+            } ?: allEnabledModels.firstOrNull()
+            
+            if (finalTarget != null) {
+                val provider = database.providerDao().getProviderById(finalTarget.providerId)
                 if (provider != null && provider.isEnabled) {
+                    // ★★ 通知栏同步模型名 ★★
+                    GatewayForegroundService.activeNodeName = finalTarget.modelId
+                    GatewayForegroundService.resetNotificationTraffic()
                     // ★★ 直接透传：用目标模型的provider和url转发，不加人格/记忆 ★★
                     val resolvedUrl = provider.resolvedBaseUrl.trimEnd('/')
                     // 替换model字段为目标模型ID
-                    val modifiedBody = requestBodyStr.replace("\"model\":\"qtai-sj\"", "\"model\":\"${targetModel.modelId}\"")
+                    val modifiedBody = requestBodyStr.replace("\"model\":\"qtai-sj\"", "\"model\":\"${finalTarget.modelId}\"")
                     val modifiedBytes = modifiedBody.toByteArray()
-                    val useProxy = targetModel.useProxy
+                    val useProxy = finalTarget.useProxy
                     
                     if (stream) {
-                        pipeStreamResponse(call, provider, modifiedBytes, "/v1/$effectivePath", targetModel.modelId, targetModel.providerId, database, useProxy)
+                        pipeStreamResponse(call, provider, modifiedBytes, "/v1/$effectivePath", finalTarget.modelId, finalTarget.providerId, database, useProxy)
                     } else {
                         pipeNormalResponse(call, provider, modifiedBytes, "/v1/$effectivePath", database, useProxy)
                     }
-                    GatewayScheduler.recordModelResult(targetModel.modelId, true)
-                    GatewayForegroundService.addDebugLog("🔄 qtai-sj透传 → ${targetModel.modelId}")
+                    GatewayScheduler.recordModelResult(finalTarget.modelId, true)
+                    GatewayForegroundService.addDebugLog("🔄 qtai-sj透传 → ${finalTarget.modelId}")
                     return
                 }
             }
+            
+            // ★★★ 所有模型都不可用，返回错误而非静默 ★★★
+            val noModelResp = buildJsonObject {
+                put("error", buildJsonObject {
+                    put("message", JsonPrimitive("qtai-sj无前缀转发失败：没有可用的已启用模型"))
+                    put("type", JsonPrimitive("no_available_model"))
+                })
+            }
+            call.respondText(contentType = ContentType.Application.Json.withCharset(Charsets.UTF_8), text = noModelResp.toString())
+            logAccess(call, "qtai-sj", 503, System.currentTimeMillis() - startMs)
+            return
         }
     }
 

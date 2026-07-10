@@ -6,6 +6,22 @@
 
 ---
 
+## 🔄 v3.8.6（正式发布）
+### 🐛 修复
+- **通知栏切换模型不显示** — 透传路径增加 `activeNodeName` 同步和 `resetNotificationTraffic()` 调用，确保通知栏正确显示当前模型名
+- **qtai-sj无前缀透传无回应** — 透明透传路径增加 `finalTarget` 三级兜底（排行榜→activeNodeName→任意已启用模型），全部模型不可用时返回503 JSON错误而非静默失败
+
+### ✨ 新功能
+- **会话延迟断开（自适应）** — 每个API会话按闲置超时自动清理，超时时间根据最近5次请求平均延迟自适应调节（基数30秒+延迟×2/1000，范围10-120秒），清理协程每10秒扫描过期会话
+
+### 🛠️ 技术改进
+- 新增 `sessionLastActive`/`sessionLatencyHistory` 双Map追踪会话活跃时间和历史延迟
+- 新增 `getAdaptiveTimeout()` 自适应超时计算函数
+- 新增 `cleanupExpiredSessions()` 定期清理协程
+- 所有模型不可用时返回503 JSON错误而非静默丢弃
+
+---
+
 ## 🔄 v3.8.5（正式发布）
 ### 🐛 修复
 - **群聊选模型弹窗列表跳动** — 弹窗打开时使用 `remember` 快照数据（`viewModel.enabledModels.value` + `pipelineSortedModelIds.toList()`），避免测速排行榜实时刷新导致勾选位置不断跳动
