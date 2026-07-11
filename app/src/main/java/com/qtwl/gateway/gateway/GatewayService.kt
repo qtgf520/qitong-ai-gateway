@@ -451,10 +451,6 @@ private fun cleanupExpiredSessions() {
     if (expiredKeys.isNotEmpty()) {
         GatewayForegroundService.addDebugLog("🧹 清理 ${expiredKeys.size} 个过期会话")
     }
-    // ★★ 所有会话都过期了 → 通知栏流量清零 ★★
-    if (sessionLastActive.isEmpty()) {
-        GatewayForegroundService.resetNotificationTraffic()
-    }
 }
 
 /** 启动会话清理协程 */
@@ -548,9 +544,18 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
                 val actualCmd = prefixMatch?.groupValues?.get(2)?.trim() ?: ""
 
                 if (actualCmd.isNotBlank()) {
-                    // ★★ 先尝试硬指令匹配 ★★
-                    val actions = ToolExecutor.parseCommand(actualCmd)
-                    if (actions.isNotEmpty()) {
+                    // ★★★ v3.8.7：大脑调度版 — 有脑子直接跳过硬匹配 ★★★
+                    val brainModelIdForCmd = GatewayForegroundService.getQtaiSjBrain()
+                    val brainModelForCmd = if (brainModelIdForCmd.isNotBlank()) database.aiModelDao().getEnabledModelsList().find { it.modelId == brainModelIdForCmd && it.isEnabled } else null
+                    val brainProviderForCmd = if (brainModelForCmd != null) database.providerDao().getProviderById(brainModelForCmd.providerId) else null
+                    if (brainModelForCmd != null && brainProviderForCmd != null && brainProviderForCmd.isEnabled) {
+                        // ★ 有脑子 → 替换userMsg，直接进大脑理解，跳过旧式硬匹配 ★
+                        userMsg = actualCmd
+                        GatewayForegroundService.addDebugLog("🧠 大脑调度: $actualCmd")
+                    } else {
+                        // ★ 没有脑子 → 旧式硬指令匹配（兼容） ★
+                        val actions = ToolExecutor.parseCommand(actualCmd)
+                        if (actions.isNotEmpty()) {
                         // ★★★ qtai-sj工具指令统计：模型名（不覆盖通知栏真实模型名）★★★
                         GatewayScheduler.recordModelUsage("qtai-sj")
                         val results = actions.map { action ->
@@ -622,6 +627,7 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
                         }
                         logAccess(call, "qtai-sj", 200, System.currentTimeMillis() - startMs)
                         return
+                        }
                     }
                 
                     // ★★ 硬指令未命中 → 用脑子模型理解自然语言 ★★
@@ -1328,9 +1334,7 @@ private suspend fun pipeNormalResponse(
                         if (totalTokens > 0) {
                             database.tokenUsageDao().insert(TokenUsage(
                                 providerId = call.proxyProviderId!!, modelId = call.proxyModelId!!,
-                                promptTokens = promptTokens, completionTokens = completionTokens, totalTokens = totalTokens,
-                                uploadBytes = GatewayForegroundService.trafficUploadBytes.get(),
-                                downloadBytes = respBytes.size.toLong()
+                                promptTokens = promptTokens, completionTokens = completionTokens, totalTokens = totalTokens
                             ))
                         }
                     }
@@ -1446,10 +1450,7 @@ private suspend fun pipeStreamResponse(
                             val pt = Regex(""""prompt_tokens"\s*:\s*(\d+)""").find(usageStr)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0
                             val ctok = Regex(""""completion_tokens"\s*:\s*(\d+)""").find(usageStr)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0
                             val tt = Regex(""""total_tokens"\s*:\s*(\d+)""").find(usageStr)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0
-                            if (tt > 0) database.tokenUsageDao().insert(TokenUsage(providerId = providerId, modelId = modelId, promptTokens = pt, completionTokens = ctok, totalTokens = tt,
-                                uploadBytes = GatewayForegroundService.trafficUploadBytes.get(),
-                                downloadBytes = accumulatedBytes.size().toLong()
-                            ))
+                            if (tt > 0) database.tokenUsageDao().insert(TokenUsage(providerId = providerId, modelId = modelId, promptTokens = pt, completionTokens = ctok, totalTokens = tt))
                         }
                     } catch (_: Exception) { }
                 }
