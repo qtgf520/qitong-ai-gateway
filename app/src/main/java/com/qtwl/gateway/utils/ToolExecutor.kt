@@ -15,21 +15,43 @@ object ToolExecutor {
 
     // ==================== 从大脑回复提取技能编码 ====================
 
-    /** 从文本中提取【指令:编码】指令，返回编码列表 */
+    /** 从文本中提取【指令:编码】指令，返回编码列表（支持【指令:编码:参数】格式） */
     fun extractSkillCodes(text: String): List<String> {
-        return Regex("【指令:(\\d{6})】").findAll(text).map { it.groupValues[1] }.toList()
+        return Regex("【指令:(\\d{6})(?::([^】]+))?】").findAll(text).map { it.groupValues[1] }.toList()
+    }
+
+    /** 从文本中提取带参数的技能指令，返回 (编码, 参数) 列表 */
+    fun extractSkillCodesWithParams(text: String): List<Pair<String, String>> {
+        return Regex("【指令:(\\d{6})(?::([^】]+))?】").findAll(text).map {
+            val code = it.groupValues[1]
+            val param = it.groupValues[2].trim()
+            code to param
+        }.toList()
     }
 
     /** 检查文本是否包含技能编码 */
-    fun hasSkillCode(text: String): Boolean = Regex("【指令:\\d{6}】").containsMatchIn(text)
+    fun hasSkillCode(text: String): Boolean = Regex("【指令:\\d{6}(?::[^】]+)?】").containsMatchIn(text)
 
     // ==================== 按照技能编码执行 ====================
 
     /** 根据技能编码执行操作，返回执行结果文本 */
-    fun executeByCode(code: String, viewModel: com.qtwl.gateway.ui.viewmodel.GatewayViewModel? = null): String {
+    fun executeByCode(code: String, param: String = "", viewModel: com.qtwl.gateway.ui.viewmodel.GatewayViewModel? = null): String {
         return when (code) {
             // ========== 1xxxxx 测速 ==========
-            "100001" -> "⚠️ 请指定模型名称，例如：测试Claude模型"
+            "100001" -> {
+                if (param.isNotBlank()) {
+                    val modelId = GatewayScheduler.pipelineSortedModelIds.firstOrNull { it.contains(param, ignoreCase = true) }
+                    if (modelId != null) {
+                        val result = "✅ 正在对 $modelId 进行单次测速"
+                        GatewayForegroundService.addDebugLog("📊 大脑测速: $modelId")
+                        result
+                    } else {
+                        "⚠️ 未找到匹配\"$param\"的模型"
+                    }
+                } else {
+                    "⚠️ 请指定模型名称，例如：测试Claude模型"
+                }
+            }
             "100002" -> {
                 viewModel?.startPipelineTest()
                 "✅ 已启动流水线接力测速，约20秒完成一轮"
@@ -40,8 +62,38 @@ object ToolExecutor {
             }
 
             // ========== 2xxxxx 模型切换 ==========
-            "200001" -> "⚠️ 请指定要切换的编号"
-            "200002" -> "⚠️ 请指定要切换的模型名称"
+            "200001" -> {
+                if (param.isNotBlank()) {
+                    val idx = param.toIntOrNull()
+                    if (idx != null && idx > 0 && idx <= GatewayScheduler.pipelineSortedModelIds.size) {
+                        val modelId = GatewayScheduler.pipelineSortedModelIds[idx - 1]
+                        GatewayForegroundService.saveForcedModel(modelId)
+                        GatewayForegroundService.activeNodeName = modelId
+                        GatewayForegroundService.addDebugLog("🔄 大脑切换 → 排行第${idx}: $modelId")
+                        "✅ 已切换到排行第${idx}的模型: $modelId"
+                    } else {
+                        "⚠️ 编号超出范围（1-${GatewayScheduler.pipelineSortedModelIds.size}）"
+                    }
+                } else {
+                    "⚠️ 请指定排行编号，例如：切换到第1个"
+                }
+            }
+            "200002" -> {
+                if (param.isNotBlank()) {
+                    // 模糊匹配模型ID
+                    val matched = GatewayScheduler.pipelineSortedModelIds.firstOrNull { it.contains(param, ignoreCase = true) }
+                    if (matched != null) {
+                        GatewayForegroundService.saveForcedModel(matched)
+                        GatewayForegroundService.activeNodeName = matched
+                        GatewayForegroundService.addDebugLog("🔄 大脑切换 → 匹配: $param → $matched")
+                        "✅ 已切换到模型: $matched"
+                    } else {
+                        "⚠️ 未找到匹配\"$param\"的模型，可用排行查看"
+                    }
+                } else {
+                    "⚠️ 请指定要切换的模型名称"
+                }
+            }
             "200003" -> {
                 val switched = switchModel(-1)
                 if (switched.isNotBlank()) {

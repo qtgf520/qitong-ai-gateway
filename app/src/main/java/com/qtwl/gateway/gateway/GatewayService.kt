@@ -540,7 +540,7 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
                 // ★★ 必须前缀才解析指令：固定前缀(綦小桐/qtai-sj/XiaoTong) + 自定义人格名称 ★★
                 val customName = GatewayForegroundService.getQtaiSjName()
                 val namePattern = if (customName.isNotBlank()) "綦小桐|qtai-sj|xiaotong|${Regex.escape(customName)}" else "綦小桐|qtai-sj|xiaotong"
-                val prefixMatch = Regex("^($namePattern)[\\s,，:：]+(.+)$", RegexOption.IGNORE_CASE).find(userMsg.trim())
+                val prefixMatch = Regex("^($namePattern)[\\s,，:：]*(.+)$", RegexOption.IGNORE_CASE).find(userMsg.trim())
                 val actualCmd = prefixMatch?.groupValues?.get(2)?.trim() ?: ""
 
                 if (actualCmd.isNotBlank()) {
@@ -767,7 +767,7 @@ ${SkillRegistry.buildSkillPrompt()}
                                 brainResp.close()
                             
                                 val brainJson = try { proxyJson.parseToJsonElement(brainBodyStr).jsonObject } catch (_: Exception) { null }
-val brainContent = brainJson?.get("choices")?.jsonArray?.firstOrNull()?.jsonObject?.get("message")?.jsonObject?.get("content")?.jsonPrimitive?.content ?: ""
+var brainContent = brainJson?.get("choices")?.jsonArray?.firstOrNull()?.jsonObject?.get("message")?.jsonObject?.get("content")?.jsonPrimitive?.content ?: ""
 
 // ★★★ qtai-sj脑子路径统计：解析usage+下载流量+记忆 ★★★
 val brainUsage = brainJson?.get("usage")?.jsonObject
@@ -789,6 +789,31 @@ GatewayForegroundService.addLiveSession(LiveSession(
 if (BrainMemoryManager.getConfig().enabled && userMsg.isNotBlank() && brainContent.isNotBlank()) {
     BrainMemoryManager.addMemory(content = "用户: $userMsg", title = userMsg.take(40))
     BrainMemoryManager.addMemory(content = "AI: $brainContent", title = brainContent.take(40))
+}
+
+// ★★ 解析脑子回复中是否有技能编码并执行（支持带参数）★★
+val skillCodeParams = ToolExecutor.extractSkillCodesWithParams(brainContent)
+if (skillCodeParams.isNotEmpty()) {
+    val skillResults = StringBuilder()
+    skillCodeParams.forEach { (code, param) ->
+        val skill = SkillRegistry.getSkillByCode(code)
+        val result = ToolExecutor.executeByCode(code, param, null)
+        GatewayForegroundService.addDebugLog("🧠 执行技能 ${skill?.name ?: code}: param=$param → $result")
+        skillResults.append("\n")
+        skillResults.append("【指令:").append(code).append(if (param.isNotBlank()) ":$param" else "").append("】\n—\n").append(result)
+    }
+    GatewayForegroundService.addDebugLog("🧠 技能执行完成: ${skillCodeParams.size}个")
+    brainContent += "\n\n${skillResults.toString()}"
+} else if (actualCmd.isNotBlank()) {
+    // ★ 大脑没输出编码 → 兜底：用actualCmd走旧式硬指令匹配（兼容）
+    val fallbackActions = ToolExecutor.parseCommand(actualCmd)
+    if (fallbackActions.isNotEmpty()) {
+        GatewayForegroundService.addDebugLog("🧠 大脑未输出技能编码，fallback硬指令: $actualCmd")
+        val fallbackResults = fallbackActions.map { action ->
+            ToolExecutor.execute(action, null)
+        }.joinToString("\n")
+        brainContent += "\n\n📋 执行结果：\n$fallbackResults"
+    }
 }
 
 // ★ 解析脑子返回的响应（直接输出脑子回复，不透传） ★
@@ -857,16 +882,6 @@ if (brainContent.isNotBlank()) {
                                             })
                                         }
                                         call.respondText(contentType = ContentType.Application.Json.withCharset(Charsets.UTF_8), text = resp.toString())
-                                    }
-                                    // ★★ 检查脑子回复中是否有技能编码需要执行 ★★
-                                    val skillCodes = ToolExecutor.extractSkillCodes(brainContent)
-                                    if (skillCodes.isNotEmpty()) {
-                                        skillCodes.forEach { code ->
-                                            val skill = SkillRegistry.getSkillByCode(code)
-                                            val result = ToolExecutor.executeByCode(code, null)
-                                            GatewayForegroundService.addDebugLog("🧠 执行技能 ${skill?.name ?: code}: $result")
-                                        }
-                                        GatewayForegroundService.addDebugLog("🧠 技能执行完成: ${skillCodes.size}个")
                                     }
                                     return
                                 }
