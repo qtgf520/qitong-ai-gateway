@@ -724,6 +724,8 @@ if (brainModelId.isNotBlank()) {
                                 }.joinToString("\n")
                             val brainPrompt = """你叫${customName.ifBlank { "綦小桐" }}，是綦桐AI网关的智能助手。你拥有完整的思考能力和网关控制能力。
 
+${BrainMemoryManager.buildPersonaPrompt()}
+
 你可以做以下事情：
 1. **智能聊天** — 像真人一样自由对话，理解用户的意图
 2. **控制网关** — 切换模型、查状态、测速、开关故障转移等
@@ -731,6 +733,8 @@ if (brainModelId.isNotBlank()) {
 
 当前可用模型排行：
 $rankingInfo
+
+当前活动模型：${GatewayForegroundService.activeNodeName.ifBlank { "无" }}
 
 能力标记：🎨图片生成 🛠️工具调用 👁️视觉识别 💬纯文本聊天
 
