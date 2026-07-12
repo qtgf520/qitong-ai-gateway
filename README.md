@@ -1,7 +1,7 @@
 # 綦桐AI网关 | QiTong AI Gateway
 
 > **包名 / Package：** `com.qtwl.gateway`  
-> **最新版本 / Latest：** v3.8.9 (versionCode=117)  
+> **最新版本 / Latest：** v3.9.0 (versionCode=117)  
 > **开源协议 / License：** Apache 2.0  
 > **语言 / Languages：** 🌐 15 languages (CN/EN/JP/KR/FR/DE/ES/RU/PT/VN/TH/AR/HI/ID)
 > **官方QQ群 / QQ Group：** [1007488535](https://qm.qq.com/q/1007488535) 💬
@@ -122,7 +122,8 @@ See [CHANGELOG.md](CHANGELOG.md) for full changelog.
 
 | Version | Key Features |
 |:--------|:-------------|
-| v3.8.5 | 🐛 修复群聊选模型弹窗列表跳动 |
+| v3.9.0 | 🐛 通知栏流量修复 + 模型统计 + 大脑直连 + 多语言键扩充 |
+| v3.8.9 | 🧠 技能编码参数传递 + 前缀无空格匹配 + 兜底fallback |
 | v3.8.4 | 📊 通知栏流量统计策略 + 群聊模式排行榜勾选选模型 |
 | v3.7.6 | 🚀 qtai-sj无前缀转发修复 + 超时优化 |
 | v3.7.4 | 🚀 修复总输入为0 + 全路径统计覆盖 |
