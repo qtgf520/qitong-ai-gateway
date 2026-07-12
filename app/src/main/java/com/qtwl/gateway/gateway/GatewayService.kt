@@ -474,6 +474,9 @@ private fun startSessionCleanup() {
  * ★ v3.3.2 新增会话记忆：同一会话失败的模型自动跳过，走上次成功的模型
  */
 private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
+    // ★ 请求开始 → 清零上一轮会话流量（在计数之前，避免清零本轮） ★
+    GatewayForegroundService.resetNotificationTraffic()
+    
     // 1. 读取原始请求体（二进制，兼容所有 Content-Type）
     val startMs = System.currentTimeMillis()
     val rawBytes = call.receive<ByteArray>()
@@ -753,10 +756,7 @@ ${SkillRegistry.buildSkillPrompt()}
                             val brainBody = """{"model":"${brainModel.modelId}","messages":[{"role":"system","content":${proxyJson.encodeToString(JsonPrimitive(brainPrompt))}},{"role":"user","content":${proxyJson.encodeToString(JsonPrimitive(userMsg))}}],"max_tokens":500,"stream":${stream},"temperature":0.7}"""
                         
                             try {
-                                val brainClient = okhttp3.OkHttpClient.Builder()
-                                    .connectTimeout(10000, TimeUnit.MILLISECONDS)
-                                    .readTimeout(20000, TimeUnit.MILLISECONDS)
-                                    .build()
+                                val brainClient = UpstreamClient.getDirectClient()
                                 val brainReq = okhttp3.Request.Builder()
                                     .url("${brainProvider.resolvedBaseUrl.trimEnd('/')}/v1/chat/completions")
                                     .post(brainBody.toByteArray().toRequestBody(DEFAULT_CT))
@@ -951,7 +951,6 @@ if (brainContent.isNotBlank()) {
                 if (provider != null && provider.isEnabled) {
                     // ★★ 通知栏同步模型名 ★★
                     GatewayForegroundService.activeNodeName = finalTarget.modelId
-                    GatewayForegroundService.resetNotificationTraffic()
                     // ★★ 直接透传：用目标模型的provider和url转发，不加人格/记忆 ★★
                     val resolvedUrl = provider.resolvedBaseUrl.trimEnd('/')
                     // 替换model字段为目标模型ID
@@ -965,6 +964,7 @@ if (brainContent.isNotBlank()) {
                         pipeNormalResponse(call, provider, modifiedBytes, "/v1/$effectivePath", database, useProxy)
                     }
                     GatewayScheduler.recordModelResult(finalTarget.modelId, true)
+                    GatewayScheduler.recordModelUsage(finalTarget.modelId)
                     GatewayForegroundService.addDebugLog("🔄 qtai-sj透传 → ${finalTarget.modelId}")
                     return
                 }
@@ -1011,7 +1011,6 @@ if (brainContent.isNotBlank()) {
                     // 记录切换日志，继续用原始modelId发起请求（用户选的）
                     // 但在转发时会自动替换model字段
                     GatewayForegroundService.activeNodeName = visionModel.modelId
-                    GatewayForegroundService.resetNotificationTraffic()
                     GatewayForegroundService.addDebugLog("👁️ 图片检测→自动切视觉: $modelId → ${visionModel.modelId}")
                     visionModel.modelId
                 } else modelId
@@ -1117,7 +1116,6 @@ val attemptModels: List<AiModel> = if (allEnabled.isNotEmpty()) {
                     call.attributes.put(MODEL_ID_KEY, primaryModel.modelId)
                     call.attributes.put(PROVIDER_ID_KEY, primaryModel.providerId)
                     GatewayForegroundService.activeNodeName = primaryModel.modelId
-                    GatewayForegroundService.resetNotificationTraffic()
                     GatewayScheduler.recordModelUsage(primaryModel.modelId)
                     val useProxy = primaryModel.useProxy
 
@@ -1171,7 +1169,6 @@ val attemptModels: List<AiModel> = if (allEnabled.isNotEmpty()) {
                     call.attributes.put(MODEL_ID_KEY, matchedModel.modelId)
                     call.attributes.put(PROVIDER_ID_KEY, matchedModel.providerId)
                     GatewayForegroundService.activeNodeName = matchedModel.modelId
-                    GatewayForegroundService.resetNotificationTraffic()
                     GatewayScheduler.recordModelUsage(matchedModel.modelId)
                     val useProxy = matchedModel.useProxy
 
@@ -1453,6 +1450,7 @@ private suspend fun pipeStreamResponse(
                 writeFully(buffer, 0, bytesRead)
                 flush()
                 GatewayForegroundService.trafficDownloadBytes.addAndGet(bytesRead.toLong())
+                GatewayForegroundService.totalDownloadBytes.addAndGet(bytesRead.toLong())
                 if (path.contains("chat/completions")) {
                     accumulatedBytes.write(buffer, 0, bytesRead)
                 }

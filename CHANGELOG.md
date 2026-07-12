@@ -6,7 +6,27 @@
 
 ---
 
-## 🔄 v3.8.9（正式发布）
+## 🔄 v3.9.0（正式发布）
+
+### 🐛 核心修复
+
+#### 通知栏流量统计
+- **`resetNotificationTraffic()` 位置修复** — 从 proxyRequest 中的上传计数后调用改为最开头（所有计数之前），避免刚记的上传被清零
+  - v3.9.0-1 修复：当前会话上传永远为 0 的问题
+- **流式路径 `totalDownloadBytes` 缺失** — `pipeStreamResponse` 流式路径只更新通知栏下载，忘了同时更新总下载统计
+  - v3.9.0-1 修复：总下载统计不增长
+
+#### 模型使用统计
+- **透传路径缺 `recordModelUsage()`** — qtai-sj无前缀透传路径转发后没有调用 `recordModelUsage(finalTarget.modelId)`，统计页"按模型统计(Top 10)"漏记
+  - v3.9.0-2 修复：转发真实模型不再漏统计
+
+#### 大脑直连
+- **自建 OkHttpClient 不走代理** — 大脑(qtai-sj)路径自建了全新的 OkHttpClient（无代理配置），完全绕过 UpstreamClient 代理系统
+  - v3.8.9-4 修复：改用 `UpstreamClient.getDirectClient()` 直连
+
+#### 多语言
+- **TranslationManager 新增 ~50 个翻译键** — 底部导航标题、首页网关状态/端口/局域网/服务商管理（添加/编辑/搜索）/模型别名编辑等文字全部可翻译
+- **测试覆盖** — 已接入底部导航、顶部标题、首页卡片等位置
 ### 🧠 技能编码参数传递 + 前缀无空格匹配 + 兜底fallback修复
 
 #### 🚀 新增

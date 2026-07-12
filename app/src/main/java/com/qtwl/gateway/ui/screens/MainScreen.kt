@@ -123,19 +123,19 @@ fun MainScreen(
                     selected = selectedTab == 4,
                     onClick = { selectedTab = 4 },
                     icon = { Text("📊") },
-                    label = { Text("统计") }
+                    label = { Text(tr("nav_stats")) }
                 )
                 NavigationBarItem(
                     selected = selectedTab == 5,
                     onClick = { selectedTab = 5 },
                     icon = { Text("⚙️") },
-                    label = { Text("管理") }
+                    label = { Text(tr("nav_manage")) }
                 )
                 NavigationBarItem(
                     selected = selectedTab == 6,
                     onClick = { selectedTab = 6 },
                     icon = { Text("ℹ️") },
-                    label = { Text("关于") }
+                    label = { Text(tr("nav_about")) }
                 )
             }
         },

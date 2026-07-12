@@ -316,6 +316,350 @@ object TranslationManager {
             AppLanguage.ID to "Mati: hanya gunakan model yang ditentukan"
         ))
 
+        // ===== 服务商页面 =====
+        put("add_provider", mapOf(
+            AppLanguage.ZH_CN to "添加服务商", AppLanguage.EN to "Add Provider",
+            AppLanguage.JA to "プロバイダ追加", AppLanguage.KO to "제공업체 추가",
+            AppLanguage.ZH_TW to "新增服務商", AppLanguage.ES to "Agregar proveedor",
+            AppLanguage.FR to "Ajouter fournisseur", AppLanguage.DE to "Anbieter hinzufügen",
+            AppLanguage.RU to "Добавить провайдера", AppLanguage.PT to "Adicionar provedor",
+            AppLanguage.VI to "Thêm nhà cung cấp", AppLanguage.TH to "เพิ่มผู้ให้บริการ",
+            AppLanguage.AR to "إضافة مزود", AppLanguage.HI to "प्रदाता जोड़ें", AppLanguage.ID to "Tambah penyedia"
+        ))
+        put("edit_provider", mapOf(
+            AppLanguage.ZH_CN to "编辑服务商", AppLanguage.EN to "Edit Provider",
+            AppLanguage.JA to "プロバイダ編集", AppLanguage.KO to "제공업체 편집",
+            AppLanguage.ZH_TW to "編輯服務商", AppLanguage.ES to "Editar proveedor",
+            AppLanguage.FR to "Modifier fournisseur", AppLanguage.DE to "Anbieter bearbeiten",
+            AppLanguage.RU to "Редактировать провайдера", AppLanguage.PT to "Editar provedor",
+            AppLanguage.VI to "Sửa nhà cung cấp", AppLanguage.TH to "แก้ไขผู้ให้บริการ",
+            AppLanguage.AR to "تعديل المزود", AppLanguage.HI to "प्रदाता संपादित करें", AppLanguage.ID to "Edit penyedia"
+        ))
+        put("provider_type_label", mapOf(
+            AppLanguage.ZH_CN to "服务商名称", AppLanguage.EN to "Provider Name",
+            AppLanguage.JA to "プロバイダ名", AppLanguage.KO to "제공업체 이름",
+            AppLanguage.ZH_TW to "服務商名稱", AppLanguage.ES to "Nombre del proveedor",
+            AppLanguage.FR to "Nom du fournisseur", AppLanguage.DE to "Anbietername",
+            AppLanguage.RU to "Имя провайдера", AppLanguage.PT to "Nome do provedor",
+            AppLanguage.VI to "Tên nhà cung cấp", AppLanguage.TH to "ชื่อผู้ให้บริการ",
+            AppLanguage.AR to "اسم المزود", AppLanguage.HI to "प्रदाता का नाम", AppLanguage.ID to "Nama penyedia"
+        ))
+        put("provider_type_hint", mapOf(
+            AppLanguage.ZH_CN to "例如: OpenAI, Claude, 本地Ollama", AppLanguage.EN to "e.g. OpenAI, Claude, local Ollama",
+            AppLanguage.JA to "例：OpenAI、Claude、ローカルOllama", AppLanguage.KO to "예: OpenAI, Claude, 로컬 Ollama",
+            AppLanguage.ZH_TW to "例如：OpenAI、Claude、本地Ollama", AppLanguage.ES to "ej. OpenAI, Claude, Ollama local",
+            AppLanguage.FR to "ex. OpenAI, Claude, Ollama local", AppLanguage.DE to "z.B. OpenAI, Claude, lokales Ollama",
+            AppLanguage.RU to "напр. OpenAI, Claude, локальный Ollama", AppLanguage.PT to "ex. OpenAI, Claude, Ollama local",
+            AppLanguage.VI to "vd: OpenAI, Claude, Ollama cục bộ", AppLanguage.TH to "เช่น OpenAI, Claude, Ollama ในเครื่อง",
+            AppLanguage.AR to "مثل: OpenAI، Claude، Ollama المحلي", AppLanguage.HI to "उदा: OpenAI, Claude, स्थानीय Ollama", AppLanguage.ID to "mis. OpenAI, Claude, Ollama lokal"
+        ))
+        put("model_type", mapOf(
+            AppLanguage.ZH_CN to "大模型类型", AppLanguage.EN to "Model Type",
+            AppLanguage.JA to "モデルタイプ", AppLanguage.KO to "모델 유형",
+            AppLanguage.ZH_TW to "大模型類型", AppLanguage.ES to "Tipo de modelo",
+            AppLanguage.FR to "Type de modèle", AppLanguage.DE to "Modelltyp",
+            AppLanguage.RU to "Тип модели", AppLanguage.PT to "Tipo de modelo",
+            AppLanguage.VI to "Loại mô hình", AppLanguage.TH to "ประเภทโมเดล",
+            AppLanguage.AR to "نوع النموذج", AppLanguage.HI to "मॉडल प्रकार", AppLanguage.ID to "Tipe model"
+        ))
+        put("provider_type", mapOf(
+            AppLanguage.ZH_CN to "类型标识", AppLanguage.EN to "Type",
+            AppLanguage.JA to "タイプ識別子", AppLanguage.KO to "유형 식별자",
+            AppLanguage.ZH_TW to "類型標識", AppLanguage.ES to "Tipo",
+            AppLanguage.FR to "Type", AppLanguage.DE to "Typ",
+            AppLanguage.RU to "Тип", AppLanguage.PT to "Tipo",
+            AppLanguage.VI to "Loại", AppLanguage.TH to "ประเภท",
+            AppLanguage.AR to "النوع", AppLanguage.HI to "प्रकार", AppLanguage.ID to "Tipe"
+        ))
+        put("type_options", mapOf(
+            AppLanguage.ZH_CN to "OpenAI Compatible / Anthropic / Custom",
+            AppLanguage.EN to "OpenAI Compatible / Anthropic / Custom",
+            AppLanguage.JA to "OpenAI互換 / Anthropic / カスタム",
+            AppLanguage.KO to "OpenAI 호환 / Anthropic / 사용자 정의",
+            AppLanguage.ZH_TW to "OpenAI Compatible / Anthropic / Custom",
+            AppLanguage.ES to "OpenAI Compatible / Anthropic / Custom",
+            AppLanguage.FR to "OpenAI Compatible / Anthropic / Custom",
+            AppLanguage.DE to "OpenAI-kompatibel / Anthropic / Benutzerdefiniert",
+            AppLanguage.RU to "OpenAI-совместимый / Anthropic / Пользовательский",
+            AppLanguage.PT to "OpenAI Compatível / Anthropic / Personalizado",
+            AppLanguage.VI to "Tương thích OpenAI / Anthropic / Tùy chỉnh",
+            AppLanguage.TH to "เข้ากับ OpenAI / Anthropic / กำหนดเอง",
+            AppLanguage.AR to "متوافق مع OpenAI / Anthropic / مخصص",
+            AppLanguage.HI to "OpenAI संगत / Anthropic / कस्टम",
+            AppLanguage.ID to "Kompatibel OpenAI / Anthropic / Kustom"
+        ))
+        put("final_url", mapOf(
+            AppLanguage.ZH_CN to "最终URL", AppLanguage.EN to "Final URL",
+            AppLanguage.JA to "最終URL", AppLanguage.KO to "최종 URL",
+            AppLanguage.ZH_TW to "最終URL", AppLanguage.ES to "URL final",
+            AppLanguage.FR to "URL finale", AppLanguage.DE to "Endgültige URL",
+            AppLanguage.RU to "Итоговый URL", AppLanguage.PT to "URL final",
+            AppLanguage.VI to "URL cuối cùng", AppLanguage.TH to "URL สุดท้าย",
+            AppLanguage.AR to "الرابط النهائي", AppLanguage.HI to "अंतिम URL", AppLanguage.ID to "URL akhir"
+        ))
+        put("url_hint", mapOf(
+            AppLanguage.ZH_CN to "提示: 输入 http://... 开头地址会自动拼接 /v1/chat/completions",
+            AppLanguage.EN to "Tip: Entering http://... base will auto-append /v1/chat/completions",
+            AppLanguage.JA to "ヒント：http://... を入力すると自動的に /v1/chat/completions が追加されます",
+            AppLanguage.KO to "팁: http://...을 입력하면 /v1/chat/completions이 자동으로 추가됩니다",
+            AppLanguage.ZH_TW to "提示：輸入 http://... 開頭地址會自動拼接 /v1/chat/completions",
+            AppLanguage.ES to "Ingrese http://... para auto-agregar /v1/chat/completions",
+            AppLanguage.FR to "Astuce: saisir http://... ajoutera automatiquement /v1/chat/completions",
+            AppLanguage.DE to "Tipp: http://... automatisch mit /v1/chat/completions ergänzen",
+            AppLanguage.RU to "Подсказка: ввод http://... автоматически добавит /v1/chat/completions",
+            AppLanguage.PT to "Diga: digitar http://... adiciona automaticamente /v1/chat/completions",
+            AppLanguage.VI to "Mẹo: nhập http://... sẽ tự động thêm /v1/chat/completions",
+            AppLanguage.TH to "เคล็ดลับ: ป้อน http://... จะเติม /v1/chat/completions อัตโนมัติ",
+            AppLanguage.AR to "أدخل http://... لإضافة /v1/chat/completions تلقائياً",
+            AppLanguage.HI to "टिप: http://... दर्ज करने से /v1/chat/completions स्वचालित रूप से जुड़ जाएगा",
+            AppLanguage.ID to "Tip: masukkan http://... untuk menambahkan /v1/chat/completions secara otomatis"
+        ))
+        put("api_url", mapOf(
+            AppLanguage.ZH_CN to "API 地址", AppLanguage.EN to "API Address",
+            AppLanguage.JA to "APIアドレス", AppLanguage.KO to "API 주소",
+            AppLanguage.ZH_TW to "API 地址", AppLanguage.ES to "Dirección API",
+            AppLanguage.FR to "Adresse API", AppLanguage.DE to "API-Adresse",
+            AppLanguage.RU to "API-адрес", AppLanguage.PT to "Endereço API",
+            AppLanguage.VI to "Địa chỉ API", AppLanguage.TH to "ที่อยู่ API",
+            AppLanguage.AR to "عنوان API", AppLanguage.HI to "एपीआई पता", AppLanguage.ID to "Alamat API"
+        ))
+        put("api_url_hint", mapOf(
+            AppLanguage.ZH_CN to "https://api.openai.com 或 http://localhost:11434",
+            AppLanguage.EN to "https://api.openai.com or http://localhost:11434",
+            AppLanguage.JA to "https://api.openai.com または http://localhost:11434",
+            AppLanguage.KO to "https://api.openai.com 또는 http://localhost:11434",
+            AppLanguage.ZH_TW to "https://api.openai.com 或 http://localhost:11434",
+            AppLanguage.ES to "https://api.openai.com o http://localhost:11434",
+            AppLanguage.FR to "https://api.openai.com ou http://localhost:11434",
+            AppLanguage.DE to "https://api.openai.com oder http://localhost:11434",
+            AppLanguage.RU to "https://api.openai.com или http://localhost:11434",
+            AppLanguage.PT to "https://api.openai.com ou http://localhost:11434",
+            AppLanguage.VI to "https://api.openai.com hoặc http://localhost:11434",
+            AppLanguage.TH to "https://api.openai.com หรือ http://localhost:11434",
+            AppLanguage.AR to "https://api.openai.com أو http://localhost:11434",
+            AppLanguage.HI to "https://api.openai.com या http://localhost:11434",
+            AppLanguage.ID to "https://api.openai.com atau http://localhost:11434"
+        ))
+        put("port", mapOf(
+            AppLanguage.ZH_CN to "端口", AppLanguage.EN to "Port",
+            AppLanguage.JA to "ポート", AppLanguage.KO to "포트",
+            AppLanguage.ZH_TW to "連接埠", AppLanguage.ES to "Puerto",
+            AppLanguage.FR to "Port", AppLanguage.DE to "Port",
+            AppLanguage.RU to "Порт", AppLanguage.PT to "Porta",
+            AppLanguage.VI to "Cổng", AppLanguage.TH to "พอร์ต",
+            AppLanguage.AR to "المنفذ", AppLanguage.HI to "पोर्ट", AppLanguage.ID to "Port"
+        ))
+        put("port_hint", mapOf(
+            AppLanguage.ZH_CN to "如 443, 11434, 8080", AppLanguage.EN to "e.g. 443, 11434, 8080",
+            AppLanguage.JA to "例：443、11434、8080", AppLanguage.KO to "예: 443, 11434, 8080",
+            AppLanguage.ZH_TW to "如 443, 11434, 8080", AppLanguage.ES to "p.ej. 443, 11434, 8080",
+            AppLanguage.FR to "ex. 443, 11434, 8080", AppLanguage.DE to "z.B. 443, 11434, 8080",
+            AppLanguage.RU to "напр. 443, 11434, 8080", AppLanguage.PT to "ex. 443, 11434, 8080",
+            AppLanguage.VI to "vd. 443, 11434, 8080", AppLanguage.TH to "เช่น 443, 11434, 8080",
+            AppLanguage.AR to "مثل 443، 11434، 8080", AppLanguage.HI to "उदा. 443, 11434, 8080",
+            AppLanguage.ID to "mis. 443, 11434, 8080"
+        ))
+put("api_key_hint", mapOf(AppLanguage.ZH_CN to "sk-... 或留空（本地服务无需Key）",
+            AppLanguage.EN to "sk-... or blank (local service needs no key)",
+            AppLanguage.JA to "sk-... または空白（ローカルサービスはキー不要）",
+            AppLanguage.KO to "sk-... 또는 비움 (로컬 서비스는 키 불필요)",
+            AppLanguage.ZH_TW to "sk-... 或留空（本地服務無需Key）",
+            AppLanguage.ES to "sk-... o vacío (servicio local no necesita)",
+            AppLanguage.FR to "sk-... ou vide (service local sans clé)",
+            AppLanguage.DE to "sk-... oder leer (lokaler Dienst braucht keinen)",
+            AppLanguage.RU to "sk-... или пусто (локальный сервис без ключа)",
+            AppLanguage.PT to "sk-... ou vazio (serviço local não precisa)",
+            AppLanguage.VI to "sk-... hoặc để trống (dịch vụ cục bộ không cần)",
+            AppLanguage.TH to "sk-... หรือเว้นว่าง (บริการในเครื่องไม่ต้องใช้)",
+            AppLanguage.HI to "sk-... या खाली (स्थानीय सेवा को कुंजी नहीं चाहिए)",
+            AppLanguage.AR to "sk-... أو فارغ (الخدمة المحلية لا تحتاج مفتاح)",
+            AppLanguage.ID to "sk-... atau kosong (layanan lokal tidak perlu)"
+        ))
+        put("sync_models", mapOf(AppLanguage.ZH_CN to "同步模型", AppLanguage.EN to "Sync Models",
+            AppLanguage.JA to "モデル同期", AppLanguage.KO to "모델 동기화",
+            AppLanguage.ZH_TW to "同步模型", AppLanguage.ES to "Sincronizar modelos",
+            AppLanguage.FR to "Synchroniser modèles", AppLanguage.DE to "Modelle synchronisieren",
+            AppLanguage.RU to "Синхронизация моделей", AppLanguage.PT to "Sincronizar modelos",
+            AppLanguage.VI to "Đồng bộ mô hình", AppLanguage.TH to "ซิงค์โมเดล",
+            AppLanguage.HI to "मॉडल सिंक करें", AppLanguage.AR to "مزامنة النماذج",
+            AppLanguage.ID to "Sinkronkan model"
+        ))
+        put("search_model", mapOf(AppLanguage.ZH_CN to "搜索模型", AppLanguage.EN to "Search Model",
+            AppLanguage.JA to "モデル検索", AppLanguage.KO to "모델 검색",
+            AppLanguage.ZH_TW to "搜尋模型", AppLanguage.ES to "Buscar modelo",
+            AppLanguage.FR to "Rechercher modèle", AppLanguage.DE to "Modell suchen",
+            AppLanguage.RU to "Поиск модели", AppLanguage.PT to "Buscar modelo",
+            AppLanguage.VI to "Tìm mô hình", AppLanguage.TH to "ค้นหาโมเดล",
+            AppLanguage.HI to "मॉडल खोजें", AppLanguage.AR to "البحث عن نموذج",
+            AppLanguage.ID to "Cari model"
+        ))
+        put("search_hint", mapOf(AppLanguage.ZH_CN to "输入模型名称/ID/别名...",
+            AppLanguage.EN to "Enter model name/ID/alias...",
+            AppLanguage.JA to "モデル名/ID/別名を入力...",
+            AppLanguage.KO to "모델 이름/ID/별칭 입력...",
+            AppLanguage.ZH_TW to "輸入模型名稱/ID/別名...",
+            AppLanguage.ES to "Ingrese nombre/ID/alias...",
+            AppLanguage.FR to "Saisir nom/ID/alias...",
+            AppLanguage.DE to "Modellname/ID/Alias eingeben...",
+            AppLanguage.RU to "Введите имя/ID/псевдоним...",
+            AppLanguage.PT to "Insira nome/ID/alias...",
+            AppLanguage.VI to "Nhập tên/ID/bí danh...",
+            AppLanguage.TH to "ป้อนชื่อ/ID/นามแฝง...",
+            AppLanguage.AR to "أدخل اسم/معرف/اسم مستعار...",
+            AppLanguage.HI to "नाम/ID/उपनाम दर्ज करें...",
+            AppLanguage.ID to "Masukkan nama/ID/alias..."
+        ))
+        put("test_speed", mapOf(AppLanguage.ZH_CN to "测速", AppLanguage.EN to "Test",
+            AppLanguage.JA to "速度テスト", AppLanguage.KO to "속도 테스트",
+            AppLanguage.ZH_TW to "測速", AppLanguage.ES to "Prueba",
+            AppLanguage.FR to "Test", AppLanguage.DE to "Test",
+            AppLanguage.RU to "Тест", AppLanguage.PT to "Teste",
+            AppLanguage.VI to "Kiểm tra", AppLanguage.TH to "ทดสอบ",
+            AppLanguage.HI to "परीक्षण", AppLanguage.AR to "اختبار",
+            AppLanguage.ID to "Uji"
+        ))
+        put("select_brain", mapOf(AppLanguage.ZH_CN to "选择 qtai-sj 脑子",
+            AppLanguage.EN to "Select qtai-sj Brain",
+            AppLanguage.JA to "qtai-sj ブレインを選択",
+            AppLanguage.KO to "qtai-sj 브레인 선택",
+            AppLanguage.ZH_TW to "選擇 qtai-sj 腦子",
+            AppLanguage.ES to "Seleccionar cerebro qtai-sj",
+            AppLanguage.FR to "Sélectionner le cerveau qtai-sj",
+            AppLanguage.DE to "qtai-sj-Gehirn auswählen",
+            AppLanguage.RU to "Выбрать мозг qtai-sj",
+            AppLanguage.PT to "Selecionar cérebro qtai-sj",
+            AppLanguage.VI to "Chọn não qtai-sj",
+            AppLanguage.TH to "เลือกสมอง qtai-sj",
+            AppLanguage.HI to "qtai-sj दिमाग चुनें",
+            AppLanguage.AR to "اختر دماغ qtai-sj",
+            AppLanguage.ID to "Pilih otak qtai-sj"
+        ))
+        put("save", mapOf(
+            AppLanguage.ZH_CN to "保存", AppLanguage.EN to "Save",
+            AppLanguage.JA to "保存", AppLanguage.KO to "저장",
+            AppLanguage.ZH_TW to "儲存", AppLanguage.ES to "Guardar",
+            AppLanguage.FR to "Enregistrer", AppLanguage.DE to "Speichern",
+            AppLanguage.RU to "Сохранить", AppLanguage.PT to "Salvar",
+            AppLanguage.VI to "Lưu", AppLanguage.TH to "บันทึก",
+            AppLanguage.AR to "حفظ", AppLanguage.HI to "सहेजें", AppLanguage.ID to "Simpan"
+        ))
+        put("cancel", mapOf(
+            AppLanguage.ZH_CN to "取消", AppLanguage.EN to "Cancel",
+            AppLanguage.JA to "キャンセル", AppLanguage.KO to "취소",
+            AppLanguage.ZH_TW to "取消", AppLanguage.ES to "Cancelar",
+            AppLanguage.FR to "Annuler", AppLanguage.DE to "Abbrechen",
+            AppLanguage.RU to "Отмена", AppLanguage.PT to "Cancelar",
+            AppLanguage.VI to "Hủy", AppLanguage.TH to "ยกเลิก",
+            AppLanguage.AR to "إلغاء", AppLanguage.HI to "रद्द करें", AppLanguage.ID to "Batal"
+        ))
+        put("close", mapOf(
+            AppLanguage.ZH_CN to "关闭", AppLanguage.EN to "Close",
+            AppLanguage.JA to "閉じる", AppLanguage.KO to "닫기",
+            AppLanguage.ZH_TW to "關閉", AppLanguage.ES to "Cerrar",
+            AppLanguage.FR to "Fermer", AppLanguage.DE to "Schließen",
+            AppLanguage.RU to "Закрыть", AppLanguage.PT to "Fechar",
+            AppLanguage.VI to "Đóng", AppLanguage.TH to "ปิด",
+            AppLanguage.AR to "إغلاق", AppLanguage.HI to "बंद करें", AppLanguage.ID to "Tutup"
+        ))
+        put("home_thinking_guide", mapOf(
+            AppLanguage.ZH_CN to "首页思考引导", AppLanguage.EN to "Home Thinking Guide",
+            AppLanguage.JA to "ホーム思考ガイド", AppLanguage.KO to "홈 사고 가이드",
+            AppLanguage.ZH_TW to "首頁思考引導", AppLanguage.ES to "Guía de pensamiento en inicio",
+            AppLanguage.FR to "Guide de réflexion accueil", AppLanguage.DE to "Startseiten-Denkhilfe",
+            AppLanguage.RU to "Мысль на главной", AppLanguage.PT to "Guia de reflexión inicial",
+            AppLanguage.VI to "Hướng dẫn suy nghĩ trang chủ", AppLanguage.TH to "คู่มือความคิดหน้าแรก",
+            AppLanguage.AR to "دليل التفكير في الصفحة الرئيسية", AppLanguage.HI to "होम सोच गाइड",
+            AppLanguage.ID to "Panduan pemikiran beranda"
+        ))
+
+        // ===== 首页引导 =====
+        put("quick_start", mapOf(
+            AppLanguage.ZH_CN to "快速上手", AppLanguage.EN to "Quick Start",
+            AppLanguage.JA to "クイックスタート", AppLanguage.KO to "빠른 시작",
+            AppLanguage.ZH_TW to "快速上手", AppLanguage.ES to "Inicio rápido",
+            AppLanguage.FR to "Démarrage rapide", AppLanguage.DE to "Schnellstart",
+            AppLanguage.RU to "Быстрый старт", AppLanguage.PT to "Início rápido",
+            AppLanguage.VI to "Bắt đầu nhanh", AppLanguage.TH to "เริ่มต้นเร็ว",
+            AppLanguage.AR to "بداية سريعة", AppLanguage.HI to "त्वरित शुरुआत", AppLanguage.ID to "Mulai cepat"
+        ))
+        put("set_base_url", mapOf(
+            AppLanguage.ZH_CN to "在第三方APP设置 Base URL 为手机地址",
+            AppLanguage.EN to "Set phone address as Base URL in 3rd party app",
+            AppLanguage.JA to "サードパーティアプリにBase URLとして電話アドレスを設定",
+            AppLanguage.KO to "타사 앱에서 전화 주소를 Base URL로 설정",
+            AppLanguage.ZH_TW to "在第三方APP設定 Base URL 為手機地址",
+            AppLanguage.ES to "Establecer dirección del teléfono como Base URL en app de terceros",
+            AppLanguage.FR to "Définir l'adresse du téléphone comme URL de base dans l'application tierce",
+            AppLanguage.DE to "Telefonadresse als Base URL in Drittanbieter-App einstellen",
+            AppLanguage.RU to "Указать адрес телефона как Base URL в стороннем приложении",
+            AppLanguage.PT to "Definir endereço do telefone como Base URL em app de terceiros",
+            AppLanguage.VI to "Đặt địa chỉ điện thoại làm Base URL trong ứng dụng bên thứ ba",
+            AppLanguage.TH to "ตั้งค่าที่อยู่โทรศัพท์เป็น Base URL ในแอปบุคคลที่สาม",
+            AppLanguage.AR to "تعيين عنوان الهاتف كـ Base URL في تطبيق خارجي",
+            AppLanguage.HI to "तृतीय-पक्ष ऐप में फोन पते को Base URL के रूप में सेट करें",
+            AppLanguage.ID to "Atur alamat ponsel sebagai Base URL di aplikasi pihak ke-3"
+        ))
+        put("enable_failover", mapOf(
+            AppLanguage.ZH_CN to "开启故障转移可自动切换最优模型",
+            AppLanguage.EN to "Enable failover for auto optimal model switching",
+            AppLanguage.JA to "フェイルオーバーを有効にすると最適なモデルに自動切り替え",
+            AppLanguage.KO to "자동 장애 조치를 켜면 최적의 모델로 자동 전환",
+            AppLanguage.ZH_TW to "開啟故障轉移可自動切換最優模型",
+            AppLanguage.ES to "Activar failover para cambiar automáticamente al mejor modelo",
+            AppLanguage.FR to "Activer le basculement automatique vers le meilleur modèle",
+            AppLanguage.DE to "Failover aktivieren für automatisch besten Modellwechsel",
+            AppLanguage.RU to "Включите failover для автоматического переключения на лучшую модель",
+            AppLanguage.PT to "Ativar failover para troca automática pelo melhor modelo",
+            AppLanguage.VI to "Bật chuyển đổi dự phòng để tự động chuyển sang mô hình tốt nhất",
+            AppLanguage.TH to "เปิดใช้ failover เพื่อสลับโมเดลที่ดีที่สุดอัตโนมัติ",
+            AppLanguage.AR to "تفعيل التبديل الفشل للتبديل التلقائي للنموذج الأمثل",
+            AppLanguage.HI to "सर्वोत्तम मॉडल स्विचिंग के लिए फेलओवर सक्षम करें",
+            AppLanguage.ID to "Aktifkan failover untuk beralih model optimal secara otomatis"
+        ))
+        put("no_thinking_tag", mapOf(
+            AppLanguage.ZH_CN to "⚠️ 思考模式缺少结束标签", AppLanguage.EN to "⚠️ Thinking mode missing end tag",
+            AppLanguage.JA to "⚠️ 思考モードの終了タグがありません",
+            AppLanguage.KO to "⚠️ 사고 모드 종료 태그 누락",
+            AppLanguage.ZH_TW to "⚠️ 思考模式缺少結束標籤",
+            AppLanguage.ES to "⚠️ Falta etiqueta de cierre del modo de pensamiento",
+            AppLanguage.FR to "⚠️ Balise de fin manquante pour le mode réflexion",
+            AppLanguage.DE to "⚠️ Endezeichen des Denkmodus fehlt",
+            AppLanguage.RU to "⚠️ Отсутствует закрывающий тег режима размышления",
+            AppLanguage.PT to "⚠️ Faltando tag de fechamento do modo de pensamento",
+            AppLanguage.VI to "⚠️ Thiếu thẻ kết thúc chế độ suy nghĩ",
+            AppLanguage.TH to "⚠️ แท็กปิดโหมดคิดหายไป",
+            AppLanguage.AR to "⚠️ علامة الإغلاق لوضع التفكير مفقودة",
+            AppLanguage.HI to "⚠️ सोच मोड का अंत टैग गायब है",
+            AppLanguage.ID to "⚠️ Tag penutup mode berpikir hilang"
+        ))
+        put("no_provider", mapOf(
+            AppLanguage.ZH_CN to "未找到对应的AI服务商",
+            AppLanguage.EN to "No corresponding AI provider found",
+            AppLanguage.JA to "対応するAIプロバイダが見つかりません",
+            AppLanguage.KO to "해당 AI 제공업체를 찾을 수 없음",
+            AppLanguage.ZH_TW to "未找到對應的AI服務商",
+            AppLanguage.ES to "No se encontró el proveedor de IA correspondiente",
+            AppLanguage.FR to "Aucun fournisseur IA correspondant trouvé",
+            AppLanguage.DE to "Kein entsprechender KI-Anbieter gefunden",
+            AppLanguage.RU to "Соответствующий ИИ-провайдер не найден",
+            AppLanguage.PT to "Nenhum provedor de IA correspondente encontrado",
+            AppLanguage.VI to "Không tìm thấy nhà cung cấp AI tương ứng",
+            AppLanguage.TH to "ไม่พบผู้ให้บริการ AI ที่ตรงกัน",
+            AppLanguage.AR to "لم يتم العثور على مزود AI مطابق",
+            AppLanguage.HI to "कोई संबंधित AI प्रदाता नहीं मिला",
+            AppLanguage.ID to "Penyedia AI yang sesuai tidak ditemukan"
+        ))
+        put("clear_all_chats", mapOf(
+            AppLanguage.ZH_CN to "清空所有聊天记录", AppLanguage.EN to "Clear All Chats",
+            AppLanguage.JA to "すべてのチャットを消去", AppLanguage.KO to "모든 채팅 지우기",
+            AppLanguage.ZH_TW to "清除所有聊天记录", AppLanguage.ES to "Limpiar todos los chats",
+            AppLanguage.FR to "Effacer toutes les discussions", AppLanguage.DE to "Alle Chats löschen",
+            AppLanguage.RU to "Очистить все чаты", AppLanguage.PT to "Limpar todos os chats",
+            AppLanguage.VI to "Xóa tất cả cuộc trò chuyện", AppLanguage.TH to "ล้างแชททั้งหมด",
+            AppLanguage.AR to "مسح جميع الدردشات", AppLanguage.HI to "सभी चैट साफ़ करें",
+            AppLanguage.ID to "Hapus semua obrolan"
+        ))
+
         // ===== 管理页面 =====
         put("data_management", mapOf(
             AppLanguage.ZH_CN to "📋 数据管理", AppLanguage.ZH_TW to "📋 數據管理", AppLanguage.EN to "📋 Data Management",
@@ -345,6 +689,19 @@ object TranslationManager {
             AppLanguage.PT to "Seleção manual", AppLanguage.VI to "Chọn thủ công", AppLanguage.TH to "เลือกด้วยตนเอง",
             AppLanguage.AR to "اختيار يدوي", AppLanguage.HI to "मैन्युअल चयन", AppLanguage.ID to "Pilih manual"
         ))
+
+        // ===== 补充缺失键 =====
+        put("default", mapOf(AppLanguage.ZH_CN to "默认:", AppLanguage.EN to "Default:", AppLanguage.JA to "デフォルト：", AppLanguage.KO to "기본:", AppLanguage.ZH_TW to "預設:", AppLanguage.ES to "Predeterminado:", AppLanguage.FR to "Par défaut:", AppLanguage.DE to "Standard:", AppLanguage.RU to "По умолчанию:", AppLanguage.PT to "Padrão:", AppLanguage.VI to "Mặc định:", AppLanguage.TH to "ค่าเริ่มต้น:", AppLanguage.AR to "افتراضي:", AppLanguage.HI to "डिफ़ॉल्ट:", AppLanguage.ID to "Bawaan:"))
+        put("port_value", mapOf(AppLanguage.ZH_CN to "监听端口", AppLanguage.EN to "Listen Port", AppLanguage.JA to "リスンポート", AppLanguage.KO to "수신 포트", AppLanguage.ZH_TW to "監聽埠", AppLanguage.ES to "Puerto de escucha", AppLanguage.FR to "Port d'écoute", AppLanguage.DE to "Überwachungsport", AppLanguage.RU to "Порт прослушивания", AppLanguage.PT to "Porta de escuta", AppLanguage.VI to "Cổng nghe", AppLanguage.TH to "พอร์ตฟัง", AppLanguage.AR to "منفذ الاستماع", AppLanguage.HI to "सुनवाई पोर्ट", AppLanguage.ID to "Port mendengarkan"))
+        put("service_status", mapOf(AppLanguage.ZH_CN to "服务状态", AppLanguage.EN to "Service Status", AppLanguage.JA to "サービス状態", AppLanguage.KO to "서비스 상태", AppLanguage.ZH_TW to "服務狀態", AppLanguage.ES to "Estado del servicio", AppLanguage.FR to "État du service", AppLanguage.DE to "Dienststatus", AppLanguage.RU to "Статус сервиса", AppLanguage.PT to "Status do serviço", AppLanguage.VI to "Trạng thái dịch vụ", AppLanguage.TH to "สถานะบริการ", AppLanguage.AR to "حالة الخدمة", AppLanguage.HI to "सेवा की स्थिति", AppLanguage.ID to "Status layanan"))
+        put("running", mapOf(AppLanguage.ZH_CN to "运行中", AppLanguage.EN to "Running", AppLanguage.JA to "実行中", AppLanguage.KO to "실행 중", AppLanguage.ZH_TW to "執行中", AppLanguage.ES to "Ejecutándose", AppLanguage.FR to "En cours", AppLanguage.DE to "Läuft", AppLanguage.RU to "Работает", AppLanguage.PT to "Executando", AppLanguage.VI to "Đang chạy", AppLanguage.TH to "กำลังทำงาน", AppLanguage.AR to "يعمل", AppLanguage.HI to "चल रहा है", AppLanguage.ID to "Berjalan"))
+        put("stopped", mapOf(AppLanguage.ZH_CN to "已停止", AppLanguage.EN to "Stopped", AppLanguage.JA to "停止", AppLanguage.KO to "중지됨", AppLanguage.ZH_TW to "已停止", AppLanguage.ES to "Detenido", AppLanguage.FR to "Arrêté", AppLanguage.DE to "Gestoppt", AppLanguage.RU to "Остановлен", AppLanguage.PT to "Parado", AppLanguage.VI to "Đã dừng", AppLanguage.TH to "หยุดแล้ว", AppLanguage.AR to "متوقف", AppLanguage.HI to "रुक गया", AppLanguage.ID to "Berhenti"))
+        put("active_model", mapOf(AppLanguage.ZH_CN to "🧠 当前活跃模型", AppLanguage.EN to "🧠 Current Active Model", AppLanguage.JA to "🧠 現在アクティブモデル", AppLanguage.KO to "🧠 현재 활성 모델", AppLanguage.ZH_TW to "🧠 目前活躍模型", AppLanguage.ES to "🧠 Modelo activo actual", AppLanguage.FR to "🧠 Modèle actif actuel", AppLanguage.DE to "🧠 Aktives Modell", AppLanguage.RU to "🧠 Текущая модель", AppLanguage.PT to "🧠 Modelo ativo atual", AppLanguage.VI to "🧠 Mô hình đang hoạt độง", AppLanguage.TH to "🧠 โมเดลที่ใช้งานอยู่", AppLanguage.AR to "🧠 النموذج النشط الحالي", AppLanguage.HI to "🧠 वर्तमान सक्रिय मॉडल", AppLanguage.ID to "🧠 Model aktif saat ini"))
+        put("sync_models", mapOf(AppLanguage.ZH_CN to "同步模型", AppLanguage.EN to "Sync Models", AppLanguage.JA to "モデル同期", AppLanguage.KO to "모델 동기화", AppLanguage.ZH_TW to "同步模型", AppLanguage.ES to "Sincronizar modelos", AppLanguage.FR to "Synchroniser modèles", AppLanguage.DE to "Modelle synchronisieren", AppLanguage.RU to "Синхронизация моделей", AppLanguage.PT to "Sincronizar modelos", AppLanguage.VI to "Đồng bộ mô hình", AppLanguage.TH to "ซิงค์โมเดล", AppLanguage.HI to "मॉडल सिंक करें", AppLanguage.AR to "مزامنة النماذج", AppLanguage.ID to "Sinkronkan model"))
+        put("search_model", mapOf(AppLanguage.ZH_CN to "搜索模型", AppLanguage.EN to "Search Model", AppLanguage.JA to "モデル検索", AppLanguage.KO to "모델 검색", AppLanguage.ZH_TW to "搜尋模型", AppLanguage.ES to "Buscar modelo", AppLanguage.FR to "Rechercher modèle", AppLanguage.DE to "Modell suchen", AppLanguage.RU to "Поиск модели", AppLanguage.PT to "Buscar modelo", AppLanguage.VI to "Tìm mô hình", AppLanguage.TH to "ค้นหาโมเดล", AppLanguage.HI to "मॉडल खोजें", AppLanguage.AR to "البحث عن نموذج", AppLanguage.ID to "Cari model"))
+        put("search_hint", mapOf(AppLanguage.ZH_CN to "输入模型名称/ID/别名...", AppLanguage.EN to "Enter model name/ID/alias...", AppLanguage.JA to "モデル名/ID/別名を入力...", AppLanguage.KO to "모델 이름/ID/별칭 입력...", AppLanguage.ZH_TW to "輸入模型名稱/ID/別名...", AppLanguage.ES to "Ingrese nombre/ID/alias...", AppLanguage.FR to "Saisir nom/ID/alias...", AppLanguage.DE to "Modellname/ID/Alias eingeben...", AppLanguage.RU to "Введите имя/ID/псевдоним...", AppLanguage.PT to "Insira nome/ID/alias...", AppLanguage.VI to "Nhập tên/ID/bí danh...", AppLanguage.TH to "ป้อนชื่อ/ID/นามแฝง...", AppLanguage.AR to "أدخل اسم/معرف/اسم مستعار...", AppLanguage.HI to "नाम/ID/उपनाम दर्ज करें...", AppLanguage.ID to "Masukkan nama/ID/alias..."))
+        put("test_speed", mapOf(AppLanguage.ZH_CN to "测速", AppLanguage.EN to "Test", AppLanguage.JA to "速度テスト", AppLanguage.KO to "속도 테스트", AppLanguage.ZH_TW to "測速", AppLanguage.ES to "Prueba", AppLanguage.FR to "Test", AppLanguage.DE to "Test", AppLanguage.RU to "Тест", AppLanguage.PT to "Teste", AppLanguage.VI to "Kiểm tra", AppLanguage.TH to "ทดสอบ", AppLanguage.HI to "परीक्षण", AppLanguage.AR to "اختبار", AppLanguage.ID to "Uji"))
+        put("select_brain", mapOf(AppLanguage.ZH_CN to "选择 qtai-sj 脑子", AppLanguage.EN to "Select qtai-sj Brain", AppLanguage.JA to "qtai-sj ブレインを選択", AppLanguage.KO to "qtai-sj 브레인 선택", AppLanguage.ZH_TW to "選擇 qtai-sj 腦子", AppLanguage.ES to "Seleccionar cerebro qtai-sj", AppLanguage.FR to "Sélectionner le cerveau qtai-sj", AppLanguage.DE to "qtai-sj-Gehirn auswählen", AppLanguage.RU to "Выбрать мозг qtai-sj", AppLanguage.PT to "Selecionar cérebro qtai-sj", AppLanguage.VI to "Chọn não qtai-sj", AppLanguage.TH to "เลือกสมอง qtai-sj", AppLanguage.HI to "qtai-sj दिमाग चुनें", AppLanguage.AR to "اختر دماغ qtai-sj", AppLanguage.ID to "Pilih otak qtai-sj"))
     }
 }
 
