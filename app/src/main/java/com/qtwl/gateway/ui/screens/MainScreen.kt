@@ -60,6 +60,9 @@ import com.qtwl.gateway.gateway.GatewayScheduler
 import com.qtwl.gateway.utils.TranslationManager
 import com.qtwl.gateway.utils.tr
 import kotlinx.coroutines.delay
+import com.qtwl.gateway.utils.localizedText
+import com.qtwl.gateway.utils.localizeRuntimeText
+import com.qtwl.gateway.utils.localizeGeneratedName
 
 /**
  * 主屏幕 —— 带底部导航的容器
@@ -71,7 +74,7 @@ fun MainScreen(
 ) {
     val context = LocalContext.current
     // Observe locale changes at the navigation root so every tab recomposes.
-    TranslationManager.currentLanguageFlow.collectAsState().value
+    val languageTick = TranslationManager.currentLanguageFlow.collectAsState().value
     var selectedTab by remember { mutableStateOf(0) }
     val snackbarMessage by viewModel.snackbarMessage.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -80,7 +83,7 @@ fun MainScreen(
     LaunchedEffect(snackbarMessage) {
         snackbarMessage?.let {
             val ctx = context
-            android.widget.Toast.makeText(ctx, it, android.widget.Toast.LENGTH_SHORT).show()
+            android.widget.Toast.makeText(ctx, localizeRuntimeText(it), android.widget.Toast.LENGTH_SHORT).show()
             viewModel.clearSnackbar()
         }
     }
@@ -263,7 +266,7 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable {
-                            copyToClipboard(context, "本地地址", localAddr)
+                            copyToClipboard(context, localizedText("本地地址", "Local address"), localAddr)
                         }
                         .padding(vertical = 4.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -280,7 +283,7 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable {
-                            copyToClipboard(context, "局域网地址", lanAddr)
+                            copyToClipboard(context, localizedText("局域网地址", "LAN address"), lanAddr)
                         }
                         .padding(vertical = 4.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -456,11 +459,11 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                     else -> Error
                 }
                 val indicatorText = when {
-                    pStatus.isEmpty() && !pRunning -> "请先启动测速获取可用模型排行"
-                    pRunning -> "测速中，完成一个即可使用"
-                    hasReadyModel -> "全部测速完成，qtai-sj 已就绪"
-                    allFailed -> "全部模型异常，暂时无法使用"
-                    else -> "部分模型异常，qtai-sj 可能受影响"
+                    pStatus.isEmpty() && !pRunning -> localizedText("请先启动测速获取可用模型排行", "Start speed test first to get the available model ranking")
+                    pRunning -> localizedText("测速中，完成一个即可使用", "Speed testing; you can use a model as soon as one completes")
+                    hasReadyModel -> localizedText("全部测速完成，qtai-sj 已就绪", "All speed tests complete. qtai-sj is ready")
+                    allFailed -> localizedText("全部模型异常，暂时无法使用", "All models are abnormal and temporarily unavailable")
+                    else -> localizedText("部分模型异常，qtai-sj 可能受影响", "Some models are abnormal; qtai-sj may be affected")
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Canvas(modifier = Modifier.size(14.dp)) {
@@ -488,16 +491,16 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("🧠 AI助手当前模型", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(localizedText("🧠 AI助手当前模型", "🧠 Current AI assistant model"), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(currentModelName, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                     }
                 }
                 
                 // ★★ 框2：正在测速的模型 ★★
-                val currentItem = pStatus.find { it.isCurrent && it.status.contains("测速中") }
+                val currentItem = pStatus.find { it.isCurrent && !it.status.startsWith("✅") && !it.status.startsWith("❌") }
                 if (currentItem != null || pRunning) {
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text("⏳ 正在测速", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold,
+                    Text(localizedText("⏳ 正在测速", "⏳ Speed testing"), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.height(2.dp))
                     Card(
@@ -510,7 +513,7 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = currentItem?.modelName ?: "准备中...",
+                                text = currentItem?.modelName ?: localizedText("准备中...", "Preparing..."),
                                 style = MaterialTheme.typography.bodySmall,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary
@@ -519,7 +522,7 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
                                     Spacer(Modifier.width(4.dp))
-                                    Text("测速中", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                    Text(localizedText("测速中", "Testing speed"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                                 }
                             }
                         }
@@ -529,7 +532,7 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                 // ★★ 框1：已测速完的模型（✅成功 / ❌失败），按速度排序 ★★
                 if (doneItems.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("✅ 已测速完成", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold,
+                    Text(localizedText("✅ 已测速完成", "✅ Speed test complete"), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold,
                         color = Online)
                     Spacer(modifier = Modifier.height(4.dp))
                     // ★ 显示强制模式指示
@@ -540,13 +543,13 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "🎯 强制模式: ${doneItems.find { it.modelId == forcedModelId }?.modelName ?: forcedModelId}",
+                                text = localizedText("🎯 强制模式: ", "🎯 Forced mode: ") + (doneItems.find { it.modelId == forcedModelId }?.modelName ?: forcedModelId),
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary
                             )
                             TextButton(onClick = { viewModel.clearForcedModel() }) {
-                                Text("↩️ 取消强制", style = MaterialTheme.typography.labelSmall)
+                                Text(localizedText("↩️ 取消强制", "↩️ Cancel forced mode"), style = MaterialTheme.typography.labelSmall)
                             }
                         }
                     }
@@ -586,7 +589,7 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                                     )
                                 }
                                 Text(
-                                    text = item.status,
+                                    text = localizeRuntimeText(item.status),
                                     style = MaterialTheme.typography.bodySmall,
                                     fontWeight = FontWeight.Medium,
                                     color = when {
@@ -600,14 +603,14 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                     }
                 } else if (!pRunning && pStatus.isNotEmpty()) {
                     Text(
-                        text = "⏳ 测速排队中，请点击「▶️ 启动」开始测速",
+                        text = localizedText("⏳ 测速排队中，请点击「▶️ 启动」开始测速", "⏳ Speed test queued. Tap ▶️ Start to begin"),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(vertical = 4.dp)
                     )
                 } else if (pStatus.isEmpty()) {
                     Text(
-                        text = "暂无测速数据，点击「▶️ 启动」开始测速",
+                        text = localizedText("暂无测速数据，点击「▶️ 启动」开始测速", "No speed-test data yet. Tap ▶️ Start to begin"),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(vertical = 4.dp)
@@ -635,8 +638,8 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("📡 实时会话", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                        TextButton(onClick = { viewModel.clearLiveSessions() }) { Text("🗑️ 清空", style = MaterialTheme.typography.labelSmall) }
+                        Text(localizedText("📡 实时会话", "📡 Live sessions"), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        TextButton(onClick = { viewModel.clearLiveSessions() }) { Text(localizedText("🗑️ 清空", "🗑️ Clear"), style = MaterialTheme.typography.labelSmall) }
                     }
                     Spacer(modifier = Modifier.height(4.dp))
                     val transition = rememberInfiniteTransition(label = "marquee")
@@ -658,7 +661,7 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                                 Text(timeStr, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Medium)
                                 Spacer(Modifier.width(4.dp))
                                 // 状态
-                                Text(session.status, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold,
+                                Text(localizeRuntimeText(session.status), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold,
                                     color = if (session.status.startsWith("📤")) Online else MaterialTheme.colorScheme.primary)
                                 Spacer(Modifier.width(4.dp))
                                 // 模型名
@@ -668,7 +671,7 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                                 // ★★ 合并发送+回复内容为一整行跑马灯 ★★
                                 val marqueeText = buildString {
                                     if (session.requestPreview.isNotBlank()) {
-                                        append("📤 我：${session.requestPreview}")
+                                        append(localizedText("📤 我：", "📤 Me: ") + session.requestPreview)
                                     }
                                     if (session.requestPreview.isNotBlank() && session.responsePreview.isNotBlank()) {
                                         append(" → ")
@@ -700,18 +703,18 @@ fun HomeScreen(viewModel: GatewayViewModel) {
         ) {
             Column(modifier = Modifier.padding(20.dp)) {
                 Text(
-                    text = "📖 使用说明",
+                    text = localizedText("📖 使用说明", "📖 Usage guide"),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "1. 添加服务商（AI API提供商）\n" +
-                            "2. 为服务商同步模型列表\n" +
-                            "3. 启动网关服务\n" +
-                            "4. 在第三方应用中设置 Base URL:\n" +
-                            "   http://手机IP:8889/v1\n" +
-                            "5. API Key 任意填写即可转发",
+                    text = localizedText("1. 添加服务商（AI API提供商）\\n", "1. Add a provider (AI API provider)\\n") +
+                            localizedText("2. 为服务商同步模型列表\\n", "2. Sync the provider model list\\n") +
+                            localizedText("3. 启动网关服务\\n", "3. Start the gateway service\\n") +
+                            localizedText("4. 在第三方应用中设置 Base URL:\\n", "4. Set the Base URL in the third-party app:\\n") +
+                            localizedText("   http://手机IP:8889/v1\\n", "   http://phone-ip:8889/v1\\n") +
+                            localizedText("5. API Key 任意填写即可转发", "5. Any API key can be entered for forwarding"),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -734,7 +737,7 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                 Text("⚠️", style = MaterialTheme.typography.titleLarge)
                 Spacer(modifier = Modifier.width(12.dp))
                 Text(
-                    text = "请确保手机与目标设备在同一局域网内，\n且防火墙未阻止 8889 端口",
+                    text = localizedText("请确保手机与目标设备在同一局域网内，\\n且防火墙未阻止 8889 端口", "Make sure the phone and target device are on the same LAN,\\nand that the firewall is not blocking port 8889"),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -800,13 +803,13 @@ fun ProvidersScreen(viewModel: GatewayViewModel) {
                     Text("🔌", fontSize = MaterialTheme.typography.displayLarge.fontSize)
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = "暂无服务商",
+                        text = localizedText("暂无服务商", "No providers yet"),
                         style = MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.Bold
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "点击右下角按钮添加 AI 服务商",
+                        text = localizedText("点击右下角按钮添加 AI 服务商", "Tap the bottom-right button to add an AI provider"),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -883,7 +886,7 @@ private fun ProviderCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = provider.name,
+                        text = localizeGeneratedName(provider.name),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.weight(1f, fill = false)
@@ -894,7 +897,7 @@ private fun ProviderCard(
                         shape = MaterialTheme.shapes.small
                     ) {
                         Text(
-                            text = if (provider.isEnabled) "已启用" else "已禁用",
+                            text = if (provider.isEnabled) localizedText("已启用", "Enabled") else localizedText("已禁用", "Disabled"),
                             style = MaterialTheme.typography.labelMedium,
                             color = if (provider.isEnabled) Online else Offline,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
@@ -912,7 +915,7 @@ private fun ProviderCard(
                     IconButton(onClick = onSync, modifier = Modifier.size(36.dp)) {
                         Icon(
                             Icons.Default.Sync,
-                            contentDescription = "同步模型",
+                            contentDescription = localizedText("同步模型", "Sync models"),
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(20.dp)
                         )
@@ -920,7 +923,7 @@ private fun ProviderCard(
                     IconButton(onClick = onEdit, modifier = Modifier.size(36.dp)) {
                         Icon(
                             Icons.Default.Edit,
-                            contentDescription = "编辑",
+                            contentDescription = localizedText("编辑", "Edit"),
                             tint = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.size(20.dp)
                         )
@@ -928,7 +931,7 @@ private fun ProviderCard(
                     IconButton(onClick = onDelete, modifier = Modifier.size(36.dp)) {
                         Icon(
                             Icons.Default.Delete,
-                            contentDescription = "删除",
+                            contentDescription = localizedText("删除", "Delete"),
                             tint = Error,
                             modifier = Modifier.size(20.dp)
                         )
@@ -939,7 +942,7 @@ private fun ProviderCard(
             Spacer(modifier = Modifier.height(4.dp))
 
             Text(
-                text = "类型: ${provider.type}",
+                text = localizedText("类型: ", "Type: ") + provider.type,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -1105,7 +1108,7 @@ private fun AddProviderDialog(
                             Icon(
                                 imageVector = if (showApiKey) Icons.Default.Visibility
                                     else Icons.Default.VisibilityOff,
-                                contentDescription = if (showApiKey) "隐藏" else "显示"
+                                contentDescription = if (showApiKey) localizedText("隐藏", "Hide") else localizedText("显示", "Show")
                             )
                         }
                     },
@@ -1115,7 +1118,7 @@ private fun AddProviderDialog(
                 // 提示信息
                 if (selectedIndex != 4) {
                     Text(
-                        text = "💡 已自动填充对应类型的默认配置，你可手动修改",
+                        text = localizedText("💡 已自动填充对应类型的默认配置，你可手动修改", "💡 Default configuration for this type has been filled automatically. You can edit it manually"),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.primary
                     )
@@ -1332,7 +1335,7 @@ private fun getLocalIpAddress(): String {
             }
         }
     } catch (_: Exception) { }
-    return "无法获取IP"
+    return localizedText("无法获取IP", "Unable to get IP")
 }
 
 // ============================================================
@@ -1340,6 +1343,7 @@ private fun getLocalIpAddress(): String {
 // ============================================================
 @Composable
 fun ModelsScreen(viewModel: GatewayViewModel) {
+    val languageTick = TranslationManager.currentLanguageFlow.collectAsState().value
     val models by viewModel.models.collectAsState()
     val providers by viewModel.providers.collectAsState()
     val syncingProviderId by viewModel.syncingProviderId.collectAsState()
@@ -1349,7 +1353,7 @@ fun ModelsScreen(viewModel: GatewayViewModel) {
     var searchQuery by remember { mutableStateOf("") }
 
     // 搜索过滤
-val filteredModels = remember(models, searchQuery) {
+val filteredModels = remember(models, searchQuery, languageTick) {
     val fromDb = if (searchQuery.isBlank()) models
     else models.filter {
         it.displayName.contains(searchQuery, ignoreCase = true) ||
@@ -1358,15 +1362,15 @@ val filteredModels = remember(models, searchQuery) {
     }
     // ★★ qtai-sj 虚拟模型始终显示在列表最前面 ★★
     listOfNotNull(
-        AiModel(id = -1, modelId = "qtai-sj", displayName = "🔄 自动化切换", providerId = 0, isEnabled = true)
+        AiModel(id = -1, modelId = "qtai-sj", displayName = localizedText("🔄 自动化切换", "🔄 Auto switch"), providerId = 0, isEnabled = true)
     ) + fromDb
 }
 
     // 按服务商分组
-    val modelsByProvider = remember(filteredModels, providers) {
+    val modelsByProvider = remember(filteredModels, providers, languageTick) {
     val providerMap = providers.associateBy { it.id }
     filteredModels.groupBy { model ->
-        providerMap[model.providerId]?.name ?: if (model.modelId == "qtai-sj") "🔄 自动化切换" else "未知服务商(ID:${model.providerId})"
+        providerMap[model.providerId]?.name ?: if (model.modelId == "qtai-sj") localizedText("🔄 自动化切换", "🔄 Auto switch") else localizedText("未知服务商(ID:", "Unknown provider (ID:") + model.providerId + ")"
     }
 }
 
@@ -1379,20 +1383,20 @@ val filteredModels = remember(models, searchQuery) {
                 Text("🤖", fontSize = MaterialTheme.typography.displayLarge.fontSize)
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    text = "暂无模型",
+                    text = localizedText("暂无模型", "No models yet"),
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "请先添加服务商并同步模型列表",
+                    text = localizedText("请先添加服务商并同步模型列表", "Add a provider and sync the model list first"),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 if (providers.isNotEmpty()) {
                     Text(
-                        text = "在「服务商」页面点击 🔄 按钮同步模型",
+                        text = localizedText("在「服务商」页面点击 🔄 按钮同步模型", "Tap 🔄 on the Providers page to sync models"),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1435,7 +1439,7 @@ val filteredModels = remember(models, searchQuery) {
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = result,
+                                text = localizeRuntimeText(result),
                                 style = MaterialTheme.typography.bodyMedium,
                                 modifier = Modifier.weight(1f)
                             )
@@ -1459,11 +1463,11 @@ val filteredModels = remember(models, searchQuery) {
                         if (isBatchTesting) {
                             CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("测速中...")
+                            Text(localizedText("测速中...", "Speed testing..."))
                         } else {
                             Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("🔍 批量测速(自动开启)")
+                            Text(localizedText("🔍 批量测速(自动开启)", "🔍 Batch speed test (auto-enable)"))
                         }
                     }
                 }
@@ -1522,7 +1526,7 @@ private fun ModelCard(model: AiModel, viewModel: GatewayViewModel) {
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = model.displayName,
+                        text = localizeGeneratedName(model.displayName),
                         style = MaterialTheme.typography.bodyLarge,
                         fontWeight = FontWeight.Medium,
                         modifier = Modifier.weight(1f, fill = false)
@@ -1534,7 +1538,7 @@ private fun ModelCard(model: AiModel, viewModel: GatewayViewModel) {
                             shape = MaterialTheme.shapes.small
                         ) {
                             Text(
-                                text = "已禁用",
+                                text = localizedText("已禁用", "Disabled"),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = Error,
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
@@ -1558,7 +1562,7 @@ private fun ModelCard(model: AiModel, viewModel: GatewayViewModel) {
                 ) {
                     Icon(
                         imageVector = Icons.Default.PlayArrow,
-                        contentDescription = "测试",
+                        contentDescription = localizedText("测试", "Test"),
                         modifier = Modifier.size(18.dp),
                         tint = MaterialTheme.colorScheme.primary
                     )
@@ -1570,7 +1574,7 @@ private fun ModelCard(model: AiModel, viewModel: GatewayViewModel) {
                 ) {
                     Icon(
                         imageVector = Icons.Default.Edit,
-                        contentDescription = "编辑别名",
+                        contentDescription = localizedText("编辑别名", "Edit alias"),
                         modifier = Modifier.size(18.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1586,7 +1590,7 @@ private fun ModelCard(model: AiModel, viewModel: GatewayViewModel) {
                             Switch(checked = qtaiSjEnabled, onCheckedChange = { viewModel.toggleQtaiSj() })
                             Spacer(Modifier.width(4.dp))
                             TextButton(onClick = { showBrainPicker = true }) {
-                                Text(if (brainModelId.isNotBlank()) "🧠" else "🧠绑定", style = MaterialTheme.typography.labelSmall)
+                                Text(if (brainModelId.isNotBlank()) "🧠" else localizedText("🧠绑定", "🧠 Bind"), style = MaterialTheme.typography.labelSmall)
                             }
                         }
                         if (showBrainPicker) {
@@ -1641,9 +1645,9 @@ private fun ModelCard(model: AiModel, viewModel: GatewayViewModel) {
                 ) {
                     Text(
                         text = when (model.syncStatus) {
-                            "Synced" -> "✅ 已同步"
-                            "Pending" -> "⏳ 待同步"
-                            "Failed" -> "❌ 失败"
+                            "Synced" -> localizedText("✅ 已同步", "✅ Synced")
+                            "Pending" -> localizedText("⏳ 待同步", "⏳ Pending sync")
+                            "Failed" -> localizedText("❌ 失败", "❌ Failed")
                             else -> model.syncStatus
                         },
                         style = MaterialTheme.typography.labelSmall,
@@ -1668,11 +1672,11 @@ private fun EditModelAliasDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("编辑模型别名") },
+        title = { Text(localizedText("编辑模型别名", "Edit model alias")) },
         text = {
             Column {
                 Text(
-                    text = "模型: ${model.displayName}",
+                    text = localizedText("模型: ", "Model: ") + model.displayName,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -1680,8 +1684,8 @@ private fun EditModelAliasDialog(
                 OutlinedTextField(
                     value = aliasText,
                     onValueChange = { aliasText = it },
-                    label = { Text("自定义别名") },
-                    placeholder = { Text("输入别名（留空则使用默认名称）") },
+                    label = { Text(localizedText("自定义别名", "Custom alias")) },
+                    placeholder = { Text(localizedText("输入别名（留空则使用默认名称）", "Enter an alias (leave empty to use default name)")) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )

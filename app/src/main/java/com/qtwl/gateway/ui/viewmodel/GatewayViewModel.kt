@@ -16,6 +16,7 @@ import com.qtwl.gateway.network.UpstreamClient
 import com.qtwl.gateway.service.GatewayForegroundService
 import com.qtwl.gateway.service.LiveSession
 import com.qtwl.gateway.gateway.GatewayService
+import com.qtwl.gateway.utils.localizeGeneratedName
 import kotlinx.coroutines.async
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -1379,12 +1380,12 @@ fun toggleModelProxy(model: AiModel) {
 fun getDisplayModelName(model: AiModel): String {
     // ★★ qtai-sj 虚拟模型特殊显示
     if (model.modelId == "qtai-sj") {
-        return "🔄 自动化切换"
+        return localizeGeneratedName("🔄 自动化切换")
     }
     return if (model.customAlias.isNotBlank()) {
-        "${model.displayName} (${model.customAlias})"
+        "${localizeGeneratedName(model.displayName)} (${model.customAlias})"
     } else {
-        model.displayName
+        localizeGeneratedName(model.displayName)
     }
     }
 

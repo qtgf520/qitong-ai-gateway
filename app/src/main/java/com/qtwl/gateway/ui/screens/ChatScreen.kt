@@ -39,6 +39,9 @@ import com.qtwl.gateway.ui.viewmodel.GatewayViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import com.qtwl.gateway.utils.localizedText
+import com.qtwl.gateway.utils.localizeRuntimeText
+import com.qtwl.gateway.utils.localizeGeneratedName
 
 /**
  * 聊天屏幕 —— 完整的对话界面
@@ -47,6 +50,7 @@ import java.util.Locale
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ChatScreen(viewModel: GatewayViewModel) {
+    com.qtwl.gateway.utils.TranslationManager.currentLanguageFlow.collectAsState().value
     val conversations by viewModel.conversations.collectAsState()
     val currentConversation by viewModel.currentConversation.collectAsState()
     val messages by viewModel.currentMessages.collectAsState()
@@ -97,7 +101,7 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                 }
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = currentConversation?.title ?: "聊天",
+                        text = currentConversation?.title?.let(::localizeGeneratedName) ?: localizedText("聊天", "Chat"),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
@@ -106,7 +110,7 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                     )
                     if (selectedModel != null) {
                         Text(
-                            text = "模型: ${viewModel.getDisplayModelName(selectedModel!!)}",
+                            text = localizedText("模型: ", "Model: ") + viewModel.getDisplayModelName(selectedModel!!),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f)
                         )
@@ -125,7 +129,7 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                     Text("🤖", fontSize = 20.sp, color = MaterialTheme.colorScheme.onPrimary)
                 }
                 IconButton(onClick = { viewModel.createNewConversation() }) {
-                    Icon(Icons.Default.Add, contentDescription = "新对话", tint = MaterialTheme.colorScheme.onPrimary)
+                    Icon(Icons.Default.Add, contentDescription = localizedText("新对话", "New chat"), tint = MaterialTheme.colorScheme.onPrimary)
                 }
             }
         }
@@ -146,13 +150,13 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = error,
+                            text = localizeRuntimeText(error),
                             style = MaterialTheme.typography.bodySmall,
                             color = Error,
                             modifier = Modifier.weight(1f)
                         )
                         TextButton(onClick = { viewModel.clearChatError() }) {
-                            Text("关闭", color = Error)
+                            Text(localizedText("关闭", "Close"), color = Error)
                         }
                     }
                 }
@@ -163,7 +167,7 @@ fun ChatScreen(viewModel: GatewayViewModel) {
         if (editingMessage != null) {
             Column(modifier = Modifier.weight(1f).fillMaxWidth().padding(16.dp)) {
                 Text(
-                    text = "✏️ 编辑消息",
+                    text = localizedText("✏️ 编辑消息", "✏️ Edit message"),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold
                 )
@@ -173,12 +177,12 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                     onValueChange = { editMessageText = it },
                     modifier = Modifier.fillMaxWidth().weight(1f),
                     maxLines = 10,
-                    label = { Text("编辑内容") }
+                    label = { Text(localizedText("编辑内容", "Edit content")) }
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { editingMessage = null }) {
-                        Text("取消")
+                        Text(localizedText("取消", "Cancel"))
                     }
                     Button(
                         onClick = {
@@ -193,7 +197,7 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                         },
                         enabled = editMessageText.isNotBlank()
                     ) {
-                        Text("保存${if (editingMessage?.role == "user") "并发送" else ""}")
+                        Text(localizedText("保存", "Save") + if (editingMessage?.role == "user") localizedText("并发送", " and send") else "")
                     }
                 }
             }
@@ -209,20 +213,20 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                     Text("💬", fontSize = 64.sp)
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = "选择或创建对话",
+                        text = localizedText("选择或创建对话", "Select or create a conversation"),
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "点击左上角 💬 选择已有对话\n或点击 ➕ 创建新对话",
+                        text = localizedText("点击左上角 💬 选择已有对话\\n或点击 ➕ 创建新对话", "Tap 💬 at the top left to select an existing conversation\\nor tap ➕ to create a new conversation"),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     if (models.isEmpty()) {
                         Text(
-                            text = "⚠️ 请先在「服务商」页面添加并同步模型",
+                            text = localizedText("⚠️ 请先在「服务商」页面添加并同步模型", "⚠️ Add a provider and sync models on the Providers page first"),
                             style = MaterialTheme.typography.bodySmall,
                             color = Error
                         )
@@ -245,8 +249,8 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                         message = message,
                         onCopy = {
                             val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            cm.setPrimaryClip(ClipData.newPlainText("AI回复", message.content))
-                            viewModel.showSnackbar("✅ 已复制")
+                            cm.setPrimaryClip(ClipData.newPlainText(localizedText("AI回复", "AI reply"), message.content))
+                            viewModel.showSnackbar(localizedText("✅ 已复制", "✅ Copied"))
                         },
                         onShare = {
                             val sendIntent = Intent().apply {
@@ -254,7 +258,7 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                                 putExtra(Intent.EXTRA_TEXT, message.content)
                                 type = "text/plain"
                             }
-                            context.startActivity(Intent.createChooser(sendIntent, "分享"))
+                            context.startActivity(Intent.createChooser(sendIntent, localizedText("分享", "Share")))
                         },
                         onRegenerate = {
                             viewModel.regenerateLastMessage()
@@ -290,7 +294,7 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                                     Text("⏳", style = MaterialTheme.typography.titleSmall)
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
-                                        text = "AI 思考中...",
+                                        text = localizedText("AI 思考中...", "AI is thinking..."),
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -309,7 +313,7 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    text = "💭 AI 正在思考... 请耐心等待",
+                    text = localizedText("💭 AI 正在思考... 请耐心等待", "💭 AI is thinking... please wait"),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
@@ -326,7 +330,7 @@ fun ChatScreen(viewModel: GatewayViewModel) {
             Column(modifier = Modifier.padding(8.dp)) {
                 if (selectedModel == null && currentConversation != null) {
                     Text(
-                        text = "⚠️ 请点击 🤖 选择模型后再发送消息",
+                        text = localizedText("⚠️ 请点击 🤖 选择模型后再发送消息", "⚠️ Tap 🤖 to select a model before sending"),
                         style = MaterialTheme.typography.labelSmall,
                         color = Error,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
@@ -345,8 +349,8 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                             .heightIn(min = 48.dp, max = 120.dp),
                         placeholder = {
                             Text(
-                                text = if (selectedModel != null) "输入消息..."
-                                else "请先选择模型"
+                                text = if (selectedModel != null) localizedText("输入消息...", "Type a message...")
+                                else localizedText("请先选择模型", "Please select a model first")
                             )
                         },
                         enabled = !isSending,
@@ -371,7 +375,7 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                         ) {
                             Icon(
                                 Icons.Default.Close,
-                                contentDescription = "停止",
+                                contentDescription = localizedText("停止", "Stop"),
                                 tint = MaterialTheme.colorScheme.onError
                             )
                         }
@@ -388,7 +392,7 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                         ) {
                             Icon(
                                 Icons.Default.Send,
-                                contentDescription = "发送",
+                                contentDescription = localizedText("发送", "Send"),
                                 tint = if (inputText.isNotBlank() && selectedModel != null)
                                     MaterialTheme.colorScheme.onPrimary
                                 else
@@ -405,7 +409,7 @@ fun ChatScreen(viewModel: GatewayViewModel) {
     if (showConversationList) {
         AlertDialog(
             onDismissRequest = { showConversationList = false },
-            title = { Text("对话列表", fontWeight = FontWeight.Bold) },
+            title = { Text(localizedText("对话列表", "Conversation list"), fontWeight = FontWeight.Bold) },
             text = {
                 if (conversations.isEmpty()) {
                     Box(
@@ -413,7 +417,7 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "暂无对话\n点击 ➕ 创建新对话",
+                            text = localizedText("暂无对话\\n点击 ➕ 创建新对话", "No conversations yet\\nTap ➕ to create a new conversation"),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -440,19 +444,19 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Column(modifier = Modifier.weight(1f)) {
-                                        Text(conv.title, style = MaterialTheme.typography.bodyMedium,
+                                        Text(localizeGeneratedName(conv.title), style = MaterialTheme.typography.bodyMedium,
                                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                                             maxLines = 1, overflow = TextOverflow.Ellipsis)
                                         Text(formatTimestamp(conv.updatedAt), style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
-                                    IconButton(onClick = { editingConversationId = conv.id; editTitle = conv.title },
+                                    IconButton(onClick = { editingConversationId = conv.id; editTitle = localizeGeneratedName(conv.title) },
                                         modifier = Modifier.size(32.dp)) {
-                                        Icon(Icons.Default.Edit, contentDescription = "重命名", modifier = Modifier.size(18.dp))
+                                        Icon(Icons.Default.Edit, contentDescription = localizedText("重命名", "Rename"), modifier = Modifier.size(18.dp))
                                     }
                                     IconButton(onClick = { viewModel.deleteConversation(conv) },
                                         modifier = Modifier.size(32.dp)) {
-                                        Icon(Icons.Default.Delete, contentDescription = "删除", tint = Error, modifier = Modifier.size(18.dp))
+                                        Icon(Icons.Default.Delete, contentDescription = localizedText("删除", "Delete"), tint = Error, modifier = Modifier.size(18.dp))
                                     }
                                 }
                             }
@@ -460,7 +464,7 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                     }
                 }
             },
-            confirmButton = { TextButton(onClick = { showConversationList = false }) { Text("关闭") } }
+            confirmButton = { TextButton(onClick = { showConversationList = false }) { Text(localizedText("关闭", "Close")) } }
         )
     }
 
@@ -468,15 +472,15 @@ fun ChatScreen(viewModel: GatewayViewModel) {
     if (editingConversationId != null) {
         AlertDialog(
             onDismissRequest = { editingConversationId = null },
-            title = { Text("重命名对话") },
+            title = { Text(localizedText("重命名对话", "Rename conversation")) },
             text = {
                 OutlinedTextField(value = editTitle, onValueChange = { editTitle = it },
-                    label = { Text("对话标题") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    label = { Text(localizedText("对话标题", "Conversation title")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
             },
             confirmButton = {
-                Button(onClick = { editingConversationId?.let { id -> viewModel.renameConversation(id, editTitle) }; editingConversationId = null }) { Text("保存") }
+                Button(onClick = { editingConversationId?.let { id -> viewModel.renameConversation(id, editTitle) }; editingConversationId = null }) { Text(localizedText("保存", "Save")) }
             },
-            dismissButton = { TextButton(onClick = { editingConversationId = null }) { Text("取消") } }
+            dismissButton = { TextButton(onClick = { editingConversationId = null }) { Text(localizedText("取消", "Cancel")) } }
         )
     }
 
@@ -484,13 +488,13 @@ fun ChatScreen(viewModel: GatewayViewModel) {
     if (showModelSelector) {
         AlertDialog(
             onDismissRequest = { showModelSelector = false },
-            title = { Text("选择模型", fontWeight = FontWeight.Bold) },
+            title = { Text(localizedText("选择模型", "Select model"), fontWeight = FontWeight.Bold) },
             text = {
                 LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     item(key = "qtai-sj") {
                         val isQtAiSjSelected = selectedModel?.modelId == "qtai-sj"
                         Card(modifier = Modifier.fillMaxWidth().clickable {
-                            viewModel.selectModel(AiModel(id = -1, modelId = "qtai-sj", displayName = "🔄 自动化切换", providerId = 0, isEnabled = true))
+                            viewModel.selectModel(AiModel(id = -1, modelId = "qtai-sj", displayName = localizedText("🔄 自动化切换", "🔄 Auto switch"), providerId = 0, isEnabled = true))
                             showModelSelector = false
                         }, colors = CardDefaults.cardColors(containerColor = if (isQtAiSjSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface)) {
                             Row(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -499,9 +503,9 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                                     style = MaterialTheme.typography.titleSmall)
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text("🔄 自动化切换", style = MaterialTheme.typography.bodyLarge,
+                                    Text(localizedText("🔄 自动化切换", "🔄 Auto switch"), style = MaterialTheme.typography.bodyLarge,
                                         fontWeight = if (isQtAiSjSelected) FontWeight.Bold else FontWeight.Normal)
-                                    Text("qtai-sj · 自动选最快模型", style = MaterialTheme.typography.bodySmall,
+                                    Text(localizedText("qtai-sj · 自动选最快模型", "qtai-sj · automatically selects the fastest model"), style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
@@ -511,7 +515,7 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                     if (enabledModels.isEmpty()) {
                         item {
                             Box(modifier = Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) {
-                                Text("暂无可用模型\n请先在「模型」页面启用模型", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(localizedText("暂无可用模型\\n请先在「模型」页面启用模型", "No available models\\nEnable a model on the Models page first"), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     } else {
@@ -534,8 +538,8 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                     }
                 }
             },
-            confirmButton = { TextButton(onClick = { viewModel.selectModel(null); showModelSelector = false }) { Text("取消选择") } },
-            dismissButton = { TextButton(onClick = { showModelSelector = false }) { Text("关闭") } }
+            confirmButton = { TextButton(onClick = { viewModel.selectModel(null); showModelSelector = false }) { Text(localizedText("取消选择", "Clear selection")) } },
+            dismissButton = { TextButton(onClick = { showModelSelector = false }) { Text(localizedText("关闭", "Close")) } }
         )
     }
 
@@ -545,19 +549,19 @@ fun ChatScreen(viewModel: GatewayViewModel) {
         var aliasText by remember { mutableStateOf(editingModel!!.customAlias) }
         AlertDialog(
             onDismissRequest = { viewModel.hideEditModelAlias() },
-            title = { Text("✏️ 编辑模型别名", fontWeight = FontWeight.Bold) },
+            title = { Text(localizedText("✏️ 编辑模型别名", "✏️ Edit model alias"), fontWeight = FontWeight.Bold) },
             text = {
                 Column {
-                    Text("原始名称: ${editingModel!!.displayName}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(localizedText("原始名称: ", "Original name: ") + editingModel!!.displayName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("模型 ID: ${editingModel!!.modelId}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(localizedText("模型 ID: ", "Model ID: ") + editingModel!!.modelId, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(modifier = Modifier.height(12.dp))
                     OutlinedTextField(value = aliasText, onValueChange = { aliasText = it },
-                        label = { Text("自定义别名 (留空则使用原始名称)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                        label = { Text(localizedText("自定义别名 (留空则使用原始名称)", "Custom alias (leave empty to use original name)")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 }
             },
-            confirmButton = { Button(onClick = { viewModel.saveModelAlias(editingModel!!, aliasText); viewModel.hideEditModelAlias() }) { Text("保存") } },
-            dismissButton = { TextButton(onClick = { viewModel.hideEditModelAlias() }) { Text("取消") } }
+            confirmButton = { Button(onClick = { viewModel.saveModelAlias(editingModel!!, aliasText); viewModel.hideEditModelAlias() }) { Text(localizedText("保存", "Save")) } },
+            dismissButton = { TextButton(onClick = { viewModel.hideEditModelAlias() }) { Text(localizedText("取消", "Cancel")) } }
         )
     }
 }
@@ -614,15 +618,15 @@ private fun MessageBubble(
                     top = 10.dp, bottom = 10.dp
                 )) {
                     Text(
-                        text = message.content.ifEmpty { if (isStreaming) "..." else "(空消息)" }
-                            .replace("null", "").replace("undefined", "").trim().ifEmpty { if (isStreaming) "..." else "(空消息)" },
+                        text = message.content.ifEmpty { if (isStreaming) "..." else localizedText("(空消息)", "(empty message)") }
+                            .replace("null", "").replace("undefined", "").trim().ifEmpty { if (isStreaming) "..." else localizedText("(空消息)", "(empty message)") },
                         style = MaterialTheme.typography.bodyMedium,
                         color = if (isUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
                     )
 
                     if (isStreaming && message.content.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(4.dp))
-                        Text("⏳ 生成中...", style = MaterialTheme.typography.labelSmall,
+                        Text(localizedText("⏳ 生成中...", "⏳ Generating..."), style = MaterialTheme.typography.labelSmall,
                             color = if (isUser) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
                             else MaterialTheme.colorScheme.onSurfaceVariant)
                     }
@@ -640,18 +644,18 @@ private fun MessageBubble(
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(horizontal = 4.dp)) {
                     AssistChip(onClick = { onCopy(); showActions = false },
-                        label = { Text("📋 复制", style = MaterialTheme.typography.labelSmall) }, modifier = Modifier.height(28.dp))
+                        label = { Text(localizedText("📋 复制", "📋 Copy"), style = MaterialTheme.typography.labelSmall) }, modifier = Modifier.height(28.dp))
                     if (isUser) {
                         AssistChip(onClick = { onEdit(); showActions = false },
-                            label = { Text("✏️ 编辑", style = MaterialTheme.typography.labelSmall) }, modifier = Modifier.height(28.dp))
+                            label = { Text(localizedText("✏️ 编辑", "✏️ Edit"), style = MaterialTheme.typography.labelSmall) }, modifier = Modifier.height(28.dp))
                         AssistChip(onClick = { onResend(); showActions = false },
-                            label = { Text("🔄 重发", style = MaterialTheme.typography.labelSmall) }, modifier = Modifier.height(28.dp))
+                            label = { Text(localizedText("🔄 重发", "🔄 Resend"), style = MaterialTheme.typography.labelSmall) }, modifier = Modifier.height(28.dp))
                     }
                     AssistChip(onClick = { onShare(); showActions = false },
-                        label = { Text("📤 分享", style = MaterialTheme.typography.labelSmall) }, modifier = Modifier.height(28.dp))
+                        label = { Text(localizedText("📤 分享", "📤 Share"), style = MaterialTheme.typography.labelSmall) }, modifier = Modifier.height(28.dp))
                     if (!isUser) {
                         AssistChip(onClick = { onRegenerate(); showActions = false },
-                            label = { Text("🔄 重生成", style = MaterialTheme.typography.labelSmall) }, modifier = Modifier.height(28.dp))
+                            label = { Text(localizedText("🔄 重生成", "🔄 Regenerate"), style = MaterialTheme.typography.labelSmall) }, modifier = Modifier.height(28.dp))
                     }
                 }
             }
