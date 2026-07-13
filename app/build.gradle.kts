@@ -26,12 +26,22 @@ android {
         abortOnError = false
     }
 
+    val releaseKeystore = file("qitong.jks")
+    val releaseStorePassword = providers.gradleProperty("QITONG_STORE_PASSWORD")
+        .orElse(providers.environmentVariable("QITONG_STORE_PASSWORD"))
+    val releaseKeyAlias = providers.gradleProperty("QITONG_KEY_ALIAS")
+        .orElse(providers.environmentVariable("QITONG_KEY_ALIAS"))
+    val releaseKeyPassword = providers.gradleProperty("QITONG_KEY_PASSWORD")
+        .orElse(providers.environmentVariable("QITONG_KEY_PASSWORD"))
+
     signingConfigs {
-        create("release") {
-            storeFile = file("qitong.jks")
-            storePassword = "qitongwangluo"
-            keyAlias = "qitong"
-            keyPassword = "qitongwangluo"
+        if (releaseKeystore.exists() && releaseStorePassword.isPresent && releaseKeyAlias.isPresent && releaseKeyPassword.isPresent) {
+            create("release") {
+                storeFile = releaseKeystore
+                storePassword = releaseStorePassword.get()
+                keyAlias = releaseKeyAlias.get()
+                keyPassword = releaseKeyPassword.get()
+            }
         }
     }
 
@@ -42,10 +52,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            signingConfig = signingConfigs.getByName("release")
-        }
-        debug {
-            signingConfig = signingConfigs.getByName("release")
+            signingConfigs.findByName("release")?.let { signingConfig = it }
         }
     }
     compileOptions {
@@ -62,11 +69,16 @@ android {
     }
 }
 
-// Force use of ARM64 binaries for AAPT2 in aarch64 environment
-configurations.all {
-    resolutionStrategy.eachDependency {
-        if (requested.group == "com.android.tools.build" && requested.name == "aapt2") {
-            useTarget("com.android.tools.build:aapt2:${'$'}{requested.version}:linux-aarch64")
+// Force ARM64 AAPT2 only on Linux/aarch64 (for on-device/Termux builds).
+// Desktop Windows/macOS/Linux builds must use Gradle's native host artifact.
+val isLinuxArm64Host = System.getProperty("os.name").contains("linux", ignoreCase = true) &&
+    System.getProperty("os.arch").lowercase() in setOf("aarch64", "arm64")
+if (isLinuxArm64Host) {
+    configurations.all {
+        resolutionStrategy.eachDependency {
+            if (requested.group == "com.android.tools.build" && requested.name == "aapt2") {
+                useTarget("com.android.tools.build:aapt2:${requested.version}:linux-aarch64")
+            }
         }
     }
 }

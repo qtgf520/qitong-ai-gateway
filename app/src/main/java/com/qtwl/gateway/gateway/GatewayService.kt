@@ -1432,7 +1432,36 @@ private suspend fun pipeStreamResponse(
 
     val ct = response.header("Content-Type") ?: "text/event-stream"
     val respStatus = HttpStatusCode.fromValue(response.code)
-    val bodyStream = response.body?.byteStream() ?: return
+
+    // Some OpenAI-compatible upstreams ignore stream=true and return a normal
+    // JSON chat.completion.  Passing that body through with application/json
+    // leaves SSE-only clients (including Hermes Agent) waiting with no text.
+    if (path.contains("chat/completions") && !OpenAiStreamCompat.isEventStream(ct)) {
+        val responseBytes = withContext(Dispatchers.IO) {
+            response.use { it.body?.bytes() ?: byteArrayOf() }
+        }
+        if (responseBytes.isEmpty()) {
+            throw Exception("Upstream stream ${response.code}: empty response body")
+        }
+        val sseBytes = try {
+            OpenAiStreamCompat.chatCompletionJsonToSse(responseBytes.toString(Charsets.UTF_8))
+        } catch (error: Exception) {
+            throw Exception("Upstream stream ${response.code}: ${error.message}", error)
+        }
+        GatewayForegroundService.trafficDownloadBytes.addAndGet(sseBytes.size.toLong())
+        GatewayForegroundService.totalDownloadBytes.addAndGet(sseBytes.size.toLong())
+        call.respondBytesWriter(contentType = ContentType.Text.EventStream, status = respStatus) {
+            writeFully(sseBytes)
+            flush()
+        }
+        GatewayScheduler.markModelSuccess(modelId, System.currentTimeMillis() - pipeStartTime)
+        return
+    }
+
+    val bodyStream = response.body?.byteStream() ?: run {
+        response.close()
+        throw Exception("Upstream stream ${response.code}: empty response body")
+    }
 
     // 2. 在 CIO 线程上启动流式写，从 IO 流读取并逐块转发
     call.respondBytesWriter(contentType = ContentType.parse(ct), status = respStatus) {
@@ -1454,6 +1483,23 @@ private suspend fun pipeStreamResponse(
                 if (path.contains("chat/completions")) {
                     accumulatedBytes.write(buffer, 0, bytesRead)
                 }
+            }
+
+            if (path.contains("chat/completions")) {
+                val fullStream = accumulatedBytes.toString(Charsets.UTF_8.name())
+                if (!OpenAiStreamCompat.hasDataFrame(fullStream)) {
+                    val errorFrame = OpenAiStreamCompat.emptyStreamErrorFrame()
+                    writeFully(errorFrame)
+                    GatewayForegroundService.trafficDownloadBytes.addAndGet(errorFrame.size.toLong())
+                    GatewayForegroundService.totalDownloadBytes.addAndGet(errorFrame.size.toLong())
+                }
+                if (!OpenAiStreamCompat.hasDoneFrame(fullStream)) {
+                    val doneFrame = OpenAiStreamCompat.doneFrame()
+                    writeFully(doneFrame)
+                    GatewayForegroundService.trafficDownloadBytes.addAndGet(doneFrame.size.toLong())
+                    GatewayForegroundService.totalDownloadBytes.addAndGet(doneFrame.size.toLong())
+                }
+                flush()
             }
 
             // 流结束后解析 usage
