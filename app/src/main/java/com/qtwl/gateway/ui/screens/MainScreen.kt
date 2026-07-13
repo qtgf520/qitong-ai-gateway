@@ -70,6 +70,8 @@ fun MainScreen(
     viewModel: GatewayViewModel = viewModel(factory = GatewayViewModel.Factory())
 ) {
     val context = LocalContext.current
+    // Observe locale changes at the navigation root so every tab recomposes.
+    TranslationManager.currentLanguageFlow.collectAsState().value
     var selectedTab by remember { mutableStateOf(0) }
     val snackbarMessage by viewModel.snackbarMessage.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -86,7 +88,7 @@ fun MainScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("綦桐AI网关") },
+                title = { Text(tr("app_name")) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primary,
                     titleContentColor = MaterialTheme.colorScheme.onPrimary
@@ -99,25 +101,25 @@ fun MainScreen(
                     selected = selectedTab == 0,
                     onClick = { selectedTab = 0 },
                     icon = { Text("🏠") },
-                    label = { Text("首页") }
+                    label = { Text(tr("nav_home")) }
                 )
                 NavigationBarItem(
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 },
                     icon = { Text("🔌") },
-                    label = { Text("服务商") }
+                    label = { Text(tr("nav_providers")) }
                 )
                 NavigationBarItem(
                     selected = selectedTab == 2,
                     onClick = { selectedTab = 2 },
                     icon = { Text("🤖") },
-                    label = { Text("模型") }
+                    label = { Text(tr("nav_models")) }
                 )
                 NavigationBarItem(
                     selected = selectedTab == 3,
                     onClick = { selectedTab = 3 },
                     icon = { Text("💬") },
-                    label = { Text("聊天") }
+                    label = { Text(tr("nav_chat")) }
                 )
                 NavigationBarItem(
                     selected = selectedTab == 4,
@@ -182,7 +184,7 @@ fun HomeScreen(viewModel: GatewayViewModel) {
             Column(modifier = Modifier.padding(20.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = if (serviceRunning) "🟢 网关运行中" else "🔴 网关已停止",
+                        text = if (serviceRunning) tr("gateway_running") else tr("gateway_stopped"),
                         style = MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.Bold,
                         color = if (serviceRunning) Online else Error
@@ -201,7 +203,7 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                 }
                 
                 Text(
-                    text = "网关监听端口",
+                    text = tr("port_label"),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
@@ -224,16 +226,16 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                         singleLine = true
                     )
                     Text(
-                        text = "默认: 8889",
+                        text = "${tr("default")} 8889",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 
-                InfoRow("监听端口", gatewayPort.toString())
-InfoRow("服务状态",
-                    if (serviceRunning) "运行中" else "已停止",
+                InfoRow(tr("port_value"), gatewayPort.toString())
+                InfoRow(tr("service_status"),
+                    if (serviceRunning) tr("running") else tr("stopped"),
                     if (serviceRunning) Online else Error
                 )
                 // ★★ 实时活跃模型显示
@@ -246,7 +248,7 @@ InfoRow("服务状态",
                 }
                 if (activeModel.isNotBlank()) {
                     InfoRow(
-                        "🧠 当前活跃模型",
+                        tr("active_model"),
                         activeModel,
                         MaterialTheme.colorScheme.primary
                     )
@@ -268,7 +270,7 @@ InfoRow("服务状态",
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("本地地址", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(tr("local_addr"), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.width(4.dp))
                         Text("📋", style = MaterialTheme.typography.labelSmall)
                     }
@@ -285,7 +287,7 @@ InfoRow("服务状态",
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("局域网地址", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(tr("lan_addr"), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.width(4.dp))
                         Text("📋", style = MaterialTheme.typography.labelSmall)
                     }
@@ -313,7 +315,7 @@ InfoRow("服务状态",
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = if (serviceRunning) "停止网关服务" else "启动网关服务",
+                text = if (serviceRunning) tr("stop_gateway") else tr("start_gateway"),
                 style = MaterialTheme.typography.titleMedium
             )
         }
@@ -331,7 +333,7 @@ InfoRow("服务状态",
               horizontalArrangement = Arrangement.SpaceBetween,
               verticalAlignment = Alignment.CenterVertically
           ) {
-              Text("首页思考引导", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+              Text(tr("home_thinking_guide"), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
               Switch(
                   checked = showHintState.value,
                   onCheckedChange = { enabled ->
@@ -352,7 +354,7 @@ InfoRow("服务状态",
                           Text("💡", style = MaterialTheme.typography.titleLarge)
                           Spacer(modifier = Modifier.width(8.dp))
                           Text(
-                              text = "快速上手",
+                              text = tr("quick_start"),
                               style = MaterialTheme.typography.titleSmall,
                               fontWeight = FontWeight.Bold,
                               color = MaterialTheme.colorScheme.primary
@@ -360,10 +362,10 @@ InfoRow("服务状态",
                       }
                       Spacer(modifier = Modifier.height(8.dp))
                       Text(
-                          text = "1. 添加服务商 → 同步模型\n" +
-                                  "2. 启动网关服务\n" +
-                                  "3. 在第三方APP设置 Base URL 为手机地址\n" +
-                                  "4. 开启故障转移可自动切换最优模型",
+                          text = "1. ${tr("add_provider")} → ${tr("sync_models")}\n" +
+                                  "2. ${tr("start_gateway")}\n" +
+                                  "3. ${tr("set_base_url")}\n" +
+                                  "4. ${tr("enable_failover")}",
                           style = MaterialTheme.typography.bodySmall,
                           color = MaterialTheme.colorScheme.onSurfaceVariant,
                           lineHeight = MaterialTheme.typography.bodySmall.lineHeight
@@ -393,9 +395,9 @@ InfoRow("服务状态",
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("🔄 自动故障转移", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                        Text(tr("auto_failover"), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                         Text(
-                            text = if (autoFailover) "开启：请求失败自动切换其他可用模型" else "关闭：只使用指定模型",
+                            text = if (autoFailover) tr("failover_on") else tr("failover_off"),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -420,7 +422,7 @@ InfoRow("服务状态",
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "🏃 模型测速",
+                        text = "🏃 ${tr("test_speed")}",
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary
@@ -432,7 +434,7 @@ InfoRow("服务状态",
                         }
                     ) {
                         Text(
-                            if (pRunning) "⏹ 停止" else "▶️ 启动",
+                            if (pRunning) "⏹ ${tr("stop_gateway")}" else "▶️ ${tr("start_gateway")}",
                             style = MaterialTheme.typography.labelMedium
                         )
                     }
@@ -782,7 +784,7 @@ fun ProvidersScreen(viewModel: GatewayViewModel) {
             ExtendedFloatingActionButton(
                 onClick = { viewModel.showAddProvider() },
                 icon = { Icon(Icons.Default.Add, contentDescription = null) },
-                text = { Text("添加服务商") }
+                text = { Text(tr("add_provider")) }
             )
         }
     ) { padding ->
@@ -981,7 +983,7 @@ private fun AddProviderDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text("添加服务商", fontWeight = FontWeight.Bold)
+            Text(tr("add_provider"), fontWeight = FontWeight.Bold)
         },
         text = {
             Column(
@@ -991,8 +993,8 @@ private fun AddProviderDialog(
                 OutlinedTextField(
                     value = form.name,
                     onValueChange = { viewModel.updateFormField("name", it) },
-                    label = { Text("服务商名称") },
-                    placeholder = { Text("例如: OpenAI, Claude, 本地Ollama") },
+                    label = { Text(tr("provider_type_label")) },
+                    placeholder = { Text(tr("provider_type_hint")) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -1009,7 +1011,7 @@ private fun AddProviderDialog(
                         value = types.getOrElse(selectedIndex) { types[4] }.displayName,
                         onValueChange = {},
                         readOnly = true,
-                        label = { Text("大模型类型") },
+                        label = { Text(tr("model_type")) },
                         trailingIcon = {
                             @OptIn(ExperimentalMaterial3Api::class)
                             ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
@@ -1043,8 +1045,8 @@ private fun AddProviderDialog(
                     value = form.type,
                     onValueChange = {},
                     readOnly = true,
-                    label = { Text("类型标识") },
-                    placeholder = { Text("OpenAI Compatible / Anthropic / Custom") },
+                    label = { Text(tr("provider_type")) },
+                    placeholder = { Text(tr("type_options")) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     enabled = false
@@ -1065,15 +1067,15 @@ private fun AddProviderDialog(
                             viewModel.updateFormField("port", extractedPort)
                         }
                     },
-                    label = { Text("API 地址") },
+                    label = { Text(tr("api_url")) },
                     supportingText = {
                         if (form.baseUrl.startsWith("http")) {
-                            Text("最终URL: $finalUrlDisplay", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                            Text("${tr("final_url")}: $finalUrlDisplay", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                         } else {
-                            Text("提示: 输入 http://... 开头地址会自动拼接 /v1/chat/completions", style = MaterialTheme.typography.labelSmall)
+                            Text(tr("url_hint"), style = MaterialTheme.typography.labelSmall)
                         }
                     },
-                    placeholder = { Text("https://api.openai.com 或 http://localhost:11434") },
+                    placeholder = { Text(tr("api_url_hint")) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -1082,8 +1084,8 @@ private fun AddProviderDialog(
                 OutlinedTextField(
                     value = form.port,
                     onValueChange = { viewModel.updateFormField("port", it) },
-                    label = { Text("端口 (可选)") },
-                    placeholder = { Text("如 443, 11434, 8080") },
+                    label = { Text(tr("port")) },
+                    placeholder = { Text(tr("port_hint")) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth()
@@ -1094,7 +1096,7 @@ private fun AddProviderDialog(
                     value = form.apiKey,
                     onValueChange = { viewModel.updateFormField("apiKey", it) },
                     label = { Text("API Key") },
-                    placeholder = { Text("sk-... 或留空（本地服务无需Key）") },
+                    placeholder = { Text(tr("api_key_hint")) },
                     singleLine = true,
                     visualTransformation = if (showApiKey) VisualTransformation.None
                         else PasswordVisualTransformation(),
@@ -1122,12 +1124,12 @@ private fun AddProviderDialog(
         },
         confirmButton = {
             Button(onClick = { viewModel.saveProvider() }) {
-                Text("保存")
+                Text(tr("save"))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(tr("cancel"))
             }
         }
     )
@@ -1156,7 +1158,7 @@ private fun EditProviderDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text("编辑服务商", fontWeight = FontWeight.Bold)
+            Text(tr("edit_provider"), fontWeight = FontWeight.Bold)
         },
         text = {
             Column(
@@ -1165,7 +1167,7 @@ private fun EditProviderDialog(
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("服务商名称") },
+                    label = { Text(tr("provider_type_label")) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -1177,7 +1179,7 @@ private fun EditProviderDialog(
                         value = types.getOrElse(selectedIndex) { types[4] }.displayName,
                         onValueChange = {},
                         readOnly = true,
-                        label = { Text("大模型类型") },
+                        label = { Text(tr("model_type")) },
                         trailingIcon = {
                             @OptIn(ExperimentalMaterial3Api::class)
                             ExposedDropdownMenuDefaults.TrailingIcon(expanded = typeExpanded)
@@ -1212,7 +1214,7 @@ private fun EditProviderDialog(
                     value = type,
                     onValueChange = {},
                     readOnly = true,
-                    label = { Text("类型标识") },
+                    label = { Text(tr("provider_type")) },
                     singleLine = true,
                     enabled = false,
                     modifier = Modifier.fillMaxWidth()
@@ -1228,13 +1230,13 @@ private fun EditProviderDialog(
                             port = extractedPort
                         }
                     },
-                    label = { Text("API 地址") },
+                    label = { Text(tr("api_url")) },
                     supportingText = {
                         if (baseUrl.startsWith("http")) {
                             val finalUrl = baseUrl.trimEnd('/') + "/v1/chat/completions"
-                            Text("最终URL: $finalUrl", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                            Text("${tr("final_url")}: $finalUrl", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                         } else {
-                            Text("提示: 输入 http://... 开头地址会自动拼接 /v1/chat/completions", style = MaterialTheme.typography.labelSmall)
+                            Text(tr("url_hint"), style = MaterialTheme.typography.labelSmall)
                         }
                     },
                     singleLine = true,
@@ -1244,8 +1246,8 @@ private fun EditProviderDialog(
                 OutlinedTextField(
                     value = port,
                     onValueChange = { port = it },
-                    label = { Text("端口") },
-                    placeholder = { Text("如 443, 11434, 8080") },
+                    label = { Text(tr("port")) },
+                    placeholder = { Text(tr("port_hint")) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth()
@@ -1283,12 +1285,12 @@ private fun EditProviderDialog(
                     )
                 )
             }) {
-                Text("保存")
+                Text(tr("save"))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(tr("cancel"))
             }
         }
     )
@@ -1409,8 +1411,8 @@ val filteredModels = remember(models, searchQuery) {
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
-                label = { Text("🔍 搜索模型") },
-                placeholder = { Text("输入模型名称/ID/别名...") },
+                label = { Text("🔍 ${tr("search_model")}") },
+                placeholder = { Text(tr("search_hint")) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -1438,7 +1440,7 @@ val filteredModels = remember(models, searchQuery) {
                                 modifier = Modifier.weight(1f)
                             )
                             TextButton(onClick = { viewModel.clearSyncResult() }) {
-                                Text("关闭")
+                                Text(tr("close"))
                             }
                         }
                     }
@@ -1591,7 +1593,7 @@ private fun ModelCard(model: AiModel, viewModel: GatewayViewModel) {
                             val enabledModels by viewModel.enabledModels.collectAsState()
                             AlertDialog(
                                 onDismissRequest = { showBrainPicker = false },
-                                title = { Text("选择 qtai-sj 脑子") },
+                                title = { Text(tr("select_brain")) },
                                 text = { LazyColumn(modifier = Modifier.heightIn(max = 300.dp)) {
                                     items(enabledModels) { m ->
                                         Row(modifier = Modifier.fillMaxWidth().clickable {
@@ -1604,7 +1606,7 @@ private fun ModelCard(model: AiModel, viewModel: GatewayViewModel) {
                                         }
                                     }
                                 } },
-                                confirmButton = { TextButton(onClick = { showBrainPicker = false }) { Text("取消") } }
+                                confirmButton = { TextButton(onClick = { showBrainPicker = false }) { Text(tr("cancel")) } }
                             )
                         }
                     } else {
@@ -1692,7 +1694,7 @@ private fun EditModelAliasDialog(
                     onDismiss()
                 }
             ) {
-                Text("保存")
+                Text(tr("save"))
             }
         },
         dismissButton = {
@@ -1700,7 +1702,7 @@ private fun EditModelAliasDialog(
                 viewModel.hideEditModelAlias()
                 onDismiss()
             }) {
-                Text("取消")
+                Text(tr("cancel"))
             }
         }
     )
