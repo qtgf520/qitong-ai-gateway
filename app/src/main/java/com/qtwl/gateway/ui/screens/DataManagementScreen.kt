@@ -58,6 +58,10 @@ import androidx.compose.foundation.background
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import com.qtwl.gateway.utils.localizedText
+import com.qtwl.gateway.utils.localizeRuntimeText
+import com.qtwl.gateway.utils.localizeGeneratedName
+import com.qtwl.gateway.utils.localizeGeneratedContent
 
 /**
  * 数据管理 & 添加服务 统一界面
@@ -67,6 +71,7 @@ import kotlinx.coroutines.delay
 fun DataManagementScreen(
     viewModel: GatewayViewModel = viewModel(factory = GatewayViewModel.Factory())
 ) {
+    TranslationManager.currentLanguageFlow.collectAsState().value
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -77,9 +82,9 @@ fun DataManagementScreen(
     ) { granted ->
         scope.launch {
             if (granted) {
-                snackbarHostState.showSnackbar("✅ 文件存储权限已授予")
+                snackbarHostState.showSnackbar(localizedText("✅ 文件存储权限已授予", "✅ File storage permission granted"))
             } else {
-                snackbarHostState.showSnackbar("⚠️ 权限被拒，备份将使用 MediaStore 保存到 Downloads")
+                snackbarHostState.showSnackbar(localizedText("⚠️ 权限被拒，备份将使用 MediaStore 保存到 Downloads", "⚠️ Permission denied; backup will be saved to Downloads via MediaStore"))
             }
         }
     }
@@ -98,12 +103,12 @@ fun DataManagementScreen(
                         viewModel.restoreFromJson(jsonString)
                     }
                     result.onSuccess {
-                        snackbarHostState.showSnackbar("✅ 数据导入成功！")
+                        snackbarHostState.showSnackbar(localizedText("✅ 数据导入成功！", "✅ Data imported successfully!"))
                     }.onFailure { e ->
-                        snackbarHostState.showSnackbar("❌ 导入失败: ${e.message}")
+                        snackbarHostState.showSnackbar(localizedText("❌ 导入失败: ", "❌ Import failed: ") + e.message)
                     }
                 } catch (e: Exception) {
-                    snackbarHostState.showSnackbar("❌ 读取文件失败: ${e.message}")
+                    snackbarHostState.showSnackbar(localizedText("❌ 读取文件失败: ", "❌ Failed to read file: ") + e.message)
                 }
             }
         }
@@ -126,8 +131,8 @@ fun DataManagementScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
             // 标题
-            Text("📋 数据管理", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-            Text("备份、恢复和重置应用数据，以及添加新的 AI 服务商",
+            Text(localizedText("📋 数据管理", "📋 Data management"), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            Text(localizedText("备份、恢复和重置应用数据，以及添加新的 AI 服务商", "Back up, restore, and reset app data, and add new AI providers"),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(modifier = Modifier.height(8.dp))
@@ -138,14 +143,14 @@ fun DataManagementScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.BatterySaver, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("🔄 自启管理", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text(localizedText("🔄 自启管理", "🔄 Auto-start management"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     }
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("确保应用能在后台自启动，不被系统杀死。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(localizedText("确保应用能在后台自启动，不被系统杀死。", "Ensure the app can auto-start in the background and is not killed by the system."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(modifier = Modifier.height(12.dp))
                     Button(onClick = { viewModel.bindBackgroundPermissions() }, modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)) {
-                        Text("🔗 一键引导自启授权")
+                        Text(localizedText("🔗 一键引导自启授权", "🔗 One-tap auto-start authorization guide"))
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -159,7 +164,7 @@ fun DataManagementScreen(
                         }, modifier = Modifier.weight(1f)) {
                             Icon(Icons.Default.Settings, contentDescription = null)
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("系统设置")
+                            Text(localizedText("系统设置", "System settings"))
                         }
                         OutlinedButton(onClick = {
                             try {
@@ -169,7 +174,7 @@ fun DataManagementScreen(
                         }, modifier = Modifier.weight(1f)) {
                             Icon(Icons.Default.BatterySaver, contentDescription = null)
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("电池优化")
+                            Text(localizedText("电池优化", "Battery optimization"))
                         }
                     }
                 }
@@ -182,10 +187,10 @@ fun DataManagementScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Upload, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("导出备份", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text(localizedText("导出备份", "Export backup"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     }
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("将所有配置、模型、聊天记录和 Token 用量导出为 JSON 备份文件",
+                    Text(localizedText("将所有配置、模型、聊天记录和 Token 用量导出为 JSON 备份文件", "Export all configuration, models, chats, and token usage as a JSON backup file"),
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(modifier = Modifier.height(12.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -194,14 +199,14 @@ fun DataManagementScreen(
                                 val result = withContext(Dispatchers.IO) { viewModel.getBackupJson() }
                                 result.onSuccess { json ->
                                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                    clipboard.setPrimaryClip(ClipData.newPlainText("AI网关备份", json))
-                                    snackbarHostState.showSnackbar("✅ 备份 JSON 已复制到剪贴板")
-                                }.onFailure { e -> snackbarHostState.showSnackbar("❌ 导出失败: ${e.message}") }
+                                    clipboard.setPrimaryClip(ClipData.newPlainText(localizedText("AI网关备份", "AI Gateway Backup"), json))
+                                    snackbarHostState.showSnackbar(localizedText("✅ 备份 JSON 已复制到剪贴板", "✅ Backup JSON copied to clipboard"))
+                                }.onFailure { e -> snackbarHostState.showSnackbar(localizedText("❌ 导出失败: ", "❌ Export failed: ") + e.message) }
                             }
                         }, modifier = Modifier.weight(1f)) {
                             Icon(Icons.Default.ContentCopy, contentDescription = null)
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("复制到剪贴板")
+                            Text(localizedText("复制到剪贴板", "Copy to clipboard"))
                         }
                         OutlinedButton(onClick = {
                             scope.launch {
@@ -209,13 +214,13 @@ fun DataManagementScreen(
                                 result.onSuccess { json ->
                                     context.startActivity(Intent.createChooser(Intent().apply {
                                         action = Intent.ACTION_SEND; putExtra(Intent.EXTRA_TEXT, json); type = "application/json"
-                                    }, "分享备份"))
-                                }.onFailure { e -> snackbarHostState.showSnackbar("❌ 导出失败: ${e.message}") }
+                                    }, localizedText("分享备份", "Share backup")))
+                                }.onFailure { e -> snackbarHostState.showSnackbar(localizedText("❌ 导出失败: ", "❌ Export failed: ") + e.message) }
                             }
                         }, modifier = Modifier.weight(1f)) {
                             Icon(Icons.Default.Share, contentDescription = null)
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("分享")
+                            Text(localizedText("分享", "Share"))
                         }
                     }
                 }
@@ -227,10 +232,10 @@ fun DataManagementScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Save, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("💾 备份 & 恢复", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text(localizedText("💾 备份 & 恢复", "💾 Backup & Restore"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     }
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("手动备份 / 定时自动备份 / 从备份文件一键恢复",
+                    Text(localizedText("手动备份 / 定时自动备份 / 从备份文件一键恢复", "Manual backup / scheduled automatic backup / one-tap restore from backup file"),
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(modifier = Modifier.height(12.dp))
 
@@ -241,7 +246,7 @@ fun DataManagementScreen(
                     var showTimePicker by remember { mutableStateOf(false) }
 
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text("⏰ 定时自动备份", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                        Text(localizedText("⏰ 定时自动备份", "⏰ Scheduled automatic backup"), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
                         Switch(
                             checked = autoBackupEnabled.value,
                             onCheckedChange = { enabled ->
@@ -258,7 +263,7 @@ fun DataManagementScreen(
                     if (autoBackupEnabled.value) {
                         Spacer(modifier = Modifier.height(4.dp))
                         TextButton(onClick = { showTimePicker = true }) {
-                            Text("🕐 备份时间: ${String.format("%02d", autoBackupHour.value)}:${String.format("%02d", autoBackupMinute.value)}", style = MaterialTheme.typography.bodySmall)
+                            Text(localizedText("🕐 备份时间: ", "🕐 Backup time: ") + String.format("%02d", autoBackupHour.value) + ":" + String.format("%02d", autoBackupMinute.value), style = MaterialTheme.typography.bodySmall)
                         }
                     }
 
@@ -266,16 +271,16 @@ fun DataManagementScreen(
                     if (showTimePicker) {
                         AlertDialog(
                             onDismissRequest = { showTimePicker = false },
-                            title = { Text("设置自动备份时间") },
+                            title = { Text(localizedText("设置自动备份时间", "Set automatic backup time")) },
                             text = {
                                 Column {
-                                    Text("选择每天自动备份的小时和分钟", style = MaterialTheme.typography.bodySmall)
+                                    Text(localizedText("选择每天自动备份的小时和分钟", "Choose the hour and minute for daily automatic backup"), style = MaterialTheme.typography.bodySmall)
                                     Spacer(modifier = Modifier.height(12.dp))
                                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                                         OutlinedTextField(
                                             value = autoBackupHour.value.toString(),
                                             onValueChange = { v -> v.toIntOrNull()?.let { if (it in 0..23) autoBackupHour.value = it } },
-                                            label = { Text("小时 (0-23)") },
+                                            label = { Text(localizedText("小时 (0-23)", "Hour (0-23)")) },
                                             singleLine = true, modifier = Modifier.width(120.dp),
                                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                                         )
@@ -283,7 +288,7 @@ fun DataManagementScreen(
                                         OutlinedTextField(
                                             value = autoBackupMinute.value.toString(),
                                             onValueChange = { v -> v.toIntOrNull()?.let { if (it in 0..59) autoBackupMinute.value = it } },
-                                            label = { Text("分钟 (0-59)") },
+                                            label = { Text(localizedText("分钟 (0-59)", "Minute (0-59)")) },
                                             singleLine = true, modifier = Modifier.width(120.dp),
                                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                                         )
@@ -295,9 +300,9 @@ fun DataManagementScreen(
                                     GatewayForegroundService.saveGatewayConfig("auto_backup_hour", autoBackupHour.value.toString())
                                     GatewayForegroundService.saveGatewayConfig("auto_backup_minute", autoBackupMinute.value.toString())
                                     showTimePicker = false
-                                }) { Text("确定") }
+                                }) { Text(localizedText("确定", "OK")) }
                             },
-                            dismissButton = { TextButton(onClick = { showTimePicker = false }) { Text("取消") } }
+                            dismissButton = { TextButton(onClick = { showTimePicker = false }) { Text(localizedText("取消", "Cancel")) } }
                         )
                     }
 
@@ -365,27 +370,27 @@ fun DataManagementScreen(
                                                 }
                                             } catch (e: Exception) {
                                                 // 专用目录写入失败不影响主备份，仅提示
-                                                android.util.Log.w("Backup", "专用目录备份失败: ${e.message}")
+                                                android.util.Log.w("Backup", localizedText("专用目录备份失败: ", "Dedicated directory backup failed: ") + e.message)
                                             }
                                         }
 
-                                        snackbarHostState.showSnackbar("✅ 备份完成: $fileName")
-                                    }.onFailure { e -> snackbarHostState.showSnackbar("❌ 备份失败: ${e.message}") }
+                                        snackbarHostState.showSnackbar(localizedText("✅ 备份完成: ", "✅ Backup complete: ") + fileName)
+                                    }.onFailure { e -> snackbarHostState.showSnackbar(localizedText("❌ 备份失败: ", "❌ Backup failed: ") + e.message) }
                                 } catch (e: Exception) {
-                                    snackbarHostState.showSnackbar("❌ 备份失败: ${e.message}")
+                                    snackbarHostState.showSnackbar(localizedText("❌ 备份失败: ", "❌ Backup failed: ") + e.message)
                                 }
                             }
                         }, modifier = Modifier.weight(1f)) {
                             Icon(Icons.Default.Save, contentDescription = null)
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("立即备份")
+                            Text(localizedText("立即备份", "Back up now"))
                         }
                         OutlinedButton(onClick = {
                             showBackupList = true
                         }, modifier = Modifier.weight(1f)) {
                             Icon(Icons.Default.Restore, contentDescription = null)
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("恢复备份")
+                            Text(localizedText("恢复备份", "Restore backup"))
                         }
                     }
                     Spacer(modifier = Modifier.height(8.dp))
@@ -395,14 +400,14 @@ fun DataManagementScreen(
                     }, modifier = Modifier.fillMaxWidth()) {
                         Icon(Icons.Default.NoteAdd, contentDescription = null)
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("📂 手动导入（从文件选择器选择备份 JSON）")
+                        Text(localizedText("📂 手动导入（从文件选择器选择备份 JSON）", "📂 Manual import (select backup JSON from file picker)"))
                     }
                     Spacer(modifier = Modifier.height(4.dp))
                     if (autoBackupEnabled.value) {
-                        Text("⏱️ 下次自动备份: ${String.format("%02d", autoBackupHour.value)}:${String.format("%02d", autoBackupMinute.value)}",
+                        Text(localizedText("⏱️ 下次自动备份: ", "⏱️ Next automatic backup: ") + String.format("%02d", autoBackupHour.value) + ":" + String.format("%02d", autoBackupMinute.value),
                             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                     } else {
-                        Text("💡 备份到 Downloads + QiTongGateway/backups/ 专用目录",
+                        Text(localizedText("💡 备份到 Downloads + QiTongGateway/backups/ 专用目录", "💡 Back up to Downloads and the dedicated QiTongGateway/backups/ folder"),
                             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
 
@@ -431,14 +436,14 @@ fun DataManagementScreen(
                         }
                         AlertDialog(
                             onDismissRequest = { showBackupList = false },
-                            title = { Text("选择备份文件恢复", fontWeight = FontWeight.Bold) },
+                            title = { Text(localizedText("选择备份文件恢复", "Select backup file to restore"), fontWeight = FontWeight.Bold) },
                             text = {
                                 if (isLoading) {
                                     Box(Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) {
                                         CircularProgressIndicator()
                                     }
                                 } else if (backupFiles.isEmpty()) {
-                                    Text("Downloads 目录中未找到备份文件\n请先点击「立即备份」创建备份", style = MaterialTheme.typography.bodyMedium)
+                                    Text(localizedText("Downloads 目录中未找到备份文件\\n请先点击「立即备份」创建备份", "No backup files found in Downloads\\nTap “Back up now” to create a backup first"), style = MaterialTheme.typography.bodyMedium)
                                 } else {
                                     LazyColumn(modifier = Modifier.heightIn(max = 300.dp)) {
                                         items(backupFiles) { file ->
@@ -449,13 +454,13 @@ fun DataManagementScreen(
                                                             val json = file.readText()
                                                             val result = withContext(Dispatchers.IO) { viewModel.restoreFromJson(json) }
                                                             result.onSuccess {
-                                                                snackbarHostState.showSnackbar("✅ 数据恢复成功！")
+                                                                snackbarHostState.showSnackbar(localizedText("✅ 数据恢复成功！", "✅ Data restored successfully!"))
                                                                 showBackupList = false
                                                             }.onFailure { e ->
-                                                                snackbarHostState.showSnackbar("❌ 恢复失败: ${e.message}")
+                                                                snackbarHostState.showSnackbar(localizedText("❌ 恢复失败: ", "❌ Restore failed: ") + e.message)
                                                             }
                                                         } catch (e: Exception) {
-                                                            snackbarHostState.showSnackbar("❌ 读取备份失败: ${e.message}")
+                                                            snackbarHostState.showSnackbar(localizedText("❌ 读取备份失败: ", "❌ Failed to read backup: ") + e.message)
                                                         }
                                                     }
                                                 },
@@ -468,36 +473,36 @@ fun DataManagementScreen(
                                                         Text(file.name, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                                         Text(formatFileSize(file.length()), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                                     }
-                                                    Icon(Icons.Default.RestorePage, contentDescription = "恢复", tint = MaterialTheme.colorScheme.primary)
+                                                    Icon(Icons.Default.RestorePage, contentDescription = localizedText("恢复", "Restore"), tint = MaterialTheme.colorScheme.primary)
                                                 }
                                             }
                                         }
                                     }
                                 }
                             },
-                            confirmButton = { TextButton(onClick = { showBackupList = false }) { Text("关闭") } }
+                            confirmButton = { TextButton(onClick = { showBackupList = false }) { Text(localizedText("关闭", "Close")) } }
                         )
                     }
                 }
             }
-            
+
             // 重置数据
             Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Error.copy(alpha = 0.08f))) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.DeleteForever, contentDescription = null, tint = Error)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("重置所有数据", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Error)
+                        Text(localizedText("重置所有数据", "Reset all data"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Error)
                     }
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("⚠️ 此操作将清空所有服务商、模型、聊天记录和 Token 用量，不可恢复！",
+                    Text(localizedText("⚠️ 此操作将清空所有服务商、模型、聊天记录和 Token 用量，不可恢复！", "⚠️ This will delete all providers, models, chats, and token usage. It cannot be undone!"),
                         style = MaterialTheme.typography.bodySmall, color = Error.copy(alpha = 0.8f))
                     Spacer(modifier = Modifier.height(12.dp))
                     OutlinedButton(onClick = { showResetConfirm = true }, modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = Error)) {
                         Icon(Icons.Default.Warning, contentDescription = null)
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("重置所有数据")
+                        Text(localizedText("重置所有数据", "Reset all data"))
                     }
                 }
             }
@@ -517,29 +522,29 @@ fun DataManagementScreen(
             var editContent by remember { mutableStateOf("") }
             var editEmotion by remember { mutableStateOf("neutral") }
             var editImportance by remember { mutableStateOf("5") }
-            
+
             Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Memory, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("🧠 大脑记忆", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                        Text(localizedText("🧠 大脑记忆", "🧠 Brain memory"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                         Switch(checked = memEnabled, onCheckedChange = { e ->
                             memEnabled = e
                             BrainMemoryManager.updateConfig(cfg.copy(enabled = e))
                         })
                     }
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text("qtai-sj 大脑：${memList.size}条记忆 · 模式:${memMode} · 情感感知:${if (cfg.emotionalAwareness) "开" else "关"}",
+                    Text(localizedText("qtai-sj 大脑：", "qtai-sj brain: ") + memList.size + localizedText("条记忆 · 模式:", " memories · mode:") + memMode + localizedText(" · 情感感知:", " · emotional awareness:") + if (cfg.emotionalAwareness) localizedText("开", "on") else localizedText("关", "off"),
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    
+
                     if (memEnabled) {
                         Spacer(modifier = Modifier.height(8.dp))
                         // 保存模式
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("保存模式:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(localizedText("保存模式:", "Save mode:"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Spacer(Modifier.width(8.dp))
-                            val modes = listOf("frequent" to "频繁", "normal" to "正常", "occasional" to "偶尔")
+                            val modes = listOf("frequent" to localizedText("频繁", "Frequent"), "normal" to localizedText("正常", "Normal"), "occasional" to localizedText("偶尔", "Occasional"))
                             modes.forEach { (k, v) ->
                                 FilterChip(selected = memMode == k, onClick = {
                                     memMode = k
@@ -550,7 +555,7 @@ fun DataManagementScreen(
                         Spacer(modifier = Modifier.height(4.dp))
                         // 上限设置
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("上限:", style = MaterialTheme.typography.labelSmall)
+                            Text(localizedText("上限:", "Limit:"), style = MaterialTheme.typography.labelSmall)
                             Spacer(Modifier.width(4.dp))
                             OutlinedTextField(value = memMax, onValueChange = { v ->
                                 memMax = v; v.toIntOrNull()?.let { n ->
@@ -558,27 +563,27 @@ fun DataManagementScreen(
                                 }
                             }, singleLine = true, modifier = Modifier.width(80.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                             Spacer(Modifier.width(8.dp))
-                            OutlinedButton(onClick = { BrainMemoryManager.clearAll(); memList = emptyList(); scope.launch { snackbarHostState.showSnackbar("🧹 所有记忆已清空") } },
+                            OutlinedButton(onClick = { BrainMemoryManager.clearAll(); memList = emptyList(); scope.launch { snackbarHostState.showSnackbar(localizedText("🧹 所有记忆已清空", "🧹 All memories cleared")) } },
                                 colors = ButtonDefaults.outlinedButtonColors(contentColor = Error)) {
                                 Icon(Icons.Default.DeleteSweep, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(2.dp)); Text("清空", style = MaterialTheme.typography.labelSmall)
+                                Spacer(Modifier.width(2.dp)); Text(localizedText("清空", "Clear"), style = MaterialTheme.typography.labelSmall)
                             }
                         }
                         Spacer(modifier = Modifier.height(8.dp))
                         // 展开/折叠
                         TextButton(onClick = { showMemDetail = !showMemDetail }) {
-                            Text(text = if (showMemDetail) "▲ 收起记忆列表" else "▼ 展开记忆列表 (${memList.size}条)", style = MaterialTheme.typography.labelMedium)
+                            Text(text = if (showMemDetail) localizedText("▲ 收起记忆列表", "▲ Collapse memory list") else localizedText("▼ 展开记忆列表 (", "▼ Expand memory list (") + memList.size + localizedText("条)", ")"), style = MaterialTheme.typography.labelMedium)
                         }
                         if (showMemDetail) {
                             // 搜索框
                             OutlinedTextField(value = memSearchQuery, onValueChange = { memSearchQuery = it },
-                                placeholder = { Text("搜索记忆...", style = MaterialTheme.typography.bodySmall) },
+                                placeholder = { Text(localizedText("搜索记忆...", "Search memories..."), style = MaterialTheme.typography.bodySmall) },
                                 singleLine = true, modifier = Modifier.fillMaxWidth(), leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp)) })
                             Spacer(modifier = Modifier.height(4.dp))
                             // 记忆列表
                             val filtered = if (memSearchQuery.isBlank()) memList else BrainMemoryManager.search(memSearchQuery)
                             if (filtered.isEmpty()) {
-                                Text("暂无记忆", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(8.dp))
+                                Text(localizedText("暂无记忆", "No memories yet"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(8.dp))
                             } else {
                                 LazyColumn(modifier = Modifier.heightIn(max = 300.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                     items(filtered) { mem ->
@@ -592,11 +597,11 @@ fun DataManagementScreen(
                                                 Spacer(Modifier.width(6.dp))
                                                 Column(modifier = Modifier.weight(1f)) {
                                                     Text(mem.title, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                                    Text("重要:${mem.importance}/10 · ${mem.type} · ${java.text.SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(java.util.Date(mem.timestamp))}",
+                                                    Text(localizedText("重要:", "Importance:") + "${mem.importance}/10 · ${mem.type} · ${java.text.SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(java.util.Date(mem.timestamp))}",
                                                         style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                                 }
                                                 IconButton(onClick = { BrainMemoryManager.deleteMemory(mem.id); memList = BrainMemoryManager.getAll() }, modifier = Modifier.size(28.dp)) {
-                                                    Icon(Icons.Default.Delete, contentDescription = "删除", tint = Error, modifier = Modifier.size(16.dp))
+                                                    Icon(Icons.Default.Delete, contentDescription = localizedText("删除", "Delete"), tint = Error, modifier = Modifier.size(16.dp))
                                                 }
                                             }
                                         }
@@ -610,15 +615,15 @@ fun DataManagementScreen(
             // 编辑记忆弹窗
             if (editingMem != null) {
                 AlertDialog(onDismissRequest = { editingMem = null },
-                    title = { Text("✏️ 编辑记忆", fontWeight = FontWeight.Bold) },
+                    title = { Text(localizedText("✏️ 编辑记忆", "✏️ Edit memory"), fontWeight = FontWeight.Bold) },
                     text = {
                         Column {
-                            OutlinedTextField(value = editTitle, onValueChange = { editTitle = it }, label = { Text("标题") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                            OutlinedTextField(value = editTitle, onValueChange = { editTitle = it }, label = { Text(localizedText("标题", "Title")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                             Spacer(Modifier.height(8.dp))
-                            OutlinedTextField(value = editContent, onValueChange = { editContent = it }, label = { Text("内容") }, modifier = Modifier.fillMaxWidth().heightIn(min = 60.dp), maxLines = 5)
+                            OutlinedTextField(value = editContent, onValueChange = { editContent = it }, label = { Text(localizedText("内容", "Content")) }, modifier = Modifier.fillMaxWidth().heightIn(min = 60.dp), maxLines = 5)
                             Spacer(Modifier.height(8.dp))
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("情感:", style = MaterialTheme.typography.labelSmall)
+                                Text(localizedText("情感:", "Emotion:"), style = MaterialTheme.typography.labelSmall)
                                 Spacer(Modifier.width(8.dp))
                                 listOf("neutral" to "😐", "happy" to "😊", "sad" to "😢", "angry" to "😠", "surprised" to "😮").forEach { (k, v) ->
                                     FilterChip(selected = editEmotion == k, onClick = { editEmotion = k },
@@ -627,7 +632,7 @@ fun DataManagementScreen(
                             }
                             Spacer(Modifier.height(8.dp))
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("重要性 (0-10):", style = MaterialTheme.typography.labelSmall)
+                                Text(localizedText("重要性 (0-10):", "Importance (0-10):"), style = MaterialTheme.typography.labelSmall)
                                 Spacer(Modifier.width(8.dp))
                                 OutlinedTextField(value = editImportance, onValueChange = { editImportance = it }, singleLine = true, modifier = Modifier.width(80.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                             }
@@ -637,10 +642,10 @@ fun DataManagementScreen(
                         Button(onClick = {
                             BrainMemoryManager.updateMemory(editingMem!!.id, title = editTitle, content = editContent, emotion = editEmotion, importance = editImportance.toIntOrNull())
                             editingMem = null; memList = BrainMemoryManager.getAll()
-                            scope.launch { snackbarHostState.showSnackbar("✅ 记忆已更新") }
-                        }) { Text("保存") }
+                            scope.launch { snackbarHostState.showSnackbar(localizedText("✅ 记忆已更新", "✅ Memory updated")) }
+                        }) { Text(localizedText("保存", "Save")) }
                     },
-                    dismissButton = { TextButton(onClick = { editingMem = null }) { Text("取消") } }
+                    dismissButton = { TextButton(onClick = { editingMem = null }) { Text(localizedText("取消", "Cancel")) } }
                 )
             }
 
@@ -655,74 +660,78 @@ fun DataManagementScreen(
             var personaStyle by remember { mutableStateOf(pCfg.personaStyle) }
             var personaBg by remember { mutableStateOf(pCfg.personaBackground) }
             var envAware by remember { mutableStateOf(pCfg.envAwareness) }
-            
+
             Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Face, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("🧑 人格设定", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                        Text(localizedText("🧑 人格设定", "🧑 Persona settings"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                     }
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text("定制 qtai-sj 的个性化形象", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(localizedText("定制 qtai-sj 的个性化形象", "Customize the qtai-sj persona"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(modifier = Modifier.height(8.dp))
-                    
+
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("启用人格系统", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                        Text(localizedText("启用人格系统", "Enable persona system"), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                         Switch(checked = personaEnabled, onCheckedChange = { e ->
                             personaEnabled = e
                             BrainMemoryManager.updateConfig(pCfg.copy(personaEnabled = e))
                         })
                     }
                     Spacer(modifier = Modifier.height(4.dp))
-                    
+
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedTextField(value = personaName, onValueChange = { v ->
                             personaName = v
                             BrainMemoryManager.updateConfig(pCfg.copy(personaName = v))
                             GatewayForegroundService.saveQtaiSjName(v)
-                        }, label = { Text("名字") }, singleLine = true, modifier = Modifier.weight(1f))
+                        }, label = { Text(localizedText("名字", "Name")) }, singleLine = true, modifier = Modifier.weight(1f))
                         OutlinedTextField(value = personaAge, onValueChange = { v ->
                             personaAge = v
                             v.toIntOrNull()?.let { BrainMemoryManager.updateConfig(pCfg.copy(personaAge = it)) }
-                        }, label = { Text("年龄") }, singleLine = true, modifier = Modifier.width(80.dp),
+                        }, label = { Text(localizedText("年龄", "Age")) }, singleLine = true, modifier = Modifier.width(80.dp),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                     }
                     Spacer(modifier = Modifier.height(4.dp))
-                    
-                    OutlinedTextField(value = personaTraits, onValueChange = { v ->
+
+                    OutlinedTextField(value = localizeGeneratedContent(personaTraits), onValueChange = { v ->
                         personaTraits = v
                         BrainMemoryManager.updateConfig(pCfg.copy(personaTraits = v))
-                    }, label = { Text("性格特征（逗号分隔）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    }, label = { Text(localizedText("性格特征（逗号分隔）", "Personality traits (comma-separated)")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     Spacer(modifier = Modifier.height(4.dp))
-                    
-                    val styleOptions = listOf("亲切自然", "专业严谨", "活泼可爱")
+
+                    val styleOptions = listOf(
+                        "亲切自然" to localizedText("亲切自然", "Friendly and natural"),
+                        "专业严谨" to localizedText("专业严谨", "Professional and precise"),
+                        "活泼可爱" to localizedText("活泼可爱", "Lively and cute"),
+                    )
                     var styleExpanded by remember { mutableStateOf(false) }
                     ExposedDropdownMenuBox(expanded = styleExpanded, onExpandedChange = { styleExpanded = it }) {
-                        OutlinedTextField(value = personaStyle, onValueChange = {}, readOnly = true,
-                            label = { Text("语气风格") }, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = styleExpanded) },
+                        OutlinedTextField(value = localizeGeneratedName(personaStyle), onValueChange = {}, readOnly = true,
+                            label = { Text(localizedText("语气风格", "Tone style")) }, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = styleExpanded) },
                             modifier = Modifier.fillMaxWidth().menuAnchor())
                         ExposedDropdownMenu(expanded = styleExpanded, onDismissRequest = { styleExpanded = false }) {
-                            styleOptions.forEach { opt ->
-                                DropdownMenuItem(text = { Text(opt) }, onClick = {
-                                    personaStyle = opt
-                                    BrainMemoryManager.updateConfig(pCfg.copy(personaStyle = opt))
+                            styleOptions.forEach { (storedValue, label) ->
+                                DropdownMenuItem(text = { Text(label) }, onClick = {
+                                    personaStyle = storedValue
+                                    BrainMemoryManager.updateConfig(pCfg.copy(personaStyle = storedValue))
                                     styleExpanded = false
                                 })
                             }
                         }
                     }
                     Spacer(modifier = Modifier.height(4.dp))
-                    
-                    OutlinedTextField(value = personaBg, onValueChange = { v ->
+
+                    OutlinedTextField(value = localizeGeneratedContent(personaBg), onValueChange = { v ->
                         personaBg = v
                         BrainMemoryManager.updateConfig(pCfg.copy(personaBackground = v))
-                    }, label = { Text("背景设定") }, modifier = Modifier.fillMaxWidth(),
+                    }, label = { Text(localizedText("背景设定", "Background setting")) }, modifier = Modifier.fillMaxWidth(),
                     minLines = 2, maxLines = 3)
                     Spacer(modifier = Modifier.height(4.dp))
-                    
+
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("环境感知（时间/网络）", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                        Text(localizedText("环境感知（时间/网络）", "Context awareness (time/network)"), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                         Switch(checked = envAware, onCheckedChange = { e ->
                             envAware = e
                             BrainMemoryManager.updateConfig(pCfg.copy(envAwareness = e))
@@ -730,7 +739,7 @@ fun DataManagementScreen(
                     }
                 }
             }
-            
+
             // ★ 多语言设置卡片
             var showLangSelector by remember { mutableStateOf(false) }
             val currentLang by TranslationManager.currentLanguageFlow.collectAsState()
@@ -743,14 +752,14 @@ fun DataManagementScreen(
                         Text("🌐 " + tr("language_settings"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     }
                     Spacer(modifier = Modifier.height(8.dp))
-                    
+
                     // 自动跟随系统开关
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(tr("auto_follow_system"), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
                             Text(
-                                if (autoDetect) "当前: ${currentLang.displayName}" 
-                                else "手动: ${currentLang.displayName}",
+                                if (autoDetect) localizedText("当前: ", "Current: ") + currentLang.displayName
+                                else localizedText("手动: ", "Manual: ") + currentLang.displayName,
                                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
@@ -762,7 +771,7 @@ fun DataManagementScreen(
                             }
                         )
                     }
-                    
+
                     if (!autoDetect) {
                         Spacer(modifier = Modifier.height(8.dp))
                         OutlinedButton(onClick = { showLangSelector = true }, modifier = Modifier.fillMaxWidth()) {
@@ -788,13 +797,13 @@ fun DataManagementScreen(
                                         showLangSelector = false
                                     },
                                     colors = CardDefaults.cardColors(
-                                        containerColor = if (lang == currentLang) 
-                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.1f) 
+                                        containerColor = if (lang == currentLang)
+                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
                                         else MaterialTheme.colorScheme.surface
                                     )
                                 ) {
                                     Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        Text(lang.displayName, 
+                                        Text(lang.displayName,
                                             modifier = Modifier.weight(1f),
                                             fontWeight = if (lang == currentLang) FontWeight.Bold else FontWeight.Normal
                                         )
@@ -806,7 +815,7 @@ fun DataManagementScreen(
                             }
                         }
                     },
-                    confirmButton = { TextButton(onClick = { showLangSelector = false }) { Text("关闭") } }
+                    confirmButton = { TextButton(onClick = { showLangSelector = false }) { Text(localizedText("关闭", "Close")) } }
                 )
             }
 
@@ -819,25 +828,25 @@ fun DataManagementScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.BugReport, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("🔍 网关抓包", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text(localizedText("🔍 网关抓包", "🔍 Gateway packet capture"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     }
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text("开启后记录所有网关请求/响应到内存，可查看最近20条（含实时输入/输出流量）", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(localizedText("开启后记录所有网关请求/响应到内存，可查看最近20条（含实时输入/输出流量）", "When enabled, records all gateway requests/responses in memory; view the latest 20 records including live input/output traffic"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Button(onClick = { viewModel.toggleDebugMode() }, colors = ButtonDefaults.buttonColors(
                             containerColor = if (debugMode) Error else Online)) {
-                            Text(if (debugMode) "⏹ 停止抓包" else "▶️ 开始抓包")
+                            Text(if (debugMode) localizedText("⏹ 停止抓包", "⏹ Stop capture") else localizedText("▶️ 开始抓包", "▶️ Start capture"))
                         }
                         OutlinedButton(onClick = { showDebugLogs = true }) {
                             Icon(Icons.Default.List, contentDescription = null)
                             Spacer(Modifier.width(4.dp))
-                            Text("查看日志")
+                            Text(localizedText("查看日志", "View logs"))
                         }
                     }
                     if (debugMode) {
                         Spacer(modifier = Modifier.height(4.dp))
-                        Text("🟢 抓包运行中...", style = MaterialTheme.typography.labelSmall, color = Online)
+                        Text(localizedText("🟢 抓包运行中...", "🟢 Capture running..."), style = MaterialTheme.typography.labelSmall, color = Online)
                     }
                 }
             }
@@ -850,37 +859,37 @@ fun DataManagementScreen(
 
             // ★★ 思考引导配置 ★★
             val thinkingEnabled = remember { mutableStateOf(ThinkingConfigManager.isEnabled()) }
-            val thinkingDepth = remember { mutableStateOf(ThinkingConfigManager.getDepth().label) }
-            val depthOptions = listOf("关闭", "轻度", "深度")
+            val thinkingDepth = remember { mutableStateOf(ThinkingConfigManager.getDepth()) }
+            val depthOptions = ThinkingConfigManager.ThinkingDepth.entries
             var depthExpanded by remember { mutableStateOf(false) }
             Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Psychology, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("🧠 思考引导", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                        Text(localizedText("🧠 思考引导", "🧠 Thinking guide"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                         Switch(checked = thinkingEnabled.value, onCheckedChange = { e ->
                             thinkingEnabled.value = e
                             ThinkingConfigManager.setEnabled(e)
                         })
                     }
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text("在 qtai-sj 回复前注入思考引导，让 AI 先分析再回答",
+                    Text(localizedText("在 qtai-sj 回复前注入思考引导，让 AI 先分析再回答", "Inject a thinking guide before qtai-sj replies so the AI analyzes first, then answers"),
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (thinkingEnabled.value) {
                         Spacer(modifier = Modifier.height(8.dp))
                         ExposedDropdownMenuBox(expanded = depthExpanded, onExpandedChange = { depthExpanded = it }) {
-                            OutlinedTextField(value = thinkingDepth.value, onValueChange = {}, readOnly = true,
-                                label = { Text("思考深度") }, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = depthExpanded) },
+                            OutlinedTextField(value = thinkingDepth.value.localizedLabel(), onValueChange = {}, readOnly = true,
+                                label = { Text(localizedText("思考深度", "Thinking depth")) }, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = depthExpanded) },
                                 modifier = Modifier.fillMaxWidth().menuAnchor())
                             ExposedDropdownMenu(expanded = depthExpanded, onDismissRequest = { depthExpanded = false }) {
                                 depthOptions.forEach { opt ->
-                                    DropdownMenuItem(text = { Text(opt) }, onClick = {
+                                    DropdownMenuItem(text = { Text(opt.localizedLabel()) }, onClick = {
                                         thinkingDepth.value = opt
-                                        when (opt) {
-                                            "关闭" -> { ThinkingConfigManager.setEnabled(false); thinkingEnabled.value = false; ThinkingConfigManager.setDepth(ThinkingConfigManager.ThinkingDepth.OFF) }
-                                            "轻度" -> ThinkingConfigManager.setDepth(ThinkingConfigManager.ThinkingDepth.LIGHT)
-                                            "深度" -> ThinkingConfigManager.setDepth(ThinkingConfigManager.ThinkingDepth.DEEP)
+                                        ThinkingConfigManager.setDepth(opt)
+                                        if (opt == ThinkingConfigManager.ThinkingDepth.OFF) {
+                                            ThinkingConfigManager.setEnabled(false)
+                                            thinkingEnabled.value = false
                                         }
                                         depthExpanded = false
                                     })
@@ -903,20 +912,20 @@ fun DataManagementScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Group, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("💬 群聊模式", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                        Text(localizedText("💬 群聊模式", "💬 Group chat mode"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                         Switch(checked = groupChatEnabled.value, onCheckedChange = { e ->
                             groupChatEnabled.value = e
                             GroupChatManager.setEnabled(e)
                         })
                     }
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text("虚拟沙箱：用户发消息 → AI依次发言 → 总结者输出",
+                    Text(localizedText("虚拟沙箱：用户发消息 → AI依次发言 → 总结者输出", "Virtual sandbox: user sends a message → AIs speak in order → summarizer outputs"),
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (groupChatEnabled.value) {
                         Spacer(modifier = Modifier.height(8.dp))
                         // ★ 参与模型（从排行榜勾选）★★
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("参与模型: ", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                            Text(localizedText("参与模型: ", "Participant models: "), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(GroupChatManager.getParticipantModels().joinToString(", ").take(30) + if (GroupChatManager.getParticipantModels().joinToString(", ").length > 30) "..." else "",
                                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -926,14 +935,14 @@ fun DataManagementScreen(
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)) {
                             Icon(Icons.Default.List, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(4.dp))
-                            Text("📊 从测速排行榜选择模型 (${GroupChatManager.getParticipantModels().size}个)")
+                            Text(localizedText("📊 从测速排行榜选择模型 (", "📊 Select models from speed ranking (") + GroupChatManager.getParticipantModels().size + localizedText("个)", ")"))
                         }
                         Spacer(modifier = Modifier.height(4.dp))
                         // ★ 总结模型（从排行榜勾选）★★
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("总结模型: ", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                            Text(localizedText("总结模型: ", "Summary model: "), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text(GroupChatManager.getSummarizerModel().ifBlank { "未设置" },
+                            Text(GroupChatManager.getSummarizerModel().ifBlank { localizedText("未设置", "Not set") },
                                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Spacer(modifier = Modifier.height(4.dp))
@@ -941,13 +950,13 @@ fun DataManagementScreen(
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)) {
                             Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(4.dp))
-                            Text("🎯 选择总结模型")
+                            Text(localizedText("🎯 选择总结模型", "🎯 Select summary model"))
                         }
                         Spacer(modifier = Modifier.height(4.dp))
                         OutlinedTextField(value = groupChatMaxRounds.value, onValueChange = { v ->
                             groupChatMaxRounds.value = v
                             v.toIntOrNull()?.let { GroupChatManager.setMaxRounds(it) }
-                        }, label = { Text("轮次") }, singleLine = true, modifier = Modifier.width(100.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                        }, label = { Text(localizedText("轮次", "Rounds")) }, singleLine = true, modifier = Modifier.width(100.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                     }
                 }
             }
@@ -960,16 +969,16 @@ fun DataManagementScreen(
                     }
                 }
                 val snapshotSortedIds = remember { com.qtwl.gateway.gateway.GatewayScheduler.pipelineSortedModelIds.toList() }
-                val sortedModels = remember { 
+                val sortedModels = remember {
                     snapshotModels.sortedByDescending { snapshotSortedIds.indexOf(it.modelId) }.reversed()
                 }
                 val currentParticipants = remember { mutableStateListOf<String>().apply { addAll(GroupChatManager.getParticipantModels()) } }
                 AlertDialog(
                     onDismissRequest = { showGroupChatModelPicker = false },
-                    title = { Text("选择参与模型", fontWeight = FontWeight.Bold) },
+                    title = { Text(localizedText("选择参与模型", "Select participant models"), fontWeight = FontWeight.Bold) },
                     text = {
                         if (sortedModels.isEmpty()) {
-                            Text("暂无可用模型，请先添加服务商和启用模型")
+                            Text(localizedText("暂无可用模型，请先添加服务商和启用模型", "No available models. Add a provider and enable models first"))
                         } else {
                             LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {
                                 items(sortedModels) { model ->
@@ -1002,9 +1011,9 @@ fun DataManagementScreen(
                         Button(onClick = {
                             GroupChatManager.setParticipantModels(currentParticipants.toList())
                             showGroupChatModelPicker = false
-                        }) { Text("确定 (${currentParticipants.size}个)") }
+                        }) { Text(localizedText("确定 (", "OK (") + currentParticipants.size + localizedText("个)", ")")) }
                     },
-                    dismissButton = { TextButton(onClick = { showGroupChatModelPicker = false }) { Text("取消") } }
+                    dismissButton = { TextButton(onClick = { showGroupChatModelPicker = false }) { Text(localizedText("取消", "Cancel")) } }
                 )
             }
             // ★ 总结模型选择弹窗 ★★
@@ -1016,24 +1025,24 @@ fun DataManagementScreen(
                     }
                 }
                 val snapshotSortedIds = remember { com.qtwl.gateway.gateway.GatewayScheduler.pipelineSortedModelIds.toList() }
-                val sortedModels = remember { 
+                val sortedModels = remember {
                     snapshotModels.sortedByDescending { snapshotSortedIds.indexOf(it.modelId) }.reversed()
                 }
                 var selectedSummarizer by remember { mutableStateOf(GroupChatManager.getSummarizerModel()) }
                 AlertDialog(
                     onDismissRequest = { showGroupChatSummarizerPicker = false },
-                    title = { Text("选择总结模型", fontWeight = FontWeight.Bold) },
+                    title = { Text(localizedText("选择总结模型", "Select summary model"), fontWeight = FontWeight.Bold) },
                     text = {
                         if (sortedModels.isEmpty()) {
-                            Text("暂无可用模型")
+                            Text(localizedText("暂无可用模型", "No available models"))
                         } else {
                             LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {
-                                // 加一个"无总结者"选项
+                                // 加一个localizedText("无总结者", "No summarizer")选项
                                 item {
                                     Row(modifier = Modifier.fillMaxWidth().clickable { selectedSummarizer = "" }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                                         RadioButton(selected = selectedSummarizer == "", onClick = { selectedSummarizer = "" })
                                         Spacer(Modifier.width(4.dp))
-                                        Text("无总结者", style = MaterialTheme.typography.bodySmall)
+                                        Text(localizedText("无总结者", "No summarizer"), style = MaterialTheme.typography.bodySmall)
                                     }
                                 }
                                 item { HorizontalDivider() }
@@ -1061,22 +1070,22 @@ fun DataManagementScreen(
                             GroupChatManager.setSummarizerModel(selectedSummarizer)
                             groupChatSummarizer.value = selectedSummarizer
                             showGroupChatSummarizerPicker = false
-                        }) { Text("确定") }
+                        }) { Text(localizedText("确定", "OK")) }
                     },
-                    dismissButton = { TextButton(onClick = { showGroupChatSummarizerPicker = false }) { Text("取消") } }
+                    dismissButton = { TextButton(onClick = { showGroupChatSummarizerPicker = false }) { Text(localizedText("取消", "Cancel")) } }
                 )
             }
             Spacer(modifier = Modifier.height(16.dp))
 
             // 添加服务
-            Text("🔌 添加服务", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-            Text("支持 OpenAI Compatible API，自动检测端口，智能获取模型列表",
+            Text(localizedText("🔌 添加服务", "🔌 Add service"), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            Text(localizedText("支持 OpenAI Compatible API，自动检测端口，智能获取模型列表", "Supports OpenAI-compatible APIs, auto-detects ports, and intelligently fetches model lists"),
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(modifier = Modifier.height(8.dp))
 
-            ServiceTemplateCard("Ollama (本地)", "http://localhost:11434") { viewModel.showAddProvider() }
+            ServiceTemplateCard(localizedText("Ollama (本地)", "Ollama (local)"), "http://localhost:11434") { viewModel.showAddProvider() }
             ServiceTemplateCard("OpenAI", "https://api.openai.com") { viewModel.showAddProvider() }
-            ServiceTemplateCard("自定义 OpenAI Compatible", "输入任意兼容 OpenAI API 格式的地址") { showAddServiceDialog = true }
+            ServiceTemplateCard(localizedText("自定义 OpenAI Compatible", "Custom OpenAI-compatible"), localizedText("输入任意兼容 OpenAI API 格式的地址", "Enter any OpenAI API-compatible address")) { showAddServiceDialog = true }
 
             Spacer(modifier = Modifier.height(80.dp))
         }
@@ -1094,8 +1103,8 @@ fun DataManagementScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("🔍 网关抓包日志", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                        TextButton(onClick = { showDebugLogs = false }) { Text("✕ 关闭") }
+                        Text(localizedText("🔍 网关抓包日志", "🔍 Gateway packet-capture logs"), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                        TextButton(onClick = { showDebugLogs = false }) { Text(localizedText("✕ 关闭", "✕ Close")) }
                     }
                     Spacer(modifier = Modifier.height(8.dp))
 
@@ -1119,9 +1128,9 @@ fun DataManagementScreen(
 
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                         OutlinedTextField(value = filterText, onValueChange = { filterText = it },
-                            placeholder = { Text("🔍 搜索") }, singleLine = true, modifier = Modifier.weight(2f),
+                            placeholder = { Text(localizedText("🔍 搜索", "🔍 Search")) }, singleLine = true, modifier = Modifier.weight(2f),
                             textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp))
-                        TextButton(onClick = { statusFilter = null }) { Text(if (statusFilter == null) "全部" else "全部") }
+                        TextButton(onClick = { statusFilter = null }) { Text(if (statusFilter == null) localizedText("全部", "All") else localizedText("全部", "All")) }
                         TextButton(onClick = { statusFilter = "200" }) { Text("200") }
                         TextButton(onClick = { statusFilter = "ERR" }) { Text("ERR") }
                     }
@@ -1154,44 +1163,44 @@ fun DataManagementScreen(
                             if (showDetail) {
                                 AlertDialog(
                                     onDismissRequest = { showDetail = false },
-                                    title = { Text("📦 抓包详情 #${record.id}") },
+                                    title = { Text(localizedText("📦 抓包详情 #", "📦 Packet capture details #") + record.id) },
                                     text = {
                                         LazyColumn(modifier = Modifier.heightIn(max = 400.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                             record.inbound?.let { inbound -> item {
-                                                Text("📥 入站", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                                Text(localizedText("📥 入站", "📥 Inbound"), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                                                 Surface(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), shape = MaterialTheme.shapes.small) {
                                                     Text(buildString {
-                                                        appendLine("方法: ${inbound.method} ${inbound.path}")
-                                                        appendLine("头部: ${inbound.headers}")
-                                                        appendLine("--- 请求体 (${inbound.bodySize}B) ---")
+                                                        appendLine(localizedText("方法: ", "Method: ") + "${inbound.method} ${inbound.path}")
+                                                        appendLine(localizedText("头部: ", "Headers: ") + inbound.headers)
+                                                        appendLine(localizedText("--- 请求体 (", "--- Request body (") + "${inbound.bodySize}B) ---")
                                                         appendLine(inbound.body)
                                                     }, fontFamily = FontFamily.Monospace, fontSize = 10.sp, modifier = Modifier.padding(8.dp))
                                                 }
                                             }}
                                             record.outbound?.let { outbound -> item {
-                                                Text("📤 出站", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
+                                                Text(localizedText("📤 出站", "📤 Outbound"), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
                                                 Surface(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), shape = MaterialTheme.shapes.small) {
                                                     Text(buildString {
                                                         appendLine("URL: ${outbound.targetUrl}")
-                                                        appendLine("模型: ${outbound.modelId}")
-                                                        appendLine("--- 请求体 (${outbound.bodySize}B) ---")
+                                                        appendLine(localizedText("模型: ", "Model: ") + outbound.modelId)
+                                                        appendLine(localizedText("--- 请求体 (", "--- Request body (") + "${outbound.bodySize}B) ---")
                                                         appendLine(outbound.body)
                                                     }, fontFamily = FontFamily.Monospace, fontSize = 10.sp, modifier = Modifier.padding(8.dp))
                                                 }
                                             }}
                                             record.response?.let { resp -> item {
-                                                Text("📥 响应", fontWeight = FontWeight.Bold, color = if (resp.httpStatus >= 500) MaterialTheme.colorScheme.error else if (resp.httpStatus >= 400) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary)
+                                                Text(localizedText("📥 响应", "📥 Response"), fontWeight = FontWeight.Bold, color = if (resp.httpStatus >= 500) MaterialTheme.colorScheme.error else if (resp.httpStatus >= 400) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary)
                                                 Surface(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), shape = MaterialTheme.shapes.small) {
                                                     Text(buildString {
-                                                        appendLine("状态: ${resp.httpStatus} | ${resp.elapsedMs}ms")
+                                                        appendLine(localizedText("状态: ", "Status: ") + "${resp.httpStatus} | ${resp.elapsedMs}ms")
                                                         appendLine("Tokens: ↑${resp.promptTokens} ↓${resp.completionTokens}")
-                                                        appendLine("--- 响应体 (${resp.bodySize}B) ---")
+                                                        appendLine(localizedText("--- 响应体 (", "--- Response body (") + "${resp.bodySize}B) ---")
                                                         appendLine(resp.body)
                                                     }, fontFamily = FontFamily.Monospace, fontSize = 10.sp, modifier = Modifier.padding(8.dp))
                                                 }
                                             }}
                                             record.failover?.let { failover -> item {
-                                                Text("🔄 故障转移", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
+                                                Text(localizedText("🔄 故障转移", "🔄 Failover"), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
                                                 Surface(color = MaterialTheme.colorScheme.error.copy(alpha = 0.08f), shape = MaterialTheme.shapes.small) {
                                                     Text(buildString {
                                                         failover.attempts.forEach { attempt ->
@@ -1206,39 +1215,39 @@ fun DataManagementScreen(
                                         val ctx = LocalContext.current
                                         Button(onClick = {
                                             val detailText = buildString {
-                                                appendLine("📦 抓包详情 #${record.id}")
-                                                appendLine("时间: ${timeFmt.format(record.timestamp)}")
+                                                appendLine(localizedText("📦 抓包详情 #", "📦 Packet capture details #") + record.id)
+                                                appendLine(localizedText("时间: ", "Time: ") + timeFmt.format(record.timestamp))
                                                 record.inbound?.let { inbound ->
-                                                    appendLine("\n📥 入站")
-                                                    appendLine("方法: ${inbound.method} ${inbound.path}")
-                                                    appendLine("头部: ${inbound.headers}")
-                                                    appendLine("--- 请求体 (${inbound.bodySize}B) ---")
+                                                    appendLine(localizedText("\\n📥 入站", "\\n📥 Inbound"))
+                                                    appendLine(localizedText("方法: ", "Method: ") + "${inbound.method} ${inbound.path}")
+                                                    appendLine(localizedText("头部: ", "Headers: ") + inbound.headers)
+                                                    appendLine(localizedText("--- 请求体 (", "--- Request body (") + "${inbound.bodySize}B) ---")
                                                     appendLine(inbound.body)
                                                 }
                                                 record.outbound?.let { outbound ->
-                                                    appendLine("\n📤 出站")
+                                                    appendLine(localizedText("\\n📤 出站", "\\n📤 Outbound"))
                                                     appendLine("URL: ${outbound.targetUrl}")
-                                                    appendLine("模型: ${outbound.modelId}")
-                                                    appendLine("--- 请求体 (${outbound.bodySize}B) ---")
+                                                    appendLine(localizedText("模型: ", "Model: ") + outbound.modelId)
+                                                    appendLine(localizedText("--- 请求体 (", "--- Request body (") + "${outbound.bodySize}B) ---")
                                                     appendLine(outbound.body)
                                                 }
                                                 record.response?.let { resp ->
-                                                    appendLine("\n📥 响应")
-                                                    appendLine("状态: ${resp.httpStatus} | ${resp.elapsedMs}ms")
+                                                    appendLine(localizedText("\\n📥 响应", "\\n📥 Response"))
+                                                    appendLine(localizedText("状态: ", "Status: ") + "${resp.httpStatus} | ${resp.elapsedMs}ms")
                                                     appendLine("Tokens: ↑${resp.promptTokens} ↓${resp.completionTokens}")
-                                                    appendLine("--- 响应体 (${resp.bodySize}B) ---")
+                                                    appendLine(localizedText("--- 响应体 (", "--- Response body (") + "${resp.bodySize}B) ---")
                                                     appendLine(resp.body)
                                                 }
                                                 record.failover?.let { failover ->
-                                                    appendLine("\n🔄 故障转移")
+                                                    appendLine(localizedText("\\n🔄 故障转移", "\\n🔄 Failover"))
                                                     failover.attempts.forEach { attempt ->
                                                         appendLine("[${attempt.index}] ${attempt.modelId}: ${attempt.error} (${attempt.elapsedMs}ms)")
                                                     }
                                                 }
                                             }
                                             val clipboard = ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                                            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("抓包详情", detailText))
-                                        }) { Text("📋 复制") }
+                                            clipboard.setPrimaryClip(android.content.ClipData.newPlainText(localizedText("抓包详情", "Packet capture details"), detailText))
+                                        }) { Text(localizedText("📋 复制", "📋 Copy")) }
                                     }
                                 )
                             }
@@ -1258,7 +1267,7 @@ fun DataManagementScreen(
     var showAddProxyDialog by remember { mutableStateOf(false) }
     if (showAddProxyDialog) {
         AddEditProxyDialog(
-            title = "添加代理", viewModel = viewModel,
+            title = localizedText("添加代理", "Add proxy"), viewModel = viewModel,
             onDismiss = { showAddProxyDialog = false },
             onConfirm = { profile -> viewModel.addProxy(profile); showAddProxyDialog = false }
         )
@@ -1268,21 +1277,21 @@ fun DataManagementScreen(
     if (showResetConfirm) {
         AlertDialog(
             onDismissRequest = { showResetConfirm = false },
-            title = { Text("⚠️ 确认重置？", fontWeight = FontWeight.Bold) },
-            text = { Text("此操作将永久删除所有数据，包括：\n\n• 所有服务商配置\n• 所有 AI 模型列表\n• 所有聊天记录和对话\n• 所有 Token 用量统计\n\n此操作不可撤销！") },
+            title = { Text(localizedText("⚠️ 确认重置？", "⚠️ Confirm reset?"), fontWeight = FontWeight.Bold) },
+            text = { Text(localizedText("此操作将永久删除所有数据，包括：\\n\\n• 所有服务商配置\\n• 所有 AI 模型列表\\n• 所有聊天记录和对话\\n• 所有 Token 用量统计\\n\\n此操作不可撤销！", "This will permanently delete all data, including:\\n\\n• All provider configurations\\n• All AI model lists\\n• All chats and conversations\\n• All token usage statistics\\n\\nThis action cannot be undone!")) },
             confirmButton = {
                 Button(onClick = { viewModel.resetAllData(); showResetConfirm = false }, colors = ButtonDefaults.buttonColors(containerColor = Error)) {
-                    Text("确认重置", color = MaterialTheme.colorScheme.onError)
+                    Text(localizedText("确认重置", "Confirm reset"), color = MaterialTheme.colorScheme.onError)
                 }
             },
-            dismissButton = { TextButton(onClick = { showResetConfirm = false }) { Text("取消") } }
+            dismissButton = { TextButton(onClick = { showResetConfirm = false }) { Text(localizedText("取消", "Cancel")) } }
         )
     }
 
     // 智能添加服务弹窗
     if (showAddServiceDialog) {
         SmartAddServiceDialog(viewModel = viewModel, onDismiss = { showAddServiceDialog = false },
-            onSuccess = { showAddServiceDialog = false; scope.launch { snackbarHostState.showSnackbar("✅ 服务商添加成功！") } })
+            onSuccess = { showAddServiceDialog = false; scope.launch { snackbarHostState.showSnackbar(localizedText("✅ 服务商添加成功！", "✅ Provider added successfully!")) } })
     }
 }
 
@@ -1324,23 +1333,23 @@ private fun SmartAddServiceDialog(viewModel: GatewayViewModel, onDismiss: () -> 
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("添加服务 (OpenAI Compatible)", fontWeight = FontWeight.Bold) },
+        title = { Text(localizedText("添加服务 (OpenAI Compatible)", "Add service (OpenAI-compatible)"), fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(value = form.name, onValueChange = { viewModel.updateFormField("name", it) },
-                    label = { Text("服务商名称") }, placeholder = { Text("例如: 我的 Ollama") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    label = { Text(localizedText("服务商名称", "Provider name")) }, placeholder = { Text(localizedText("例如: 我的 Ollama", "Example: My Ollama")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(value = form.baseUrl, onValueChange = {
                     viewModel.updateFormField("baseUrl", it)
                     val port = viewModel.extractPortFromUrl(it)
                     if (port.isNotBlank()) viewModel.updateFormField("port", port)
-                }, label = { Text("API 地址 (Base URL)") }, placeholder = { Text("http://192.168.1.100:11434") },
-                    supportingText = { if (detectedPort.isNotBlank()) Text("检测到端口: $detectedPort", color = Online) },
+                }, label = { Text(localizedText("API 地址 (Base URL)", "API address (Base URL)")) }, placeholder = { Text("http://192.168.1.100:11434") },
+                    supportingText = { if (detectedPort.isNotBlank()) Text(localizedText("检测到端口: ", "Detected port: ") + detectedPort, color = Online) },
                     singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri), modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(value = form.port, onValueChange = { viewModel.updateFormField("port", it) },
-                    label = { Text("端口 (可选)") }, placeholder = { Text("如 11434, 8080") }, singleLine = true,
+                    label = { Text(localizedText("端口 (可选)", "Port (optional)")) }, placeholder = { Text(localizedText("如 11434, 8080", "e.g. 11434, 8080")) }, singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(value = form.apiKey, onValueChange = { viewModel.updateFormField("apiKey", it) },
-                    label = { Text("API Key (可选)") }, placeholder = { Text("sk-...") }, singleLine = true,
+                    label = { Text(localizedText("API Key (可选)", "API key (optional)")) }, placeholder = { Text("sk-...") }, singleLine = true,
                     visualTransformation = if (showApiKey) VisualTransformation.None else PasswordVisualTransformation(),
                     trailingIcon = { IconButton(onClick = { showApiKey = !showApiKey }) {
                         Icon(if (showApiKey) Icons.Default.Visibility else Icons.Default.VisibilityOff, contentDescription = null) } },
@@ -1349,21 +1358,21 @@ private fun SmartAddServiceDialog(viewModel: GatewayViewModel, onDismiss: () -> 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { isTesting = true; testResult = null; viewModel.fetchAvailableModels(form.baseUrl, form.apiKey.ifBlank { null }) },
                         enabled = form.baseUrl.isNotBlank() && !isTesting, modifier = Modifier.weight(1f)) {
-                        if (isTesting) { CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp); Spacer(modifier = Modifier.width(4.dp)); Text("检测中...") }
-                        else { Icon(Icons.Default.NetworkCheck, contentDescription = null); Spacer(modifier = Modifier.width(4.dp)); Text("检测模型列表") }
+                        if (isTesting) { CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp); Spacer(modifier = Modifier.width(4.dp)); Text(localizedText("检测中...", "Detecting...")) }
+                        else { Icon(Icons.Default.NetworkCheck, contentDescription = null); Spacer(modifier = Modifier.width(4.dp)); Text(localizedText("检测模型列表", "Detect model list")) }
                     }
                 }
                 val syncResult by viewModel.syncResult.collectAsState()
                 LaunchedEffect(syncResult) { isTesting = false; testResult = syncResult }
                 if (testResult != null) {
                     Card(colors = CardDefaults.cardColors(containerColor = if (testResult!!.startsWith("✅")) Online.copy(alpha = 0.15f) else if (testResult!!.startsWith("❌")) Error.copy(alpha = 0.15f) else Warning.copy(alpha = 0.15f))) {
-                        Text(testResult!!, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(12.dp))
+                        Text(localizeRuntimeText(testResult!!), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(12.dp))
                     }
                 }
             }
         },
-        confirmButton = { Button(onClick = { viewModel.saveProvider(); onSuccess() }, enabled = form.name.isNotBlank() && form.baseUrl.isNotBlank()) { Text("保存") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
+        confirmButton = { Button(onClick = { viewModel.saveProvider(); onSuccess() }, enabled = form.name.isNotBlank() && form.baseUrl.isNotBlank()) { Text(localizedText("保存", "Save")) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(localizedText("取消", "Cancel")) } }
     )
 }
 
@@ -1402,8 +1411,8 @@ private fun ProxyManagementDialog(viewModel: GatewayViewModel, onDismiss: () -> 
         onDismissRequest = onDismiss,
         title = {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("⚙️ 代理管理", fontWeight = FontWeight.Bold)
-                Text(if (proxyEnabled) "🟢 已激活" else "🔴 未激活", style = MaterialTheme.typography.bodySmall, color = if (proxyEnabled) Online else Error)
+                Text(localizedText("⚙️ 代理管理", "⚙️ Proxy management"), fontWeight = FontWeight.Bold)
+                Text(if (proxyEnabled) localizedText("🟢 已激活", "🟢 Active") else localizedText("🔴 未激活", "🔴 Inactive"), style = MaterialTheme.typography.bodySmall, color = if (proxyEnabled) Online else Error)
             }
         },
         text = {
@@ -1416,11 +1425,11 @@ private fun ProxyManagementDialog(viewModel: GatewayViewModel, onDismiss: () -> 
                     TextButton(onClick = { showSubscriptionDialog = true }) {
                         Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(4.dp))
-                        Text("📡 一键订阅", style = MaterialTheme.typography.labelMedium)
+                        Text(localizedText("📡 一键订阅", "📡 One-tap subscription"), style = MaterialTheme.typography.labelMedium)
                     }
                 }
                 if (proxyProfiles.isEmpty()) {
-                    Text("还没有代理配置，点击下方按钮添加", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(localizedText("还没有代理配置，点击下方按钮添加", "No proxy configuration yet. Tap the button below to add one"), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
                     proxyProfiles.forEach { profile ->
                         ProxyProfileCard(profile = profile, isActive = profile.id == activeProxyId && proxyEnabled,
@@ -1432,17 +1441,17 @@ private fun ProxyManagementDialog(viewModel: GatewayViewModel, onDismiss: () -> 
             }
         },
         confirmButton = {
-            Button(onClick = { showAddDialog = true }) { Icon(Icons.Default.Add, contentDescription = null); Spacer(Modifier.width(4.dp)); Text("添加代理") }
+            Button(onClick = { showAddDialog = true }) { Icon(Icons.Default.Add, contentDescription = null); Spacer(Modifier.width(4.dp)); Text(localizedText("添加代理", "Add proxy")) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("关闭") } }
+        dismissButton = { TextButton(onClick = onDismiss) { Text(localizedText("关闭", "Close")) } }
     )
 
     if (showAddDialog) {
-        AddEditProxyDialog(title = "添加代理", viewModel = viewModel, onDismiss = { showAddDialog = false },
+        AddEditProxyDialog(title = localizedText("添加代理", "Add proxy"), viewModel = viewModel, onDismiss = { showAddDialog = false },
             onConfirm = { profile -> viewModel.addProxy(profile); showAddDialog = false })
     }
     editingProfile?.let { profile ->
-        AddEditProxyDialog(title = "编辑代理", initialProfile = profile, viewModel = viewModel,
+        AddEditProxyDialog(title = localizedText("编辑代理", "Edit proxy"), initialProfile = profile, viewModel = viewModel,
             onDismiss = { editingProfile = null }, onConfirm = { updated -> viewModel.updateProxy(updated); editingProfile = null })
     }
     // 订阅弹窗
@@ -1450,37 +1459,37 @@ private fun ProxyManagementDialog(viewModel: GatewayViewModel, onDismiss: () -> 
         var subUrl by remember { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { showSubscriptionDialog = false },
-            title = { Text("📡 一键订阅", fontWeight = FontWeight.Bold) },
+            title = { Text(localizedText("📡 一键订阅", "📡 One-tap subscription"), fontWeight = FontWeight.Bold) },
             text = {
                 Column {
-                    Text("输入订阅地址，自动拉取并批量导入节点", style = MaterialTheme.typography.bodyMedium)
+                    Text(localizedText("输入订阅地址，自动拉取并批量导入节点", "Enter a subscription URL to fetch and batch-import nodes automatically"), style = MaterialTheme.typography.bodyMedium)
                     Spacer(Modifier.height(8.dp))
                     OutlinedTextField(value = subUrl, onValueChange = { subUrl = it },
-                        label = { Text("订阅URL") }, placeholder = { Text("https://example.com/sub?token=...") },
+                        label = { Text(localizedText("订阅URL", "Subscription URL")) }, placeholder = { Text("https://example.com/sub?token=...") },
                         singleLine = true, modifier = Modifier.fillMaxWidth())
                 }
             },
             confirmButton = {
-                Button(onClick = { viewModel.importSubscription(subUrl); showSubscriptionDialog = false }) { Text("导入") }
+                Button(onClick = { viewModel.importSubscription(subUrl); showSubscriptionDialog = false }) { Text(localizedText("导入", "Import")) }
             },
-            dismissButton = { TextButton(onClick = { showSubscriptionDialog = false }) { Text("取消") } }
+            dismissButton = { TextButton(onClick = { showSubscriptionDialog = false }) { Text(localizedText("取消", "Cancel")) } }
         )
     }
     // 剪贴板检测弹窗
     if (showPasteDialog) {
         AlertDialog(
             onDismissRequest = { showPasteDialog = false },
-            title = { Text("📋 检测到代理链接", fontWeight = FontWeight.Bold) },
+            title = { Text(localizedText("📋 检测到代理链接", "📋 Proxy link detected"), fontWeight = FontWeight.Bold) },
             text = {
                 Column {
-                    Text("剪贴板中检测到代理/订阅链接：", style = MaterialTheme.typography.bodySmall)
+                    Text(localizedText("剪贴板中检测到代理/订阅链接：", "Proxy/subscription link detected in clipboard:"), style = MaterialTheme.typography.bodySmall)
                     Spacer(Modifier.height(4.dp))
                     Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = MaterialTheme.shapes.small) {
                         Text(pasteLinkText.take(80) + if (pasteLinkText.length > 80) "..." else "",
                             style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(8.dp))
                     }
                     Spacer(Modifier.height(8.dp))
-                    Text("是否自动解析并导入？", style = MaterialTheme.typography.bodyMedium)
+                    Text(localizedText("是否自动解析并导入？", "Parse and import automatically?"), style = MaterialTheme.typography.bodyMedium)
                 }
             },
             confirmButton = {
@@ -1491,9 +1500,9 @@ private fun ProxyManagementDialog(viewModel: GatewayViewModel, onDismiss: () -> 
                         viewModel.addProxyFromLink(pasteLinkText)
                     }
                     showPasteDialog = false
-                }) { Text("立即导入") }
+                }) { Text(localizedText("立即导入", "Import now")) }
             },
-            dismissButton = { TextButton(onClick = { showPasteDialog = false }) { Text("忽略") } }
+            dismissButton = { TextButton(onClick = { showPasteDialog = false }) { Text(localizedText("忽略", "Ignore")) } }
         )
     }
 }
@@ -1514,7 +1523,7 @@ private fun ProxyProfileCard(
                     Icon(icon, contentDescription = null, tint = if (profile.enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
                     Spacer(modifier = Modifier.width(8.dp))
                     Column {
-                        Text(profile.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                        Text(localizeGeneratedName(profile.name), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                         Text("${profile.type} · ${profile.host}:${profile.port}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         if (profile.username.isNotBlank()) Text("👤 ${profile.username}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
@@ -1523,12 +1532,12 @@ private fun ProxyProfileCard(
             }
             Spacer(modifier = Modifier.height(8.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                IconButton(onClick = onTestSpeed, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.Speed, contentDescription = "测速", modifier = Modifier.size(18.dp)) }
-                IconButton(onClick = onEdit, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.Edit, contentDescription = "编辑", modifier = Modifier.size(18.dp)) }
-                IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.Delete, contentDescription = "删除", tint = Error, modifier = Modifier.size(18.dp)) }
+                IconButton(onClick = onTestSpeed, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.Speed, contentDescription = localizedText("测速", "Speed test"), modifier = Modifier.size(18.dp)) }
+                IconButton(onClick = onEdit, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.Edit, contentDescription = localizedText("编辑", "Edit"), modifier = Modifier.size(18.dp)) }
+                IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.Delete, contentDescription = localizedText("删除", "Delete"), tint = Error, modifier = Modifier.size(18.dp)) }
                 if (isActive) {
                     Surface(color = Online.copy(alpha = 0.15f), shape = MaterialTheme.shapes.extraSmall) {
-                        Text("已激活", style = MaterialTheme.typography.labelSmall, color = Online, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
+                        Text(localizedText("已激活", "Active"), style = MaterialTheme.typography.labelSmall, color = Online, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
                     }
                 }
             }
@@ -1560,11 +1569,11 @@ private fun AddEditProxyDialog(
         title = { Text(title, fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("代理名称") }, placeholder = { Text("例如：机场节点1") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text(localizedText("代理名称", "Proxy name")) }, placeholder = { Text(localizedText("例如：机场节点1", "Example: proxy node 1")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
 
                 // 代理类型选择器
                 ExposedDropdownMenuBox(expanded = typeExpanded, onExpandedChange = { typeExpanded = !typeExpanded }) {
-                    OutlinedTextField(value = type, onValueChange = {}, readOnly = true, label = { Text("代理类型") },
+                    OutlinedTextField(value = type, onValueChange = {}, readOnly = true, label = { Text(localizedText("代理类型", "Proxy type")) },
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = typeExpanded) }, modifier = Modifier.fillMaxWidth().menuAnchor())
                     ExposedDropdownMenu(expanded = typeExpanded, onDismissRequest = { typeExpanded = false }) {
                         typeOptions.forEach { option ->
@@ -1574,22 +1583,22 @@ private fun AddEditProxyDialog(
                     }
                 }
 
-                OutlinedTextField(value = host, onValueChange = { host = it }, label = { Text("代理服务器地址") }, placeholder = { Text("例如：192.168.1.100") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = port, onValueChange = { port = it.filter { c -> c.isDigit() } }, label = { Text("端口") },
+                OutlinedTextField(value = host, onValueChange = { host = it }, label = { Text(localizedText("代理服务器地址", "Proxy server address")) }, placeholder = { Text(localizedText("例如：192.168.1.100", "Example: 192.168.1.100")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = port, onValueChange = { port = it.filter { c -> c.isDigit() } }, label = { Text(localizedText("端口", "Port")) },
                     placeholder = { Text(if (type.startsWith("SOCKS")) "1080" else "7890") }, singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
 
                 HorizontalDivider()
 
-                OutlinedTextField(value = username, onValueChange = { username = it }, label = { Text("用户名 (可选)") }, placeholder = { Text("SOCKS5/HTTP 认证用户名") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text("密码 (可选)") }, placeholder = { Text("SOCKS5/HTTP 认证密码") }, singleLine = true,
+                OutlinedTextField(value = username, onValueChange = { username = it }, label = { Text(localizedText("用户名 (可选)", "Username (optional)")) }, placeholder = { Text(localizedText("SOCKS5/HTTP 认证用户名", "SOCKS5/HTTP authentication username")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text(localizedText("密码 (可选)", "Password (optional)")) }, placeholder = { Text(localizedText("SOCKS5/HTTP 认证密码", "SOCKS5/HTTP authentication password")) }, singleLine = true,
                     visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
                     trailingIcon = { IconButton(onClick = { showPassword = !showPassword }) { Icon(if (showPassword) Icons.Default.Visibility else Icons.Default.VisibilityOff, contentDescription = null) } },
                     modifier = Modifier.fillMaxWidth())
 
                 if (type.startsWith("SOCKS") && (username.isNotBlank() || password.isNotBlank())) {
                     Surface(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f), shape = MaterialTheme.shapes.small) {
-                        Text("✅ SOCKS5 将使用 RFC 1929 用户名/密码认证", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(8.dp))
+                        Text(localizedText("✅ SOCKS5 将使用 RFC 1929 用户名/密码认证", "✅ SOCKS5 will use RFC 1929 username/password authentication"), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(8.dp))
                     }
                 }
             }
@@ -1600,9 +1609,9 @@ private fun AddEditProxyDialog(
                     id = initialProfile?.id ?: java.util.UUID.randomUUID().toString().take(8),
                     name = name.ifBlank { "未命名代理" }, type = type, host = host, port = port.toIntOrNull() ?: 1080,
                     username = username, password = password, enabled = initialProfile?.enabled ?: false))
-            }, enabled = host.isNotBlank() && (port.toIntOrNull() ?: 0) in 1..65535) { Text("保存") }
+            }, enabled = host.isNotBlank() && (port.toIntOrNull() ?: 0) in 1..65535) { Text(localizedText("保存", "Save")) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
+        dismissButton = { TextButton(onClick = onDismiss) { Text(localizedText("取消", "Cancel")) } }
     )
 }
 
@@ -1631,45 +1640,45 @@ fun AboutScreen(viewModel: GatewayViewModel = viewModel(factory = GatewayViewMod
 
     Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text("ℹ️ 关于我们", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-            Text("綦桐APP v$appVersion - AI 网关管理工具", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(localizedText("ℹ️ 关于我们", "ℹ️ About us"), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            Text("QiTong APP v$appVersion - " + localizedText("AI 网关管理工具", "AI gateway management tool"), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(modifier = Modifier.height(8.dp))
 
             Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("📱 应用信息", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(localizedText("📱 应用信息", "📱 App information"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("版本: v$appVersion", style = MaterialTheme.typography.bodyMedium)
-                    Text("开发者: 綦桐网络", style = MaterialTheme.typography.bodyMedium)
-                    Text("协议: OpenAI Compatible API", style = MaterialTheme.typography.bodyMedium)
+                    Text(localizedText("版本: v", "Version: v") + appVersion, style = MaterialTheme.typography.bodyMedium)
+                    Text(localizedText("开发者: 綦桐网络", "Developer: QiTong Network"), style = MaterialTheme.typography.bodyMedium)
+                    Text(localizedText("协议: OpenAI Compatible API", "Protocol: OpenAI-compatible API"), style = MaterialTheme.typography.bodyMedium)
                 }
             }
 
             Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("⚙️ 当前配置", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(localizedText("⚙️ 当前配置", "⚙️ Current configuration"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("网关端口:", style = MaterialTheme.typography.bodyMedium)
+                        Text(localizedText("网关端口:", "Gateway port:"), style = MaterialTheme.typography.bodyMedium)
                         Text(gatewayPort.toString(), style = MaterialTheme.typography.bodyMedium)
                     }
                     Spacer(modifier = Modifier.height(4.dp))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("代理加速:", style = MaterialTheme.typography.bodyMedium)
-                        Text(if (proxyEnabled) "✅ 已开启" else "❌ 未开启", color = if (proxyEnabled) Online else Error)
+                        Text(localizedText("代理加速:", "Proxy acceleration:"), style = MaterialTheme.typography.bodyMedium)
+                        Text(if (proxyEnabled) localizedText("✅ 已开启", "✅ Enabled") else localizedText("❌ 未开启", "❌ Disabled"), color = if (proxyEnabled) Online else Error)
                     }
                     // 显示激活的代理详情
                     val activeProxy = if (proxyEnabled) proxyProfiles.find { it.id == activeProxyId } else null
                     if (activeProxy != null) {
                         Spacer(modifier = Modifier.height(4.dp))
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("代理节点:", style = MaterialTheme.typography.bodyMedium)
+                            Text(localizedText("代理节点:", "Proxy node:"), style = MaterialTheme.typography.bodyMedium)
                             Text("${activeProxy.type} · ${activeProxy.host}:${activeProxy.port}", style = MaterialTheme.typography.bodyMedium, color = Online)
                         }
                         if (activeProxy.username.isNotBlank()) {
                             Spacer(modifier = Modifier.height(4.dp))
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("代理用户:", style = MaterialTheme.typography.bodyMedium)
+                                Text(localizedText("代理用户:", "Proxy user:"), style = MaterialTheme.typography.bodyMedium)
                                 Text(activeProxy.username, style = MaterialTheme.typography.bodyMedium)
                             }
                         }
@@ -1677,12 +1686,12 @@ fun AboutScreen(viewModel: GatewayViewModel = viewModel(factory = GatewayViewMod
                     // 流量统计
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("↑ 上传:", style = MaterialTheme.typography.bodyMedium)
+                        Text(localizedText("↑ 上传:", "↑ Upload:"), style = MaterialTheme.typography.bodyMedium)
                         Text(formatTraffic(GatewayForegroundService.trafficUploadBytes.get()), style = MaterialTheme.typography.bodyMedium, color = Online)
                     }
                     Spacer(modifier = Modifier.height(4.dp))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("↓ 下载:", style = MaterialTheme.typography.bodyMedium)
+                        Text(localizedText("↓ 下载:", "↓ Download:"), style = MaterialTheme.typography.bodyMedium)
                         Text(formatTraffic(GatewayForegroundService.trafficDownloadBytes.get()), style = MaterialTheme.typography.bodyMedium, color = Online)
                     }
                 }

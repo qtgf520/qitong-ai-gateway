@@ -30,12 +30,14 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Locale
+import com.qtwl.gateway.utils.localizedText
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PacketCaptureScreen(
     viewModel: GatewayViewModel = viewModel(factory = GatewayViewModel.Factory())
 ) {
+    com.qtwl.gateway.utils.TranslationManager.currentLanguageFlow.collectAsState().value
     var selectedRecord by remember { mutableStateOf<PacketRecord?>(null) }
     var filterText by remember { mutableStateOf("") }
     var statusFilter by remember { mutableStateOf<String?>(null) }
@@ -78,14 +80,14 @@ fun PacketCaptureScreen(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text("🔍 抓包日志", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text(localizedText("🔍 抓包日志", "🔍 Packet capture logs"), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             if (showClearConfirm) {
                 Row {
-                    TextButton(onClick = { showClearConfirm = false }) { Text("取消") }
-                    TextButton(onClick = { PacketCapture.clear(); showClearConfirm = false }) { Text("确认清空") }
+                    TextButton(onClick = { showClearConfirm = false }) { Text(localizedText("取消", "Cancel")) }
+                    TextButton(onClick = { PacketCapture.clear(); showClearConfirm = false }) { Text(localizedText("确认清空", "Confirm clear")) }
                 }
             } else {
-                TextButton(onClick = { showClearConfirm = true }) { Text("🗑 清空") }
+                TextButton(onClick = { showClearConfirm = true }) { Text(localizedText("🗑 清空", "🗑 Clear")) }
             }
         }
 
@@ -101,7 +103,7 @@ fun PacketCaptureScreen(
             OutlinedTextField(
                 value = searchText,
                 onValueChange = setSearchText,
-                placeholder = { Text("🔍 搜索关键词") },
+                placeholder = { Text(localizedText("🔍 搜索关键词", "🔍 Search keyword")) },
                 singleLine = true,
                 maxLines = 1,
                 modifier = Modifier.weight(2f),
@@ -113,7 +115,7 @@ fun PacketCaptureScreen(
                 },
                 textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp)
             )
-            TextButton(onClick = { statusFilter = null }) { Text(if (statusFilter == null) "📋 全部" else "全部", fontWeight = if (statusFilter == null) FontWeight.Bold else FontWeight.Normal) }
+            TextButton(onClick = { statusFilter = null }) { Text(if (statusFilter == null) localizedText("📋 全部", "📋 All") else localizedText("全部", "All"), fontWeight = if (statusFilter == null) FontWeight.Bold else FontWeight.Normal) }
             TextButton(onClick = { statusFilter = "200" }) { Text(if (statusFilter == "200") "✅ 200" else "200") }
             TextButton(onClick = { statusFilter = "4xx" }) { Text(if (statusFilter == "4xx") "⚠️ 4xx" else "4xx") }
             TextButton(onClick = { statusFilter = "5xx" }) { Text(if (statusFilter == "5xx") "❌ 5xx" else "5xx") }
@@ -128,7 +130,7 @@ fun PacketCaptureScreen(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
-                Text("📭 暂无抓包记录\n先开启抓包模式再发请求", textAlign = androidx.compose.ui.text.style.TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(localizedText("📭 暂无抓包记录\\n先开启抓包模式再发请求", "📭 No packet-capture records yet\\nEnable capture mode before sending requests"), textAlign = androidx.compose.ui.text.style.TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         } else {
             LazyColumn(
@@ -247,9 +249,9 @@ fun PacketCaptureDetailDialog(
         onDismissRequest = onDismiss,
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("📦 抓包详情 #${currentRecord.id}")
+                Text(localizedText("📦 抓包详情 #", "📦 Packet capture details #") + currentRecord.id)
                 Spacer(modifier = Modifier.weight(1f))
-                TextButton(onClick = onDismiss) { Text("关闭") }
+                TextButton(onClick = onDismiss) { Text(localizedText("关闭", "Close")) }
             }
         },
         text = {
@@ -260,15 +262,15 @@ fun PacketCaptureDetailDialog(
                 // 入站
                 currentRecord.inbound?.let { inbound ->
                     item {
-                        Text("📥 入站", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        Text(localizedText("📥 入站", "📥 Inbound"), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                         CodeBlock(
                             text = buildString {
-                                appendLine("时间: ${currentRecord.timestamp}")
-                                appendLine("来源: ${inbound.sourceIp}")
-                                appendLine("方法: ${inbound.method}")
-                                appendLine("路径: ${inbound.path}")
-                                appendLine("头部: ${inbound.headers}")
-                                appendLine("--- 请求体 (${inbound.bodySize}B) ---")
+                                appendLine(localizedText("时间: ", "Time: ") + currentRecord.timestamp)
+                                appendLine(localizedText("来源: ", "Source: ") + inbound.sourceIp)
+                                appendLine(localizedText("方法: ", "Method: ") + inbound.method)
+                                appendLine(localizedText("路径: ", "Path: ") + inbound.path)
+                                appendLine(localizedText("头部: ", "Headers: ") + inbound.headers)
+                                appendLine(localizedText("--- 请求体 (", "--- Request body (") + "${inbound.bodySize}B) ---")
                                 appendLine(inbound.body)
                             }
                         )
@@ -278,13 +280,13 @@ fun PacketCaptureDetailDialog(
                 // 出站
                 currentRecord.outbound?.let { outbound ->
                     item {
-                        Text("📤 出站", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
+                        Text(localizedText("📤 出站", "📤 Outbound"), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
                         CodeBlock(
                             text = buildString {
                                 appendLine("URL: ${outbound.targetUrl}")
-                                appendLine("模型: ${outbound.modelId}")
-                                appendLine("头部: ${outbound.headers}")
-                                appendLine("--- 请求体 (${outbound.bodySize}B) ---")
+                                appendLine(localizedText("模型: ", "Model: ") + outbound.modelId)
+                                appendLine(localizedText("头部: ", "Headers: ") + outbound.headers)
+                                appendLine(localizedText("--- 请求体 (", "--- Request body (") + "${outbound.bodySize}B) ---")
                                 appendLine(outbound.body)
                             }
                         )
@@ -294,19 +296,19 @@ fun PacketCaptureDetailDialog(
                 // 响应
                 currentRecord.response?.let { resp ->
                     item {
-                        Text("📥 响应", fontWeight = FontWeight.Bold, color = when {
+                        Text(localizedText("📥 响应", "📥 Response"), fontWeight = FontWeight.Bold, color = when {
                             resp.httpStatus >= 500 -> MaterialTheme.colorScheme.error
                             resp.httpStatus >= 400 -> MaterialTheme.colorScheme.tertiary
                             else -> MaterialTheme.colorScheme.primary
                         })
                         CodeBlock(
                             text = buildString {
-                                appendLine("状态码: ${resp.httpStatus}")
-                                appendLine("耗时: ${resp.elapsedMs}ms")
-                                appendLine("模型: ${resp.modelId}")
+                                appendLine(localizedText("状态码: ", "Status code: ") + resp.httpStatus)
+                                appendLine(localizedText("耗时: ", "Elapsed: ") + "${resp.elapsedMs}ms")
+                                appendLine(localizedText("模型: ", "Model: ") + resp.modelId)
                                 appendLine("Tokens: ↑${resp.promptTokens} ↓${resp.completionTokens}")
-                                appendLine("头部: ${resp.headers}")
-                                appendLine("--- 响应体 (${resp.bodySize}B) ---")
+                                appendLine(localizedText("头部: ", "Headers: ") + resp.headers)
+                                appendLine(localizedText("--- 响应体 (", "--- Response body (") + "${resp.bodySize}B) ---")
                                 appendLine(resp.body)
                             }
                         )
@@ -316,12 +318,12 @@ fun PacketCaptureDetailDialog(
                 // 故障转移
                 currentRecord.failover?.let { failover ->
                     item {
-                        Text("🔄 故障转移", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
+                        Text(localizedText("🔄 故障转移", "🔄 Failover"), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
                         CodeBlock(
                             text = buildString {
-                                appendLine("最终模型: ${failover.finalModel}")
-                                appendLine("最终状态: ${failover.finalStatus}")
-                                appendLine("--- 尝试记录 ---")
+                                appendLine(localizedText("最终模型: ", "Final model: ") + failover.finalModel)
+                                appendLine(localizedText("最终状态: ", "Final status: ") + failover.finalStatus)
+                                appendLine(localizedText("--- 尝试记录 ---", "--- Attempt log ---"))
                                 failover.attempts.forEach { attempt ->
                                     appendLine("[${attempt.index}] ${attempt.modelId}: ${attempt.error} (${attempt.elapsedMs}ms)")
                                 }

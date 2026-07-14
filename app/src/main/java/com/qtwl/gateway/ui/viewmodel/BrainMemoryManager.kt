@@ -1,9 +1,13 @@
 package com.qtwl.gateway.ui.viewmodel
 
 import com.qtwl.gateway.service.GatewayForegroundService
+import com.qtwl.gateway.utils.localizeGeneratedContent
+import com.qtwl.gateway.utils.localizeGeneratedName
+import com.qtwl.gateway.utils.localizedText
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.encodeToString
+import java.util.Calendar
 import java.util.UUID
 
 /**
@@ -246,41 +250,66 @@ object BrainMemoryManager {
         if (!cfg.personaEnabled) {
             val subconscious = getSubconscious(3)
             if (subconscious.isEmpty()) return ""
-            return "以下是对你有价值的记忆：\n" + subconscious.joinToString("\n") {
-                "[${it.emotion}] ${it.title} (重要:${it.importance}/10)"
-            }
+            return localizedText("以下是对你有价值的记忆：\n", "Here are memories that may be useful to you:\n") +
+                subconscious.joinToString("\n") {
+                    "[${it.emotion}] ${it.title} " + localizedText("(重要:", "(importance:") + "${it.importance}/10)"
+                }
         }
         val sb = StringBuilder()
-        sb.appendLine("你叫${cfg.personaName}，${cfg.personaAge}岁。")
-        sb.appendLine("性格：${cfg.personaTraits}")
-        sb.appendLine("语气风格：${cfg.personaStyle}")
-        sb.appendLine("背景：${cfg.personaBackground}")
-        
+        sb.appendLine(localizedText("你叫", "Your name is ") + cfg.personaName + localizedText("，", ", age ") + cfg.personaAge + localizedText("岁。", "."))
+        sb.appendLine(localizedText("性格：", "Personality: ") + localizeGeneratedContent(cfg.personaTraits))
+        sb.appendLine(localizedText("语气风格：", "Tone style: ") + localizeGeneratedName(cfg.personaStyle))
+        sb.appendLine(localizedText("背景：", "Background: ") + localizeGeneratedContent(cfg.personaBackground))
+
         if (cfg.envAwareness) {
             try {
-                val now = java.time.LocalDateTime.now()
-                val hour = now.hour
-                val greet = when { hour < 6 -> "凌晨"; hour < 12 -> "上午"; hour < 14 -> "中午"; hour < 18 -> "下午"; else -> "晚上" }
-                sb.appendLine("当前时间：${now.year}年${now.monthValue}月${now.dayOfMonth}日 $greet${now.hour}点")
+                val now = Calendar.getInstance()
+                val year = now.get(Calendar.YEAR)
+                val month = now.get(Calendar.MONTH) + 1
+                val day = now.get(Calendar.DAY_OF_MONTH)
+                val hour = now.get(Calendar.HOUR_OF_DAY)
+                val period = when {
+                    hour < 6 -> localizedText("凌晨", "early morning")
+                    hour < 12 -> localizedText("上午", "morning")
+                    hour < 14 -> localizedText("中午", "midday")
+                    hour < 18 -> localizedText("下午", "afternoon")
+                    else -> localizedText("晚上", "evening")
+                }
+                sb.appendLine(
+                    localizedText("当前时间：", "Current time: ") +
+                        if (com.qtwl.gateway.utils.TranslationManager.currentLanguage == com.qtwl.gateway.utils.AppLanguage.ZH_CN) {
+                            "${year}年${month}月${day}日 $period${hour}点"
+                        } else {
+                            "$year-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')} $period ${hour.toString().padStart(2, '0')}:00"
+                        }
+                )
                 try {
                     val context = com.qtwl.gateway.GatewayApplication.getInstance()
                     val cm = context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
                     val activeNet = cm?.activeNetworkInfo
                     val isWifi = activeNet?.type == android.net.ConnectivityManager.TYPE_WIFI
-                    sb.appendLine("网络状态：${if (isWifi) "WiFi" else if (activeNet?.isConnected == true) "移动数据" else "离线"}")
+                    val network = if (isWifi) "WiFi" else if (activeNet?.isConnected == true) localizedText("移动数据", "mobile data") else localizedText("离线", "offline")
+                    sb.appendLine(localizedText("网络状态：", "Network status: ") + network)
                 } catch (_: Exception) { }
             } catch (_: Exception) { }
         }
-        
-        sb.appendLine("我能做什么：回答问题、管理AI网关、记忆对话、推荐模型、切换服务商。")
-        
+
+        sb.appendLine(localizedText(
+            "我能做什么：回答问题、管理AI网关、记忆对话、推荐模型、切换服务商。",
+            "Capabilities: answer questions, manage the AI gateway, remember conversations, recommend models, and switch providers.",
+        ))
+
         val subconscious = getSubconscious(5)
         if (subconscious.isNotEmpty()) {
-            sb.appendLine("\n我记得的一些事情：")
+            sb.appendLine(localizedText("\n我记得的一些事情：", "\nSome things I remember:"))
             for (mem in subconscious) {
-                sb.appendLine("- ${mem.content.replace("\n", " ")}（${mem.emotion}，重要度${mem.importance}）")
+                sb.appendLine(
+                    "- ${mem.content.replace("\n", " ")}" +
+                        localizedText("（", " (") + mem.emotion + localizedText("，重要度", ", importance ") + "${mem.importance})"
+                )
             }
         }
         return sb.toString()
     }
+
 }

@@ -3,6 +3,7 @@ package com.qtwl.gateway.service
 import android.content.Context
 import android.content.SharedPreferences
 import com.qtwl.gateway.GatewayApplication
+import com.qtwl.gateway.utils.localizedText
 
 /**
  * 思考引导配置管理器
@@ -21,10 +22,16 @@ object ThinkingConfigManager {
     private const val KEY_THINKING_ENABLED = "thinking_enabled"
 
     /** 思考深度级别 */
-    enum class ThinkingDepth(val value: String, val label: String) {
-        OFF("off", "关闭"),
-        LIGHT("light", "轻度"),
-        DEEP("deep", "深度");
+    enum class ThinkingDepth(val value: String) {
+        OFF("off"),
+        LIGHT("light"),
+        DEEP("deep");
+
+        fun localizedLabel(): String = when (this) {
+            OFF -> localizedText("关闭", "Off")
+            LIGHT -> localizedText("轻度", "Light")
+            DEEP -> localizedText("深度", "Deep")
+        }
 
         companion object {
             fun fromString(s: String): ThinkingDepth =
@@ -61,9 +68,10 @@ object ThinkingConfigManager {
 
         return when (getDepth()) {
             ThinkingDepth.OFF -> ""
-            ThinkingDepth.LIGHT -> "\n\n【思考要求】请先思考再回答。"
-            ThinkingDepth.DEEP -> """
-            
+            ThinkingDepth.LIGHT -> localizedText("\n\n【思考要求】请先思考再回答。", "\n\n[Thinking requirement] Think before answering.")
+            ThinkingDepth.DEEP -> localizedText(
+                """
+
 【思考要求】
 在回答之前，请先在你的思考过程中分析以下要点：
 1) 用户的核心需求是什么
@@ -72,7 +80,19 @@ object ThinkingConfigManager {
 4) 最终推荐及理由
 
 请将你的思考过程放在 `thinking` 标签中，然后在标签外给出最终回答。
-""".trimIndent()
+""".trimIndent(),
+                """
+
+[Thinking requirement]
+Before answering, analyze these points in your reasoning:
+1) The user's core need
+2) Possible solutions
+3) The advantages and disadvantages of each solution
+4) Your final recommendation and reasoning
+
+Place the reasoning inside `thinking` tags, then give the final answer outside the tags.
+""".trimIndent(),
+            )
         }
     }
 }

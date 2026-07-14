@@ -8,6 +8,7 @@ import androidx.core.app.NotificationCompat
 import com.qtwl.gateway.GatewayApplication
 import com.qtwl.gateway.MainActivity
 import com.qtwl.gateway.R
+import com.qtwl.gateway.utils.localizedText
 import com.qtwl.gateway.gateway.GatewayService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -89,7 +90,7 @@ class GatewayForegroundService : Service() {
 
         // 从代理列表 JSON 中读取当前激活的代理（与APP内同步）
         val proxyListJson = getProxyListJson()
-        var proxyText = "代理: 未开启"
+        var proxyText = localizedText("代理: 未开启", "Proxy: disabled")
         if (proxyListJson.isNotBlank()) {
             try {
                 // 直接解析 JSON 数组
@@ -102,7 +103,7 @@ class GatewayForegroundService : Service() {
                         val h = obj["host"]?.jsonPrimitive?.content ?: ""
                         val p = obj["port"]?.jsonPrimitive?.content ?: "0"
                         val u = obj["username"]?.jsonPrimitive?.content ?: ""
-                        proxyText = "代理: $t $h:$p"
+                        proxyText = localizedText("代理: ", "Proxy: ") + "$t $h:$p"
                         if (u.isNotBlank()) proxyText += " ($u)"
                         break
                     }
@@ -132,19 +133,19 @@ class GatewayForegroundService : Service() {
         lastDownloadBytes = downBytes
 
         val text = buildString {
-            append("端口 $port")
+            append(localizedText("端口 ", "Port ")).append(port)
             // ★★ 当前会话流量（可重置）★★
-            append("\n📊 当前会话 ↑${formatBytes(upBytes)} ↓${formatBytes(downBytes)}")
+            append(localizedText("\n📊 当前会话 ", "\n📊 Current session ")).append("↑${formatBytes(upBytes)} ↓${formatBytes(downBytes)}")
             // ★★ 总统计（持久化）★★
-            append("\n📈 总统计 ↑${formatBytes(totalUp)} ↓${formatBytes(totalDown)}")
+            append(localizedText("\n📈 总统计 ", "\n📈 All-time totals ")).append("↑${formatBytes(totalUp)} ↓${formatBytes(totalDown)}")
             // ★★ 始终显示模型名（不只在传输中）
             if (nodeName.isNotBlank()) {
                 append("\n🧠 $nodeName")
             }
             if (hasTraffic && isActive) {
-                append("\n🟢 传输中")
+                append(localizedText("\n🟢 传输中", "\n🟢 Transferring"))
             } else if (hasTraffic && !isActive) {
-                append("\n⚪ 空闲")
+                append(localizedText("\n⚪ 空闲", "\n⚪ Idle"))
             }
             append("\n$proxyText")
         }
@@ -156,7 +157,7 @@ class GatewayForegroundService : Service() {
         val toggleWakePI = PendingIntent.getService(this, 2, toggleWakeIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 
-        val title = (if (wakeEnabled) "🟢 綦桐网关(保活中)" else "綦桐网关") + if (nodeName.isNotBlank()) " · $nodeName" else ""
+        val title = (if (wakeEnabled) localizedText("🟢 綦桐网关(保活中)", "🟢 QiTong Gateway (keep-alive)") else localizedText("綦桐网关", "QiTong Gateway")) + if (nodeName.isNotBlank()) " · $nodeName" else ""
         val notification = NotificationCompat.Builder(this, GatewayApplication.CHANNEL_ID)
             .setContentTitle(title)
             .setContentText(text)
@@ -165,7 +166,7 @@ class GatewayForegroundService : Service() {
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .addAction(android.R.drawable.ic_menu_sort_by_size,
-                if (wakeEnabled) "取消唤醒" else "唤醒保活", toggleWakePI)
+                if (wakeEnabled) localizedText("取消唤醒", "Disable keep-alive") else localizedText("唤醒保活", "Enable keep-alive"), toggleWakePI)
             .build()
 
         try { startForeground(NOTIFICATION_ID, notification) } catch (_: Exception) {}

@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.qtwl.gateway.ui.viewmodel.GatewayViewModel
+import com.qtwl.gateway.utils.localizedText
 
 /**
  * 设置屏幕 —— 极简模式
@@ -21,6 +22,7 @@ import com.qtwl.gateway.ui.viewmodel.GatewayViewModel
 fun SettingsScreen(
     viewModel: GatewayViewModel = viewModel(factory = GatewayViewModel.Factory())
 ) {
+    com.qtwl.gateway.utils.TranslationManager.currentLanguageFlow.collectAsState().value
     val scrollState = rememberScrollState()
 
     Column(
@@ -32,7 +34,7 @@ fun SettingsScreen(
     ) {
         // ========== 标题 ==========
         Text(
-            text = "⚙️ 设置",
+            text = localizedText("⚙️ 设置", "⚙️ Settings"),
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
         )
@@ -51,15 +53,15 @@ fun SettingsScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
-                    text = "🔋 后台权限管理",
+                    text = localizedText("🔋 后台权限管理", "🔋 Background permission management"),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
                 )
                 Text(
-                    text = "确保应用在后台稳定运行，不被系统杀死。将尝试：\n" +
-                            "1️⃣ 加入电池优化白名单\n" +
-                            "2️⃣ 允许后台运行\n" +
-                            "3️⃣ 忽略电池优化（需要 Root）",
+                    text = localizedText("确保应用在后台稳定运行，不被系统杀死。将尝试：\\n", "Keep the app running reliably in the background and prevent the system from killing it. Will try to:\\n") +
+                            localizedText("1️⃣ 加入电池优化白名单\\n", "1️⃣ Add to the battery optimization whitelist\\n") +
+                            localizedText("2️⃣ 允许后台运行\\n", "2️⃣ Allow background running\\n") +
+                            localizedText("3️⃣ 忽略电池优化（需要 Root）", "3️⃣ Ignore battery optimization (requires root)"),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -71,7 +73,7 @@ fun SettingsScreen(
                         containerColor = MaterialTheme.colorScheme.secondary
                     )
                 ) {
-                    Text("🔗 绑定后台权限")
+                    Text(localizedText("🔗 绑定后台权限", "🔗 Bind background permissions"))
                 }
 
                 // 提示信息
@@ -92,7 +94,7 @@ fun SettingsScreen(
                             tint = MaterialTheme.colorScheme.tertiary
                         )
                         Text(
-                            text = "部分操作需要 Root 权限。非 Root 设备请手动在「系统设置 → 应用 → 綦桐AI网关 → 电池」中设置为「无限制」。",
+                            text = localizedText("部分操作需要 Root 权限。非 Root 设备请手动在「系统设置 → 应用 → 綦桐AI网关 → 电池」中设置为「无限制」。", "Some actions require root. On non-rooted devices, manually set System Settings → Apps → QiTong AI Gateway → Battery to “Unrestricted”."),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -115,12 +117,12 @@ fun SettingsScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
-                    text = "🤫 代理加速",
+                    text = localizedText("🤫 代理加速", "🤫 Proxy acceleration"),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
                 )
                 Text(
-                    text = "代理配置已隐藏，在「关于」页面连点 3 下可快速开关代理加速。\n开启后所有大模型 API 请求将自动经过代理转发。",
+                    text = localizedText("代理配置已隐藏，在「关于」页面连点 3 下可快速开关代理加速。\\n开启后所有大模型 API 请求将自动经过代理转发。", "Proxy configuration is hidden. Tap the About page 3 times to quickly toggle proxy acceleration.\\nWhen enabled, all LLM API requests are automatically forwarded through the proxy."),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

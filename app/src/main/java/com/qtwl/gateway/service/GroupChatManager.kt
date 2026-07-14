@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import com.qtwl.gateway.GatewayApplication
 import com.qtwl.gateway.data.db.AppDatabase
 import com.qtwl.gateway.data.model.AiModel
+import com.qtwl.gateway.utils.localizedText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
@@ -81,7 +82,7 @@ object GroupChatManager {
     ): String = withContext(Dispatchers.IO) {
         val participantIds = getParticipantModels()
         if (participantIds.isEmpty()) {
-            return@withContext "群聊模式已开启，但未选择参与模型。请在管理页配置。"
+            return@withContext localizedText("群聊模式已开启，但未选择参与模型。请在管理页配置。", "Group chat is enabled, but no participant models are selected. Configure them on the management page.")
         }
 
         val allModels = database.aiModelDao().getEnabledModelsList().filter { it.isEnabled }
@@ -89,8 +90,8 @@ object GroupChatManager {
         val maxRounds = getMaxRounds()
 
         val fullLog = mutableListOf<String>().apply {
-            add("📋 **群聊开始**")
-            add("用户提问：$userMsg")
+            add(localizedText("📋 **群聊开始**", "📋 **Group chat started**"))
+            add(localizedText("用户提问：", "User question: ") + userMsg)
             add("---")
         }
 
@@ -99,7 +100,7 @@ object GroupChatManager {
         // ===== 每轮 =====
         for (round in 1..maxRounds) {
             fullLog.add("")
-            fullLog.add("## 第 $round 轮")
+            fullLog.add(localizedText("## 第 $round 轮", "## Round $round"))
 
             val futures = participantIds.mapNotNull { modelId ->
                 val model = allModels.firstOrNull { it.modelId == modelId } ?: return@mapNotNull null
@@ -118,7 +119,7 @@ object GroupChatManager {
                                 fullLog.add("\n**${model.displayName}**：$reply")
                             }
                         } catch (e: Exception) {
-                            fullLog.add("\n**${model.displayName}**：（请求失败: ${e.message?.take(50) ?: "unknown"}）")
+                            fullLog.add("\n**${model.displayName}**: " + localizedText("（请求失败: ", "(request failed: ") + (e.message?.take(50) ?: "unknown") + ")")
                         }
                     }
                 }
@@ -137,7 +138,7 @@ object GroupChatManager {
                     val summaryBody = buildJsonObject {
                         put("model", JsonPrimitive(sumModel.modelId))
                         put("messages", buildJsonArray {
-                            add(buildJsonObject { put("role", JsonPrimitive("system")); put("content", JsonPrimitive("你是专业的群聊总结者。输出结构化总结。")) })
+                            add(buildJsonObject { put("role", JsonPrimitive("system")); put("content", JsonPrimitive(localizedText("你是专业的群聊总结者。输出结构化总结。", "You are a professional group-chat summarizer. Produce a structured summary."))) })
                             add(buildJsonObject { put("role", JsonPrimitive("user")); put("content", JsonPrimitive(summaryPrompt)) })
                         })
                         put("max_tokens", JsonPrimitive(600))
@@ -147,13 +148,13 @@ object GroupChatManager {
                     if (summary.isNotBlank()) {
                         fullLog.add("")
                         fullLog.add("---")
-                        fullLog.add("## 📝 总结报告")
+                        fullLog.add(localizedText("## 📝 总结报告", "## 📝 Summary report"))
                         fullLog.add(summary)
                     }
                 } catch (e: Exception) {
                     fullLog.add("")
                     fullLog.add("---")
-                    fullLog.add("## 📝 总结失败: ${e.message?.take(100) ?: "unknown"}")
+                    fullLog.add(localizedText("## 📝 总结失败: ", "## 📝 Summary failed: ") + (e.message?.take(100) ?: "unknown"))
                 }
             }
         }
@@ -168,17 +169,17 @@ object GroupChatManager {
         history: String, isFirstRound: Boolean
     ): JsonObject = buildJsonObject {
         val systemMsg = buildString {
-            append("你是 $modelName，正在参与一个AI群聊讨论。\n")
-            append("用户的问题：$userMsg\n")
-            append("当前讨论记录：\n")
+            append(localizedText("你是 $modelName，正在参与一个AI群聊讨论。\n", "You are $modelName, participating in an AI group-chat discussion.\n"))
+            append(localizedText("用户的问题：", "User question: ")).append(userMsg).append('\n')
+            append(localizedText("当前讨论记录：\n", "Current discussion log:\n"))
             append(history.takeLast(4000))
-            if (isFirstRound) append("\n请首先发表你的看法。如需点名，用 [@模型名称] 格式。")
-            else append("\n结合以上讨论，提出你的补充、反驳或新观点。使用 [@模型名称] 点名。")
+            if (isFirstRound) append(localizedText("\n请首先发表你的看法。如需点名，用 [@模型名称] 格式。", "\nGive your view first. To address another model, use [@model name]."))
+            else append(localizedText("\n结合以上讨论，提出你的补充、反驳或新观点。使用 [@模型名称] 点名。", "\nBased on the discussion, add, challenge, or introduce a new point. Use [@model name] to address another model."))
         }
 
         put("model", JsonPrimitive(modelId))
         put("messages", buildJsonArray {
-            add(buildJsonObject { put("role", JsonPrimitive("system")); put("content", JsonPrimitive("你是一个专业的AI助手，正在参与群聊讨论。输出简洁专业。")) })
+            add(buildJsonObject { put("role", JsonPrimitive("system")); put("content", JsonPrimitive(localizedText("你是一个专业的AI助手，正在参与群聊讨论。输出简洁专业。", "You are a professional AI assistant participating in a group chat. Be concise and professional."))) })
             add(buildJsonObject { put("role", JsonPrimitive("user")); put("content", JsonPrimitive(systemMsg)) })
         })
         put("max_tokens", JsonPrimitive(400))
@@ -186,17 +187,17 @@ object GroupChatManager {
     }
 
     private fun buildSummationPrompt(fullLog: String): String = buildString {
-        appendLine("请阅读以下AI群聊讨论记录，输出一份简洁的总结报告：")
+        appendLine(localizedText("请阅读以下AI群聊讨论记录，输出一份简洁的总结报告：", "Read the following AI group-chat log and produce a concise summary report:"))
         appendLine()
         appendLine(fullLog.takeLast(5000))
         appendLine()
-        appendLine("总结要求：")
-        appendLine("1. 用户的核心问题是什么")
-        appendLine("2. 各位AI的主要观点")
-        appendLine("3. 存在的分歧点")
-        appendLine("4. 最终的综合结论")
+        appendLine(localizedText("总结要求：", "Summary requirements:"))
+        appendLine(localizedText("1. 用户的核心问题是什么", "1. Identify the user's core question"))
+        appendLine(localizedText("2. 各位AI的主要观点", "2. Summarize each AI's main points"))
+        appendLine(localizedText("3. 存在的分歧点", "3. Identify disagreements"))
+        appendLine(localizedText("4. 最终的综合结论", "4. Give a final synthesis"))
         appendLine()
-        appendLine("请用结构化格式输出。")
+        appendLine(localizedText("请用结构化格式输出。", "Use a structured format."))
     }
 
     // ============ 上游调用 ============

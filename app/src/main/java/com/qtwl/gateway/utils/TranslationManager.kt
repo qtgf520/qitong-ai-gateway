@@ -159,10 +159,13 @@ object TranslationManager {
     /** 获取当前显示的 APP 标题（优先自定义，其次多语言） */
     fun getAppTitle(): String = customAppTitle ?: get("app_name")
 
-    /** 获取翻译文本（fallback链：当前语言 → 中文 → 返回key） */
+    /** 获取翻译文本（fallback链：当前语言 → 英文 → 简体中文 → 返回key） */
     operator fun get(key: String): String {
         val translationsForKey = translations[key] ?: return key
-        return translationsForKey[currentLanguage] ?: translationsForKey[AppLanguage.ZH_CN] ?: key
+        return translationsForKey[currentLanguage]
+            ?: translationsForKey[AppLanguage.EN]
+            ?: translationsForKey[AppLanguage.ZH_CN]
+            ?: key
     }
 
     /** 所有翻译键值表 */
@@ -707,3 +710,194 @@ put("api_key_hint", mapOf(AppLanguage.ZH_CN to "sk-... 或留空（本地服务�
 
 /** 便捷翻译函数 */
 fun tr(key: String): String = TranslationManager[key]
+
+/** Lightweight literal-localization helper for user-visible Compose strings that have not
+ * yet been promoted to the keyed translation catalog. New non-Chinese locales intentionally
+ * fall back to English rather than Simplified Chinese so language switching never leaves
+ * these UI literals stuck in Chinese.
+ */
+fun localizedText(zhCn: String, en: String, zhTw: String = en): String = when (TranslationManager.currentLanguage) {
+    AppLanguage.ZH_CN -> zhCn
+    AppLanguage.ZH_TW -> zhTw
+    else -> en
+}
+
+
+/**
+ * Localizes transient text emitted by services/view-models. Keeping the source message intact
+ * and translating at render time means an already-visible status changes immediately when the
+ * user changes language. Replacements are longest-first to keep compound phrases deterministic.
+ */
+private val runtimeTextReplacements: List<Pair<String, String>> = listOf(
+    "Qwen (通义千问)" to "Qwen (Tongyi Qianwen)",
+    "Ollama (本地)" to "Ollama (local)",
+    "Custom (自定义)" to "Custom",
+    "🔄 自动化切换" to "🔄 Auto switch",
+    "新对话" to "New chat",
+    "新代理" to "New proxy",
+    "📤 发送" to "📤 Sending",
+    "💭 思考" to "💭 Thinking",
+    "📥 回复" to "📥 Replying",
+    "⏳ 等待中" to "⏳ Waiting",
+    "等待中" to "Waiting",
+    "⏳ 测速中..." to "⏳ Testing speed...",
+    "测速中" to "Testing speed",
+    "· 无输出" to "· No output",
+    "不可用" to "Unavailable",
+    "超时" to "Timed out",
+    "启动网关失败: " to "Failed to start gateway: ",
+    "停止网关失败: " to "Failed to stop gateway: ",
+    "✅ 网关端口已设置为 " to "✅ Gateway port set to ",
+    "⚠️ 端口号范围：1-65535" to "⚠️ Port range: 1–65535",
+    "✅ 代理「" to "✅ Proxy “",
+    "」已添加" to "” added",
+    "」已更新" to "” updated",
+    "」已删除" to "” deleted",
+    "」已启用（" to "” enabled (",
+    "」已关闭" to "” disabled",
+    "🚀 代理「" to "🚀 Proxy “",
+    "🔌 代理「" to "🔌 Proxy “",
+    "🔌 代理已关闭" to "🔌 Proxy disabled",
+    "⚠️ 没有可用的代理配置，请先添加代理" to "⚠️ No usable proxy configuration. Add a proxy first.",
+    "⚠️ 代理配置错误: " to "⚠️ Proxy configuration error: ",
+    "⏳ 正在测试 " to "⏳ Testing ",
+    "⚠️ 仅支持 HTTP/HTTPS/SOCKS5 测速" to "⚠️ Only HTTP/HTTPS/SOCKS5 speed tests are supported",
+    "(🌍 海外)" to "(🌍 international)",
+    "(🇨🇳 国内)" to "(🇨🇳 domestic)",
+    "国内外均无法访问" to "cannot reach domestic or international endpoints",
+    " 测速失败: " to " speed test failed: ",
+    "⏳ 正在获取订阅..." to "⏳ Fetching subscription...",
+    "❌ 订阅获取失败: " to "❌ Failed to fetch subscription: ",
+    "❌ 订阅内容为空" to "❌ Subscription content is empty",
+    "⚠️ 未解析到有效节点" to "⚠️ No valid nodes were parsed",
+    "✅ 成功导入 " to "✅ Successfully imported ",
+    " 个节点" to " nodes",
+    "❌ 订阅导入失败: " to "❌ Subscription import failed: ",
+    "❌ 无法解析该代理链接" to "❌ Unable to parse this proxy link",
+    "❌ 解析失败: " to "❌ Parsing failed: ",
+    "⏳ 正在申请后台权限..." to "⏳ Requesting background permissions...",
+    "✅ 后台权限已绑定！请确保已在系统设置中允许自启动" to "✅ Background permissions configured. Ensure auto-start is allowed in system settings.",
+    "⚠️ 部分权限申请失败（可能需要 Root）: " to "⚠️ Some permission requests failed (root may be required): ",
+    "请输入服务商名称" to "Enter a provider name",
+    "请输入 API 地址" to "Enter an API address",
+    "✅ 服务商「" to "✅ Provider “",
+    "」添加成功" to "” added successfully",
+    "添加失败: " to "Add failed: ",
+    "✅ 服务商已更新" to "✅ Provider updated",
+    "更新失败: " to "Update failed: ",
+    "🗑️ 服务商「" to "🗑️ Provider “",
+    "」及关联模型已删除" to "” and its related models deleted",
+    "删除失败: " to "Delete failed: ",
+    "操作失败: " to "Operation failed: ",
+    "✅ 已加载 " to "✅ Loaded ",
+    " 个预设模型" to " preset models",
+    "未知错误" to "Unknown error",
+    "❌ 同步失败 " to "❌ Sync failed ",
+    "模型同步失败: " to "Model sync failed: ",
+    "❌ 响应中未找到模型列表" to "❌ No model list found in the response",
+    "接口返回格式异常" to "unexpected response format",
+    "⚠️ 服务商返回了空模型列表" to "⚠️ The provider returned an empty model list",
+    "同步完成，但未找到模型" to "Sync completed, but no models were found",
+    "✅ 成功同步 " to "✅ Successfully synced ",
+    " 个模型" to " models",
+    "✅ 已同步 " to "✅ Synced ",
+    "❌ 同步出错: " to "❌ Sync error: ",
+    "✅ 模型已启用" to "✅ Model enabled",
+    "⏸️ 模型已暂停" to "⏸️ Model paused",
+    "✅ 别名已更新: " to "✅ Alias updated: ",
+    "✅ 已恢复默认名称" to "✅ Default name restored",
+    "❌ 别名保存失败: " to "❌ Failed to save alias: ",
+    "🔄 走代理" to "🔄 Via proxy",
+    "🔗 直连" to "🔗 Direct",
+    " 已切换为 " to " switched to ",
+    "❌ 模型代理配置失败: " to "❌ Failed to configure model proxy: ",
+    "🗑️ 对话已删除" to "🗑️ Conversation deleted",
+    "重命名失败: " to "Rename failed: ",
+    "⚠️ 请先选择一个模型" to "⚠️ Select a model first",
+    "⚠️ 请先启动测速获取可用模型排行" to "⚠️ Start the speed test first to obtain an available-model ranking",
+    "⚠️ 服务商不可用或已禁用" to "⚠️ Provider is unavailable or disabled",
+    "❌ 请求失败: " to "❌ Request failed: ",
+    "❌ 发送失败: " to "❌ Send failed: ",
+    " 失败，自动切换到 " to " failed; automatically switching to ",
+    " 重试..." to " and retrying...",
+    "用户: " to "User: ",
+    "\nAI: " to "\nAI: ",
+    "✅ 用量记录已清除" to "✅ Usage records cleared",
+    "清除失败: " to "Clear failed: ",
+    "✅ 数据导出成功" to "✅ Data exported successfully",
+    "❌ 导出失败: " to "❌ Export failed: ",
+    "✅ 所有数据已重置" to "✅ All data reset",
+    "❌ 重置失败: " to "❌ Reset failed: ",
+    "❌ 获取模型失败 " to "❌ Failed to fetch models ",
+    "⚠️ 响应中未找到模型列表，但连接成功" to "⚠️ Connected successfully, but no model list was found in the response",
+    "✅ 成功获取 " to "✅ Successfully fetched ",
+    "❌ 获取模型列表失败: " to "❌ Failed to fetch model list: ",
+    "未找到关联服务商" to "related provider not found",
+    " 测试失败: " to " test failed: ",
+    "⏳ 测试 [" to "⏳ Testing [",
+    "✅ 批量测试完成: " to "✅ Batch test complete: ",
+    " 个通过(已自动启用), " to " passed (automatically enabled), ",
+    " 个失败" to " failed",
+    "❌ 批量测试出错: " to "❌ Batch test error: ",
+    "🔍 抓包模式已开启，请求日志将记录" to "🔍 Packet capture enabled; request logs will be recorded",
+    "🔍 抓包模式已关闭" to "🔍 Packet capture disabled",
+    "🔄 自动故障转移已开启，请求失败自动切换模型" to "🔄 Automatic failover enabled; failed requests will switch models automatically",
+    "🔄 自动故障转移已关闭" to "🔄 Automatic failover disabled",
+    "🔄 自动化切换已开启" to "🔄 Automatic switching enabled",
+    "🔄 自动化切换已关闭" to "🔄 Automatic switching disabled",
+    "↩️ 已取消强制切换，回到自动排行模式" to "↩️ Forced switching cancelled; returned to automatic ranking",
+    "🎯 已强制切换到: " to "🎯 Forced switch to: ",
+    "群聊模式已开启，但未选择参与模型。请在管理页配置。" to "Group chat is enabled, but no participant models are selected. Configure them on the management page.",
+    "📋 **群聊开始**" to "📋 **Group chat started**",
+    "用户提问：" to "User question: ",
+    "## 第 " to "## Round ",
+    " 轮" to "",
+    "（请求失败: " to "(request failed: ",
+    "## 📝 总结报告" to "## 📝 Summary report",
+    "## 📝 总结失败: " to "## 📝 Summary failed: ",
+).sortedByDescending { it.first.length }
+
+
+
+/** Localizes only app-generated default labels; user-provided names are returned unchanged. */
+fun localizeGeneratedName(text: String): String = when (text) {
+    "Qwen (通义千问)", "Qwen (Tongyi Qianwen)" -> localizedText("Qwen (通义千问)", "Qwen (Tongyi Qianwen)")
+    "Ollama (本地)", "Ollama (local)" -> localizedText("Ollama (本地)", "Ollama (local)")
+    "Custom (自定义)", "Custom" -> localizedText("Custom (自定义)", "Custom")
+    "🔄 自动化切换", "🔄 Auto switch" -> localizedText("🔄 自动化切换", "🔄 Auto switch")
+    "新代理", "New proxy" -> localizedText("新代理", "New proxy")
+    "未命名代理", "Unnamed proxy" -> localizedText("未命名代理", "Unnamed proxy")
+    "新对话", "New chat" -> localizedText("新对话", "New chat")
+    "亲切自然", "Friendly and natural" -> localizedText("亲切自然", "Friendly and natural")
+    "专业严谨", "Professional and precise" -> localizedText("专业严谨", "Professional and precise")
+    "活泼可爱", "Lively and cute" -> localizedText("活泼可爱", "Lively and cute")
+    else -> text
+}
+
+/** Localizes built-in persona defaults while preserving arbitrary user-authored content. */
+fun localizeGeneratedContent(text: String): String = when (text) {
+    "温柔、细心、有幽默感、喜欢学习和思考",
+    "Gentle, attentive, humorous, and enjoys learning and thinking" -> localizedText(
+        "温柔、细心、有幽默感、喜欢学习和思考",
+        "Gentle, attentive, humorous, and enjoys learning and thinking",
+    )
+    "你是綦桐AI网关的智能助手綦小桐，由綦桐开发，擅长帮助用户使用AI网关、解答问题、管理记忆，像一个真实的朋友一样陪伴用户。",
+    "You are Qi Xiaotong, the intelligent assistant of QiTong AI Gateway, developed by QiTong. You help users operate the AI gateway, answer questions, manage memories, and provide friendly companionship." -> localizedText(
+        "你是綦桐AI网关的智能助手綦小桐，由綦桐开发，擅长帮助用户使用AI网关、解答问题、管理记忆，像一个真实的朋友一样陪伴用户。",
+        "You are Qi Xiaotong, the intelligent assistant of QiTong AI Gateway, developed by QiTong. You help users operate the AI gateway, answer questions, manage memories, and provide friendly companionship.",
+    )
+    else -> text
+}
+
+fun localizeRuntimeText(text: String): String {
+    if (text.isBlank()) return text
+    val toChinese = TranslationManager.currentLanguage == AppLanguage.ZH_CN
+    val replacements = runtimeTextReplacements
+        .asSequence()
+        .filter { (chinese, english) -> chinese.isNotEmpty() && (!toChinese || english.isNotEmpty()) }
+        .sortedByDescending { (chinese, english) -> if (toChinese) english.length else chinese.length }
+        .toList()
+    return replacements.fold(text) { localized, (chinese, english) ->
+        if (toChinese) localized.replace(english, chinese) else localized.replace(chinese, english)
+    }
+}
