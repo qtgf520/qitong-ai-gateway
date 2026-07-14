@@ -6,6 +6,25 @@
 
 ---
 
+## 🔄 v3.9.2（正式发布）
+
+### 🐛 核心修复
+
+#### 🧠 大脑流式修复
+- **大脑 stream=true 返回空** — 修复大脑路径 stream=true 时 SSE 流解析失败导致返回空内容的问题
+- **SSE 流解析** — 大脑路径新增 `data: {}` 逐行解析，正确提取 `delta.content`
+- **usage 统计** — stream 模式下从 SSE chunk 中提取 usage 数据
+
+#### 🔄 qtai-sj 透传优化
+- **参数修正** — qtai-sj 透传路径增加 `sanitizeRequestBody()` 参数校验
+- **model 替换** — 改用正则只替换第一个 model 字段，避免全局替换损坏 JSON
+- **persona 注入** — 透传路径支持可选人格注入，与正常模型路径对齐
+
+#### 📋 其他
+- 备份文件清理（`.bak` 文件）
+
+---
+
 ## 🔄 v3.9.1（正式发布）
 
 > 开发：Adybag14-赛博（GitHub PR #2）
