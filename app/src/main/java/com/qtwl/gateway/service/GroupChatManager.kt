@@ -47,13 +47,7 @@ object GroupChatManager {
         GatewayApplication.getInstance().getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     fun isEnabled(): Boolean {
-        // ★ 无参与者时自动关闭，避免阻塞大脑路径 ★
-        val enabled = prefs().getBoolean(KEY_GROUP_CHAT_ENABLED, false)
-        if (enabled && getParticipantModels().isEmpty()) {
-            setEnabled(false)
-            return false
-        }
-        return enabled
+        return prefs().getBoolean(KEY_GROUP_CHAT_ENABLED, false)
     }
     fun setEnabled(enabled: Boolean) {
         prefs().edit().putBoolean(KEY_GROUP_CHAT_ENABLED, enabled).apply()

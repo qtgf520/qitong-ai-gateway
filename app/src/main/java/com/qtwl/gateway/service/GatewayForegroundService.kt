@@ -2,8 +2,10 @@ package com.qtwl.gateway.service
 
 import android.app.PendingIntent
 import android.app.Service
+import android.app.AlarmManager
 import android.content.Intent
 import android.os.IBinder
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import com.qtwl.gateway.GatewayApplication
 import com.qtwl.gateway.MainActivity
@@ -40,6 +42,8 @@ class GatewayForegroundService : Service() {
     private lateinit var gatewayService: GatewayService
     private var notificationJob: Job? = null
     private var wakeEnabled = false // 是否开启唤醒保活
+    private var wakeLock: PowerManager.WakeLock? = null
+    private var alarmKeepAliveJob: Job? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -52,6 +56,12 @@ class GatewayForegroundService : Service() {
         // 通知栏流量从零开始（重启清零）
         trafficUploadBytes.set(0L)
         trafficDownloadBytes.set(0L)
+        
+        // ★★ 关屏保活：获取电源锁 + 定时Alarm唤醒 ★★
+        if (wakeEnabled) {
+            acquireWakeLock()
+            scheduleAlarmKeepAlive()
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -59,6 +69,13 @@ class GatewayForegroundService : Service() {
         if (intent?.hasExtra(EXTRA_TOGGLE_WAKE) == true) {
             wakeEnabled = !wakeEnabled
             saveWakeEnabled(wakeEnabled)
+            if (wakeEnabled) {
+                acquireWakeLock()
+                scheduleAlarmKeepAlive()
+            } else {
+                releaseWakeLock()
+                cancelAlarmKeepAlive()
+            }
         }
 
         updateNotification()
@@ -182,8 +199,63 @@ class GatewayForegroundService : Service() {
 
     override fun onDestroy() {
         notificationJob?.cancel()
+        alarmKeepAliveJob?.cancel()
+        releaseWakeLock()
+        cancelAlarmKeepAlive()
         gatewayService.stop()
         super.onDestroy()
+    }
+
+    // ★★ 关屏保活：WakeLock ★★
+    private fun acquireWakeLock() {
+        if (wakeLock == null) {
+            try {
+                val pm = getSystemService(POWER_SERVICE) as PowerManager
+                wakeLock = pm.newWakeLock(
+                    PowerManager.PARTIAL_WAKE_LOCK,
+                    "qitong:gateway_keepalive"
+                ).apply {
+                    setReferenceCounted(false)
+                    acquire(30 * 60 * 1000L) // 最多30分钟自动释放
+                }
+                addDebugLog("🔌 WakeLock acquired")
+            } catch (_: Exception) { }
+        }
+    }
+
+    private fun releaseWakeLock() {
+        try {
+            wakeLock?.release()
+        } catch (_: Exception) { }
+        wakeLock = null
+    }
+
+    // ★★ 关屏保活：AlarmManager 定时唤醒（每5分钟自唤醒一次）★★
+    private fun scheduleAlarmKeepAlive() {
+        try {
+            val alarmMgr = getSystemService(ALARM_SERVICE) as AlarmManager
+            val intent = Intent(this, GatewayForegroundService::class.java)
+            val pi = PendingIntent.getService(this, 1, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            alarmMgr.setRepeating(
+                AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                android.os.SystemClock.elapsedRealtime() + 300000,
+                300000, // 每5分钟
+                pi
+            )
+            addDebugLog("⏰ Alarm keep-alive scheduled (5min)")
+        } catch (_: Exception) { }
+    }
+
+    private fun cancelAlarmKeepAlive() {
+        try {
+            val alarmMgr = getSystemService(ALARM_SERVICE) as AlarmManager
+            val intent = Intent(this, GatewayForegroundService::class.java)
+            val pi = PendingIntent.getService(this, 1, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            alarmMgr.cancel(pi)
+            pi.cancel()
+        } catch (_: Exception) { }
     }
 
     companion object {

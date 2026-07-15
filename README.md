@@ -1,7 +1,7 @@
 # 綦桐AI网关 | QiTong AI Gateway
 
 > **包名 / Package：** `com.qtwl.gateway`  
-> **最新版本 / Latest：** v3.9.2 (versionCode=127)  
+> **最新版本 / Latest：** v3.9.3 (versionCode=129)  
 > **开源协议 / License：** Apache 2.0  
 > **语言 / Languages：** 🌐 15 languages (CN/EN/JP/KR/FR/DE/ES/RU/PT/VN/TH/AR/HI/ID)
 > **官方QQ群 / QQ Group：** [1007488535](https://qm.qq.com/q/1007488535) 💬
@@ -122,6 +122,7 @@ See [CHANGELOG.md](CHANGELOG.md) for full changelog.
 
 | Version | Key Features |
 |:--------|:-------------|
+| v3.9.3 | 🐛 群聊开关修复 + 后台保活(WakeLock+Alarm) + 启动权限检查 |
 | v3.9.2 | 🧠 大脑流式修复 + qtai-sj透传优化 |
 | v3.9.1 | 🌐 多语言修复 (Adybag14-赛博 PR #2) |
 | v3.9.0 | 🐛 通知栏流量修复 + 模型统计 + 大脑直连 + 多语言键扩充 |

@@ -762,12 +762,41 @@ ${SkillRegistry.buildSkillPrompt()}
                                     .post(brainBody.toByteArray().toRequestBody(DEFAULT_CT))
                                     .apply { if (!brainProvider.apiKey.isNullOrBlank()) header("Authorization", "Bearer ${brainProvider.apiKey}") }
                                     .build()
-                                val brainResp = withContext(Dispatchers.IO) { brainClient.newCall(brainReq).execute() }
-                                val brainBodyStr = brainResp.body?.string() ?: "{}"
-                                brainResp.close()
-                            
-                                val brainJson = try { proxyJson.parseToJsonElement(brainBodyStr).jsonObject } catch (_: Exception) { null }
-var brainContent = brainJson?.get("choices")?.jsonArray?.firstOrNull()?.jsonObject?.get("message")?.jsonObject?.get("content")?.jsonPrimitive?.content ?: ""
+                                 val brainResp = withContext(Dispatchers.IO) { brainClient.newCall(brainReq).execute() }
+
+                                 // ★★★ 修复大脑流式：stream=true时正确读取SSE流 ★★★
+                                var brainBodyStr = ""
+                                var brainJson: kotlinx.serialization.json.JsonObject? = null
+                                var brainContent = if (stream) {
+                                    val bodyBytes = brainResp.body?.bytes() ?: byteArrayOf()
+                                    brainResp.close()
+                                    val sseText = bodyBytes.decodeToString()
+                                    brainBodyStr = sseText
+                                    val contentBuilder = StringBuilder()
+                                    for (line in sseText.lines()) {
+                                        if (line.startsWith("data: ") && line != "data: [DONE]") {
+                                            val jsonStr = line.removePrefix("data: ")
+                                            try {
+                                                val chunk = proxyJson.parseToJsonElement(jsonStr).jsonObject
+                                                val choices = chunk["choices"]?.jsonArray
+                                                val first = choices?.firstOrNull()?.jsonObject
+                                                val delta = first?.get("delta")?.jsonObject
+                                                val content = delta?.get("content")?.jsonPrimitive?.content
+                                                if (content != null) contentBuilder.append(content)
+                                                // 尝试提取最后一个chunk中的usage
+                                                val usage = chunk["usage"]?.jsonObject
+                                                if (usage != null) brainJson = chunk
+                                            } catch (_: Exception) {}
+                                        }
+                                    }
+                                    contentBuilder.toString()
+                                } else {
+                                    val bodyStr = brainResp.body?.string() ?: "{}"
+                                    brainResp.close()
+                                    brainBodyStr = bodyStr
+                                    brainJson = try { proxyJson.parseToJsonElement(bodyStr).jsonObject } catch (_: Exception) { null }
+                                    brainJson?.get("choices")?.jsonArray?.firstOrNull()?.jsonObject?.get("message")?.jsonObject?.get("content")?.jsonPrimitive?.content ?: ""
+                                }
 
 // ★★★ qtai-sj脑子路径统计：解析usage+下载流量+记忆 ★★★
 val brainUsage = brainJson?.get("usage")?.jsonObject
@@ -951,10 +980,17 @@ if (brainContent.isNotBlank()) {
                 if (provider != null && provider.isEnabled) {
                     // ★★ 通知栏同步模型名 ★★
                     GatewayForegroundService.activeNodeName = finalTarget.modelId
-                    // ★★ 直接透传：用目标模型的provider和url转发，不加人格/记忆 ★★
-                    val resolvedUrl = provider.resolvedBaseUrl.trimEnd('/')
-                    // 替换model字段为目标模型ID
-                    val modifiedBody = requestBodyStr.replace("\"model\":\"qtai-sj\"", "\"model\":\"${finalTarget.modelId}\"")
+                    // ★★ 透传：修正参数 + 替换model字段 + 可选人格注入 ★★
+                    val sanitizedBody = sanitizeRequestBody(requestBodyStr)
+                    val bodyWithPersona = if (BrainMemoryManager.getConfig().enabled) {
+                        val personaText = BrainMemoryManager.buildPersonaPrompt()
+                        if (personaText.isNotBlank()) {
+                            val systemJson = "{\"role\":\"system\",\"content\":${proxyJson.encodeToString(JsonPrimitive(personaText))}}"
+                            sanitizedBody.replaceFirst(Regex("\"messages\"\\s*:\\s*\\["), "\"messages\":[$systemJson,")
+                        } else sanitizedBody
+                    } else sanitizedBody
+                    // 用正则只替换第一个model字段（避免全局替换损坏JSON）
+                    val modifiedBody = bodyWithPersona.replaceFirst(Regex("\"model\"\\s*:\\s*\"[^\"]+\""), "\"model\":\"${finalTarget.modelId}\"")
                     val modifiedBytes = modifiedBody.toByteArray()
                     val useProxy = finalTarget.useProxy
                     
