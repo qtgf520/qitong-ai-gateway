@@ -17,6 +17,7 @@
 8. **⌨️ 改代码优先 Vim / Neovim** — 修改代码时优先打开 Vim 或 Neovim 进行编辑，避免使用其他编辑器导致格式错乱
 9. **🚫 禁止卸载APP** — 签名不对重新签名，禁止卸载（保持用户数据）
 10. **📲 安装使用 Shizuku 权限** — 无 root 权限时用 Shizuku 授权安装
+11. **🔒 发布不泄漏本地凭证** — 签名证书(`*.jks`/`*.keystore`)、密码(`storePassword`/`keyPassword`)、构建产物(`*.idsig`/`*.apk`/`*.aab`) 禁止提交Git。`.gitignore` 已含规则，`git add` 前先 `git status` 检查有无敏感文件
 ---
 
 ## 1. 版本号规则
@@ -162,9 +163,13 @@ dumpsys package com.qtwl.gateway | grep -E 'versionName|versionCode'
 
 ## 7. 推送 Git & 发布
 
-### 7.1 推送 Git
+### 7.1 推送 Git（先检查敏感文件）
 ```bash
 cd /data/user/0/com.ai.assistance.operit/files/workspace/app621
+
+# ⚠️ 先检查有无敏感文件被跟踪
+git status
+# 确认没有 *.jks *.keystore *.idsig *.apk *.aab 等文件再提交
 
 # 清理备份文件
 find . -name '*.bak' -delete
@@ -216,6 +221,6 @@ ls -dt backup_*/ | tail -n +2 | xargs rm -rf 2>/dev/null
 
 ---
 
-> **文档版本:** v14 — 2026-07-14
+> **文档版本:** v15 — 2026-07-15
 > **适用于:** 綦桐AI网关 v3.9.x+
-> **核心改动:** 新增Vim/Neovim优先编辑 + 禁止卸载APP铁律 + Shizuku安装
+> **核心改动:** 新增铁律11（发布不泄漏本地凭证）+ Git推送前敏感文件检查
