@@ -80,9 +80,19 @@ class GatewayForegroundService : Service() {
 
         updateNotification()
 
+        // ★★ 同步设置服务状态，确保ViewModel初始化时能读到正确值 ★★
+        if (getGatewayWasRunning()) {
+            isServiceRunning = true
+        }
+
         serviceScope.launch {
             val port = getGatewayPort()
-            gatewayService.start(port = port)
+            if (getGatewayWasRunning()) {
+                gatewayService.start(port = port)
+                addDebugLog("🔁 自启→网关已启动（上次运行中）")
+            } else {
+                addDebugLog("🔁 自启→网关未启动（上次已关闭）")
+            }
         }
 
         notificationJob?.cancel()
@@ -279,6 +289,7 @@ class GatewayForegroundService : Service() {
         private const val EXTRA_TOGGLE_WAKE = "toggle_wake"
         private const val KEY_TRAFFIC_UPLOAD = "traffic_upload"
         private const val KEY_TRAFFIC_DOWNLOAD = "traffic_download"
+        private const val KEY_GATEWAY_RUNNING = "gateway_was_running" // ★★ 自启状态记录 ★★
         private const val DEFAULT_PORT = 8889
         private const val DEFAULT_PROXY_PORT = 7890
 
@@ -444,6 +455,15 @@ val totalDownloadBytes = java.util.concurrent.atomic.AtomicLong(0L)   // ★ APP
         fun stop() {
             GatewayApplication.getInstance().stopService(Intent(GatewayApplication.getInstance(), GatewayForegroundService::class.java))
         }
+
+        // ★★ 自启状态记录 ★★
+        fun saveGatewayRunningState(isRunning: Boolean) {
+            GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).edit()
+                .putBoolean(KEY_GATEWAY_RUNNING, isRunning).apply()
+        }
+        
+        fun getGatewayWasRunning(): Boolean = GatewayApplication.getInstance()
+            .getSharedPreferences(PREF_NAME, 0).getBoolean(KEY_GATEWAY_RUNNING, false)
 
         // ★ API密钥验证配置
         fun getRequireApiKey(): Boolean = getGatewayConfig("require_api_key", "false").toBooleanStrictOrNull() ?: false

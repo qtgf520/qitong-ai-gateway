@@ -606,6 +606,7 @@ companion object {
             GatewayForegroundService.start()
             _serviceRunning.value = true
             GatewayForegroundService.isServiceRunning = true
+            GatewayForegroundService.saveGatewayRunningState(true)
         } catch (e: Exception) {
             _snackbarMessage.value = "启动网关失败: ${e.message}"
         }
@@ -617,6 +618,7 @@ companion object {
             GatewayForegroundService.stop()
             _serviceRunning.value = false
             GatewayForegroundService.isServiceRunning = false
+            GatewayForegroundService.saveGatewayRunningState(false)
         } catch (e: Exception) {
             _snackbarMessage.value = "停止网关失败: ${e.message}"
         }
