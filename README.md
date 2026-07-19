@@ -1,7 +1,7 @@
 # 綦桐AI网关 | QiTong AI Gateway
 
 > **包名 / Package：** `com.qtwl.gateway`  
-> **最新版本 / Latest：** v3.9.4 (versionCode=130)  
+> **最新版本 / Latest：** v3.10.0 (versionCode=133)  
 > **开源协议 / License：** Apache 2.0  
 > **语言 / Languages：** 🌐 15 languages (CN/EN/JP/KR/FR/DE/ES/RU/PT/VN/TH/AR/HI/ID)
 > **官方QQ群 / QQ Group：** [1007488535](https://qm.qq.com/q/1007488535) 💬
@@ -11,32 +11,54 @@
 ## 🇨🇳 中文
 
 ### 📖 简介
-綦桐AI网关是一款运行在 **Android 设备**上的本地 AI API 网关应用。它将手机变成一个 **AI 请求转发中心**，统一管理多个 AI 服务商和模型，支持智能故障转移、代理加速、流量统计等功能。
+綦桐AI网关是一款运行在 **Android 设备**上的本地 AI API 网关应用。它将手机变成一个 **AI 请求转发中心**，统一管理多个 AI 服务商和模型，支持智能故障转移、代理加速、流量统计、密钥管理等功能。
 
-### ✨ 核心功能
+### 🚀 核心功能
 
 | 功能 | 说明 |
 |:-----|:------|
-| 🚀 **綦桐AI测速 (qtai-sj)** | 虚拟模型，前缀指令（綦小桐/qtai-sj/XiaoTong+自定义人格名）控制系统 |
-| 🧠 **绑定脑子模型** | qtai-sj可绑定专属模型理解自然语言，未命中硬指令时自动调脑子分析意图 |
+| 🔑 **API 密钥管理** | 独立密钥管理页面，本地请求免密钥，每把钥匙可单独控制模型权限和 qtai-sj 访问 |
+| 📡 **完整 API 接口适配** | 完整支持 OpenAI / Claude / Gemini 三大原生格式，共 **16 个接口** |
+| 🚀 **綦桐AI测速 (qtai-sj)** | 虚拟模型，自动选最快模型，支持大脑+人格+记忆系统 |
 | 🧠 **大脑记忆系统** | 短期/长期记忆自动保存，情感标签+重要性评分，人格+记忆注入上游请求 |
-| 🧑 **人格系统** | 自定义名字/年龄/性格/语气/背景，动态绑定前缀，人格同步通知栏 |
-| 🔄 **智能排序 a→d→b→c** | 当前可用→历史成功→从未测→失败，故障转移自动切换 |
-| 🔢 **排行编号切换** | 指令查看排行带编号，回复数字直接切换模型 |
-| 🚀 **网关代理** | 本地 Ktor Server（默认 8889 端口），转发 `/v1/*` 所有请求 |
+| 🧑 **人格系统** | 自定义名字/年龄/性格/语气/背景，动态绑定前缀 |
 | 🔄 **智能故障转移** | 自动测速所有模型，失败时自动切换到最快可用模型 |
 | 🔌 **多服务商管理** | 支持 OpenAI / DeepSeek / Claude / Ollama / Custom 等 |
 | 🌐 **代理加速** | HTTP/HTTPS/SOCKS5，订阅导入，按模型粒度控制 |
 | 💬 **内置聊天** | 完整聊天对话管理，流式 SSE 输出，Token 用量统计 |
-| 📊 **数据管理** | 一键备份/恢复，定时自动备份，JSON 导出/导入 |
+| 📊 **数据管理** | 一键备份/恢复（含密钥），定时自动备份，JSON 导出/导入 |
 | 🔍 **抓包调试** | 内置网关抓包工具，实时输入/输出流量监控 |
 | 🌐 **多语言** | 支持 **15 种语言**，自动跟随系统或手动切换 |
 | 🛡️ **参数修正** | temperature/top_p/penalty 越界自动修正 |
+| 🟢 **后台保活** | WakeLock + AlarmManager 双保活，关屏不掉线 |
+
+### 📡 完整 API 接口列表（16 个）
+
+| 接口 | 方法 | 路径 | 格式 |
+|------|------|------|------|
+| 模型列表 | GET | `/v1/models` | OpenAI / Claude / Gemini |
+| 对话补全 | POST | `/v1/chat/completions` | OpenAI |
+| 文本补全 | POST | `/v1/completions` | OpenAI |
+| Claude消息 | POST | `/v1/messages` | Claude |
+| 嵌入向量 | POST | `/v1/embeddings` | OpenAI |
+| 引擎嵌入 | POST | `/v1/engines/{model}/embeddings` | Gemini |
+| 重排序 | POST | `/v1/rerank` | OpenAI |
+| 内容审核 | POST | `/v1/moderations` | OpenAI |
+| 文本转语音 | POST | `/v1/audio/speech` | OpenAI |
+| 图像生成 | POST | `/v1/images/generations` | OpenAI |
+| 视频生成（同步） | POST | `/v1/videos` | OpenAI (form-data) |
+| 视频任务（异步） | POST | `/v1/video/generations` | OpenAI |
+| 视频状态查询 | GET | `/v1/video/generations/{task_id}` | OpenAI |
+| Gemini生成 | POST | `/v1beta/models/{model}:generateContent` | Gemini |
+| 实时语音 | WS | `/v1/realtime` | OpenAI |
+| 文件列表 | GET | `/v1/files` | ⏳ 未实现 |
+
+> 所有接口均支持 `model: "qtai-sj"` 自动解析为当前活跃模型，支持密钥验证+流量统计+访问日志。
 
 ### 🛠️ 技术栈
 - **语言：** Kotlin 100%
 - **UI：** Jetpack Compose + Material Design 3
-- **服务器：** Ktor Server (CIO)
+- **服务器：** Ktor Server (CIO，支持 WebSocket)
 - **HTTP 客户端：** OkHttp
 - **数据库：** Room
 - **序列化：** Kotlinx Serialization
@@ -60,36 +82,60 @@ git clone https://github.com/qtgf520/qitong-ai-gateway.git
 2. **同步模型列表**
 3. 返回 **首页** → 启动网关
 4. 第三方 APP 设置 Base URL: `http://手机IP:8889/v1`
-5. API Key 随意填写即可转发
+5. API Key 随意填写即可转发（或可在管理页配置密钥验证）
 
 ---
 
 ## 🇬🇧 English
 
 ### 📖 Introduction
-**QiTong AI Gateway** is a local AI API gateway running on **Android devices**. It turns your phone into an **AI request hub**, managing multiple AI providers and models with intelligent failover, proxy acceleration, and traffic statistics.
+**QiTong AI Gateway** is a local AI API gateway running on **Android devices**. It turns your phone into an **AI request hub**, managing multiple AI providers and models with intelligent failover, proxy acceleration, traffic statistics, and API key management.
 
-### ✨ Core Features
+### 🚀 Core Features
 
 | Feature | Description |
 |:--------|:------------|
-| 🚀 **qtai-sj Speed Mode** | Virtual model, auto-picks fastest model from pipeline ranking |
-| 🎯 **qtai-sj independent** | Works regardless of auto-failover switch, always uses ranking |
-| 🚀 **Gateway Proxy** | Local Ktor Server (default port 8889), proxies all `/v1/*` requests |
+| 🔑 **API Key Management** | Dedicated management page, local requests exempt, per-key model access control |
+| 📡 **Full API Support** | Complete OpenAI / Claude / Gemini format support, **16 endpoints** |
+| 🚀 **qtai-sj Speed Mode** | Virtual model, auto-picks fastest model, with brain + persona + memory |
+| 🧠 **Brain Memory System** | Short/long-term memory, emotion tags, importance scoring |
 | 🔄 **Smart Failover** | Auto speed-test all models, switch to fastest on failure |
-| 🧠 **Best Model Memory** | Remembers fastest model (5min cache), auto-prioritize next time |
 | 🔌 **Multi-Provider** | OpenAI / DeepSeek / Claude / Ollama / Custom support |
 | 🌐 **Proxy Acceleration** | HTTP/HTTPS/SOCKS5, subscription import, per-model proxy control |
 | 💬 **Built-in Chat** | Full chat management, SSE streaming, token usage tracking |
-| 📊 **Data Management** | One-click backup/restore, scheduled backups, JSON export/import |
+| 📊 **Data Management** | One-click backup/restore (incl. API keys), scheduled backups |
 | 🔍 **Packet Capture** | Built-in debug tool, real-time traffic monitoring |
 | 🌐 **Multi-language UI** | **15 languages** supported, auto-follow system or manual switch |
 | 🛡️ **Parameter Fix** | Auto-fix temperature/top_p/penalty out-of-range values |
+| 🟢 **Keep-Alive** | WakeLock + AlarmManager, stays online when screen off |
+
+### 📡 API Endpoints (16 total)
+
+| Endpoint | Method | Path | Format |
+|:---------|:-------|:-----|:-------|
+| List Models | GET | `/v1/models` | OpenAI / Claude / Gemini |
+| Chat Completions | POST | `/v1/chat/completions` | OpenAI |
+| Text Completions | POST | `/v1/completions` | OpenAI |
+| Claude Messages | POST | `/v1/messages` | Claude |
+| Embeddings | POST | `/v1/embeddings` | OpenAI |
+| Engine Embeddings | POST | `/v1/engines/{model}/embeddings` | Gemini |
+| Rerank | POST | `/v1/rerank` | OpenAI |
+| Moderations | POST | `/v1/moderations` | OpenAI |
+| Text-to-Speech | POST | `/v1/audio/speech` | OpenAI |
+| Image Generation | POST | `/v1/images/generations` | OpenAI |
+| Video (sync) | POST | `/v1/videos` | OpenAI (form-data) |
+| Video Task (async) | POST | `/v1/video/generations` | OpenAI |
+| Video Task Status | GET | `/v1/video/generations/{task_id}` | OpenAI |
+| Gemini Generate | POST | `/v1beta/models/{model}:generateContent` | Gemini |
+| Realtime (WebSocket) | WS | `/v1/realtime` | OpenAI |
+| File List | GET | `/v1/files` | ⏳ Not implemented |
+
+> All endpoints support `model: "qtai-sj"` as auto-resolve to the current active model, with API key validation, traffic stats, and access logging.
 
 ### 🛠️ Tech Stack
 - **Language:** Kotlin 100%
 - **UI:** Jetpack Compose + Material Design 3
-- **Server:** Ktor Server (CIO)
+- **Server:** Ktor Server (CIO, WebSocket support)
 - **HTTP Client:** OkHttp
 - **Database:** Room
 - **Serialization:** Kotlinx Serialization
@@ -112,7 +158,7 @@ git clone https://github.com/qtgf520/qitong-ai-gateway.git
 2. **Sync model list**
 3. Go to **Home** → Start Gateway
 4. Set Base URL in 3rd-party app: `http://phone-ip:8889/v1`
-5. Any API Key works for forwarding
+5. Any API Key works for forwarding (or configure key auth in Settings)
 
 ---
 
@@ -122,34 +168,36 @@ See [CHANGELOG.md](CHANGELOG.md) for full changelog.
 
 | Version | Key Features |
 |:--------|:-------------|
-| v3.9.3 | 🐛 群聊开关修复 + 后台保活(WakeLock+Alarm) + 启动权限检查 |
+| **v3.10.0** | 🚀 **完整API接口适配(16个)** + 🔑 **密钥管理系统** + 备份恢复密钥 + WebSocket实时语音 + 群聊不喊前缀 |
+| v3.9.4 | 🐛 群聊开关修复 + 后台保活(WakeLock+Alarm) + 启动权限检查 + 自启状态恢复 |
+| v3.9.3 | 🐛 群聊开关修复 + 后台保活 + 启动权限检查 |
 | v3.9.2 | 🧠 大脑流式修复 + qtai-sj透传优化 |
 | v3.9.1 | 🌐 多语言修复 (Adybag14-赛博 PR #2) |
-| v3.9.0 | 🐛 通知栏流量修复 + 模型统计 + 大脑直连 + 多语言键扩充 |
+| v3.9.0 | 🐛 通知栏流量修复 + 模型统计 + 大脑直连 |
 | v3.8.9 | 🧠 技能编码参数传递 + 前缀无空格匹配 + 兜底fallback |
-| v3.8.4 | 📊 通知栏流量统计策略 + 群聊模式排行榜勾选选模型 |
+| v3.8.4 | 📊 通知栏流量统计策略 + 群聊模式排行榜勾选 |
 | v3.7.6 | 🚀 qtai-sj无前缀转发修复 + 超时优化 |
 | v3.7.4 | 🚀 修复总输入为0 + 全路径统计覆盖 |
 | v3.7.3 | 🔥 qtai-sj统计修复 + 通知栏实时更新 |
-| v3.7.2 | 🛡️ 代码审查修复：API密钥验证+访问日志+健康检查完善 |
-| v3.7.1 | 🐛 豆包调试报告6项修复：SSE格式/500错误体/多模态 |
+| v3.7.2 | 🛡️ API密钥验证+访问日志+健康检查完善 |
+| v3.7.1 | 🐛 SSE格式/500错误体/多模态 6项修复 |
 | v3.7.0 | 🧑 人格名称全程脑子处理，自由对话智能体 |
-| v3.6.9 | 🏗️ 进程树重构：拆分GatewayScheduler调度层 |
+| v3.6.9 | 🏗️ 拆分GatewayScheduler调度层 |
 | v3.6.8 | ⚡ qtai-sj透传转发修复 |
 | v3.6.7 | ⚡ SSE流式卡顿修复+指定模型切换 |
-| v3.6.6 | 🧠 模型能力标记+脑子智能推荐+非chat路径修复 |
-| v3.6.5 | 🧠 全智能思考系统：脑子带排行榜分析，自动推荐模型并切换 |
-| v3.6.4 | 🧠 大脑记忆注入网关，记忆内容完整+短期补充 |
-| v3.6.3 | 🔢 排行编号+当前模型显示+编号切换+通知联动 |
+| v3.6.6 | 🧠 模型能力标记+脑子智能推荐 |
+| v3.6.5 | 🧠 全智能思考系统：排行榜分析+自动推荐模型 |
+| v3.6.4 | 🧠 大脑记忆注入网关 |
+| v3.6.3 | 🔢 排行编号+当前模型显示+编号切换 |
 | v3.6.2 | ✅ 指令系统+脑子模型全部调试通过 |
-| v3.6.1 | 🧑 人格名称动态绑定+Toast提示+切换模型ID修复 |
-| v3.6.0 | 🔥 前缀指令修复：必须綦小桐/qtai-sj/XiaoTong开头 |
-| v3.5.9 | 🧠 绑定脑子UI修复+前缀指令+故障转移保留 |
+| v3.6.1 | 🧑 人格名称动态绑定 |
+| v3.6.0 | 🔥 前缀指令修复 |
+| v3.5.9 | 🧠 绑定脑子UI修复+前缀指令 |
 | v3.5.8 | 🧠 qtai-sj绑定脑子+自然语言理解 |
-| v3.5.7 | 🧮 智能排序a→d→b→c+乱码修复+绿灯修复 |
+| v3.5.7 | 🧮 智能排序a→d→b→c |
 | v3.5.6 | 🟢 红绿灯测速状态指示灯 |
-| v3.5.5 | ⏱ 测速UI重构：双框展示+测完一个即可用 |
-| v3.5.4 | 📊 进度条+状态提示+自动测速+会话记忆 |
+| v3.5.5 | ⏱ 测速UI重构：双框展示 |
+| v3.5.4 | 📊 进度条+状态提示+自动测速 |
 | v3.4.1 | 🎯 手动强制切换模型, 📡实时会话跑马灯 |
 | v3.4.0 | 🐛 qtai-sj聊天室发消息请求修复 |
 | v3.3.6 | 🐛 markModelSuccess传真实延迟 |
