@@ -209,9 +209,10 @@ object UpstreamClient {
      */
     fun fetchModels(
         baseUrl: String,
-        apiKey: String?
+        apiKey: String?,
+        apiPath: String = "/v1/models"
     ): Response {
-        val url = baseUrl.trimEnd('/') + "/v1/models"
+        val url = baseUrl.trimEnd('/') + apiPath
         val builder = Request.Builder().url(url).get()
         if (!apiKey.isNullOrBlank()) {
             builder.header("Authorization", "Bearer $apiKey")

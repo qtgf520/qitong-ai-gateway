@@ -6,21 +6,60 @@
 
 ---
 
-## 🔄 v3.9.4（正式发布）
+## 🔄 v3.10.0（正式发布）
+
+### 🚀 重大更新：完整 API 接口适配
+
+网关现已完整支持 OpenAI / Claude / Gemini 三大原生格式，总计 **16 个接口**：
+
+| 接口 | 路径 | 说明 |
+|------|------|------|
+| 模型列表 | GET `/v1/models` | ✅ |
+| 对话补全 | POST `/v1/chat/completions` | ✅ |
+| 文本补全 | POST `/v1/completions` | ✅ |
+| Claude消息 | POST `/v1/messages` | ✅ |
+| 嵌入向量 | POST `/v1/embeddings` | ✅ |
+| 重排序 | POST `/v1/rerank` | ✅ |
+| 内容审核 | POST `/v1/moderations` | ✅ |
+| 文本转语音 | POST `/v1/audio/speech` | ✅ |
+| 图像生成 | POST `/v1/images/generations` | ✅ |
+| 视频生成 | POST `/v1/videos` | ✅ |
+| 视频任务 | POST `/v1/video/generations` | ✅ |
+| 视频状态 | GET `/v1/video/generations/{task_id}` | ✅ |
+| Gemini生成 | POST `/v1beta/models/{model}:generateContent` | ✅ |
+| 引擎嵌入 | POST `/v1/engines/{model}/embeddings` | ✅ |
+| 实时语音 | WS `/v1/realtime` | ✅ |
+
+### 🔑 新增：API 密钥管理系统
+- **管理页新增「密钥管理」入口** — 独立全屏页面
+- **添加/删除/编辑密钥** — 每把钥匙可单独控制：
+  - 启用/禁用
+  - 备注标签
+  - 限制可访问的模型列表
+  - qtai-sj 独立访问权限开关
+- **本地免密钥** — localhost/127.0.0.1/192.168.* 自动放行
+- **密钥可备份** — 纳入备份/恢复系统，恢复时自动清空旧密钥导入新密钥
+
+### ✨ 其他新功能
+- **启动权限检查** — 打开APP自动检测通知权限、电池优化、唤醒保活
+- **自启网关状态恢复** — 进程重建时恢复上次网关运行状态
+- **群聊不喊前缀** — 开启群聊后直接走群聊引擎，无需喊綦小桐
 
 ### 🐛 修复
-- **群聊开关自动回弹** — 移除 `isEnabled()` 中的自动关闭逻辑，开关状态完全由用户控制，不再因无参与者自动回弹
-- **后台关屏掉线** — 新增 `WakeLock`（PARTIAL_WAKE_LOCK，30分钟上限） + `AlarmManager` 每5分钟定时唤醒，通知栏「唤醒保活」按钮同时控制两种保活机制
-- **自启网关状态恢复** — 进程重建时从 SharedPreferences 恢复上次网关运行状态，`Application.onCreate()` 阶段同步标记 `isServiceRunning`，确保打开APP时 UI 显示正确状态
-
-### ✨ 新功能
-- **启动权限检查** — 打开APP时自动检测：通知权限（Android 13+）、电池优化白名单、唤醒保活开关，缺失时弹窗引导「去设置」一键跳转
-- **自启网关自动启动** — 自启时根据上次关闭APP前的网关状态决定是否启动网关服务器，开着则自动启动，关着则不启动
+- **群聊开关自动回弹** — 不再因无参与者自动关闭
+- **后台关屏掉线** — WakeLock + AlarmManager 双保活
+- **自启网关状态恢复** — `Application.onCreate()` 阶段同步标记 `isServiceRunning`
+- **首页换行符** — `\\n` → `\n`，快速上手说明正常显示
+- **人格设定开关** — 实时读取配置，避免 stale 数据
+- **WebSocket 闪退** — 修复 `WebSockets` 插件未安装导致的崩溃
 
 ### 📋 其他
-- 管理页「自启管理」→ 系统权限白名单，通知栏「唤醒保活」→ CPU+Alarm双保活，两者互补
+- 所有接口均支持 `model: "qtai-sj"` 自动解析为当前活跃模型
+- 所有接口均经过 API 密钥验证 + 流量统计 + 访问日志
+- 多语言适配
+- 添加服务商时支持自定义 API 路径（对话接口/模型列表接口）
 - DEV_GUIDE.md 新增铁律11（发布不泄漏本地凭证）
-- 清理 Git 历史中的敏感文件 `.idsig` 构建产物
+- 清理 Git 历史中的敏感文件
 
 ## 🔄 v3.9.2（正式发布）
 

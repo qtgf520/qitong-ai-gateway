@@ -366,9 +366,9 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                       Spacer(modifier = Modifier.height(8.dp))
                       Text(
                           text = "1. ${tr("add_provider")} → ${tr("sync_models")}\n" +
-                                  "2. ${tr("start_gateway")}\n" +
-                                  "3. ${tr("set_base_url")}\n" +
-                                  "4. ${tr("enable_failover")}",
+                                "2. ${tr("start_gateway")}\n" +
+                                "3. ${tr("set_base_url")}\n" +
+                                "4. ${tr("enable_failover")}",
                           style = MaterialTheme.typography.bodySmall,
                           color = MaterialTheme.colorScheme.onSurfaceVariant,
                           lineHeight = MaterialTheme.typography.bodySmall.lineHeight
@@ -709,11 +709,11 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = localizedText("1. 添加服务商（AI API提供商）\\n", "1. Add a provider (AI API provider)\\n") +
-                            localizedText("2. 为服务商同步模型列表\\n", "2. Sync the provider model list\\n") +
-                            localizedText("3. 启动网关服务\\n", "3. Start the gateway service\\n") +
-                            localizedText("4. 在第三方应用中设置 Base URL:\\n", "4. Set the Base URL in the third-party app:\\n") +
-                            localizedText("   http://手机IP:8889/v1\\n", "   http://phone-ip:8889/v1\\n") +
+                    text = localizedText("1. 添加服务商（AI API提供商）\n", "1. Add a provider (AI API provider)\n") +
+                            localizedText("2. 为服务商同步模型列表\n", "2. Sync the provider model list\n") +
+                            localizedText("3. 启动网关服务\n", "3. Start the gateway service\n") +
+                            localizedText("4. 在第三方应用中设置 Base URL:\n", "4. Set the Base URL in the third-party app:\n") +
+                            localizedText("   http://手机IP:8889/v1\n", "   http://phone-ip:8889/v1\n") +
                             localizedText("5. API Key 任意填写即可转发", "5. Any API key can be entered for forwarding"),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -737,7 +737,7 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                 Text("⚠️", style = MaterialTheme.typography.titleLarge)
                 Spacer(modifier = Modifier.width(12.dp))
                 Text(
-                    text = localizedText("请确保手机与目标设备在同一局域网内，\\n且防火墙未阻止 8889 端口", "Make sure the phone and target device are on the same LAN,\\nand that the firewall is not blocking port 8889"),
+                    text = localizedText("请确保手机与目标设备在同一局域网内，\n且防火墙未阻止 8889 端口", "Make sure the phone and target device are on the same LAN,\nand that the firewall is not blocking port 8889"),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface
                 )

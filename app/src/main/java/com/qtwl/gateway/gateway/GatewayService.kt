@@ -8,11 +8,17 @@ import com.qtwl.gateway.data.model.Provider
 import com.qtwl.gateway.data.model.TokenUsage
 import com.qtwl.gateway.network.UpstreamClient
 import com.qtwl.gateway.service.GatewayForegroundService
+import com.qtwl.gateway.service.KeyManager
 import com.qtwl.gateway.service.LiveSession
 import com.qtwl.gateway.service.ThinkingConfigManager
 import com.qtwl.gateway.service.GroupChatManager
 import com.qtwl.gateway.ui.viewmodel.BrainMemoryManager
 import com.qtwl.gateway.ui.viewmodel.ModelCapabilityManager
+import io.ktor.server.websocket.*
+import io.ktor.websocket.Frame
+import io.ktor.websocket.readText
+import io.ktor.websocket.close
+import io.ktor.server.application.install
 import com.qtwl.gateway.utils.ToolAction
 import com.qtwl.gateway.utils.ToolExecutor
 import com.qtwl.gateway.utils.SkillRegistry
@@ -77,6 +83,8 @@ class GatewayService(private val database: AppDatabase) {
         startSessionCleanup()
 
         val embedded = embeddedServer(CIO, port = port) {
+            // ★★ 安装 WebSocket 支持 ★★★
+            install(io.ktor.server.websocket.WebSockets)
             routing {
                 // 健康检查（不需要验证）
                 get("/health") {
@@ -141,6 +149,454 @@ class GatewayService(private val database: AppDatabase) {
                     }
                 }
 
+                // ★★★ 新增接口：文本补全（OpenAI Completions 格式）★★★
+                post("/v1/completions") {
+                    if (!validateApiKey(call)) {
+                        val (s, b) = openAIError(HttpStatusCode.Unauthorized, "Invalid or missing API key", "invalid_api_key")
+                        call.respondText(contentType = ContentType.Application.Json, status = s, text = b)
+                        return@post
+                    }
+                    try {
+                        val rawBytes = call.receive<ByteArray>()
+                        GatewayForegroundService.trafficUploadBytes.addAndGet(rawBytes.size.toLong())
+                        GatewayForegroundService.totalUploadBytes.addAndGet(rawBytes.size.toLong())
+                        val body = proxyJson.parseToJsonElement(String(rawBytes, Charsets.UTF_8)).jsonObject
+                        var modelId = body["model"]?.jsonPrimitive?.content ?: throw Exception("model is required")
+                        // ★★ qtai-sj 支持：自动解析为当前活跃的真实模型 ★★
+                        val realModelId = if (modelId == "qtai-sj") {
+                            val active = GatewayForegroundService.activeNodeName
+                            if (active.isNotBlank()) active else modelId
+                        } else modelId
+                        modelId = realModelId
+                        val prompt = body["prompt"] ?: throw Exception("prompt is required")
+                        val stream = body["stream"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false
+                        val promptText = try { prompt.jsonPrimitive.content } catch (_: Exception) { prompt.jsonArray.joinToString("\n") { it.jsonPrimitive.content } }
+                        // 转换为 chat 格式后转发
+                        val chatBody = buildJsonObject {
+                            put("model", JsonPrimitive(modelId))
+                            put("messages", JsonArray(listOf(buildJsonObject {
+                                put("role", JsonPrimitive("user"))
+                                put("content", JsonPrimitive(promptText))
+                            })))
+                            put("stream", JsonPrimitive(stream))
+                            body["max_tokens"]?.let { put("max_tokens", it) }
+                            body["temperature"]?.let { put("temperature", it) }
+                            body["top_p"]?.let { put("top_p", it) }
+                            body["stop"]?.let { put("stop", it) }
+                            body["suffix"]?.let { put("suffix", it) }
+                            body["n"]?.let { put("n", it) }
+                        }
+                        // 获取模型对应的服务商，转发
+                        val models = database.aiModelDao().getEnabledModelsList()
+                        val targetModel = models.find { it.modelId == modelId } ?: models.firstOrNull()
+                        if (targetModel == null) { call.respondText(openAIError(HttpStatusCode.NotFound, "Model $modelId not found").second, ContentType.Application.Json, status = HttpStatusCode.NotFound); return@post }
+                        val provider = database.providerDao().getProviderById(targetModel.providerId)
+                        if (provider == null || !provider.isEnabled) { call.respondText(openAIError(HttpStatusCode.NotFound, "Provider for $modelId not available").second, ContentType.Application.Json, status = HttpStatusCode.NotFound); return@post }
+                        val upstreamUrl = provider.resolvedBaseUrl.trimEnd('/')
+                        val upstreamBody = sanitizeRequestBody(chatBody.toString())
+                        val client = UpstreamClient.getClientForModel(targetModel.useProxy)
+                        val req = okhttp3.Request.Builder().url("$upstreamUrl/v1/chat/completions")
+                            .post(upstreamBody.toByteArray(Charsets.UTF_8).toRequestBody(DEFAULT_CT))
+                            .apply { if (!provider.apiKey.isNullOrBlank()) header("Authorization", "Bearer ${provider.apiKey}") }
+                            .build()
+                        val resp = withContext(Dispatchers.IO) { client.newCall(req).execute() }
+                        val respBody = resp.body?.string() ?: "{}"
+                        resp.close()
+                        GatewayForegroundService.totalDownloadBytes.addAndGet(respBody.length.toLong())
+                        GatewayForegroundService.trafficDownloadBytes.addAndGet(respBody.length.toLong())
+                        // 将 chat 响应转回 completions 格式
+                        val chatResp = try { proxyJson.parseToJsonElement(respBody).jsonObject } catch (_: Exception) { null }
+                        val text = try { chatResp?.get("choices")?.jsonArray?.get(0)?.jsonObject?.get("message")?.jsonObject?.get("content")?.jsonPrimitive?.content ?: "" } catch (_: Exception) { "" }
+                        val completionsResp = buildJsonObject {
+                            put("id", JsonPrimitive("cmpl-${UUID.randomUUID().toString().take(8)}"))
+                            put("object", JsonPrimitive("text_completion"))
+                            put("created", JsonPrimitive(System.currentTimeMillis() / 1000))
+                            put("model", JsonPrimitive(modelId))
+                            put("choices", JsonArray(listOf(buildJsonObject {
+                                put("text", JsonPrimitive(text))
+                                put("index", JsonPrimitive(0))
+                                put("finish_reason", JsonPrimitive(chatResp?.get("choices")?.jsonArray?.get(0)?.jsonObject?.get("finish_reason")?.jsonPrimitive?.content ?: "stop"))
+                            })))
+                            chatResp?.get("usage")?.let { put("usage", it) }
+                        }
+                        call.respondText(completionsResp.toString(), ContentType.Application.Json.withCharset(Charsets.UTF_8))
+                        logAccess(call, modelId, 200, System.currentTimeMillis() - (try { body["created"]?.jsonPrimitive?.content?.toLongOrNull() ?: System.currentTimeMillis() } catch (_: Exception) { System.currentTimeMillis() }))
+                    } catch (e: Exception) {
+                        val (s, b) = openAIError(HttpStatusCode.InternalServerError, e.message ?: "Completions failed", "server_error")
+                        call.respondText(contentType = ContentType.Application.Json, status = s, text = b)
+                    }
+                }
+
+                // ★★★ 新增接口：Claude 消息格式（POST /v1/messages）★★★
+                post("/v1/messages") {
+                    if (!validateApiKey(call)) {
+                        val (s, b) = openAIError(HttpStatusCode.Unauthorized, "Invalid or missing API key", "invalid_api_key")
+                        call.respondText(contentType = ContentType.Application.Json, status = s, text = b)
+                        return@post
+                    }
+                    try {
+                        val rawBytes = call.receive<ByteArray>()
+                        GatewayForegroundService.trafficUploadBytes.addAndGet(rawBytes.size.toLong())
+                        GatewayForegroundService.totalUploadBytes.addAndGet(rawBytes.size.toLong())
+                        val body = proxyJson.parseToJsonElement(String(rawBytes, Charsets.UTF_8)).jsonObject
+                        var modelId = body["model"]?.jsonPrimitive?.content ?: throw Exception("model is required")
+                        // ★★ qtai-sj 支持：自动解析为当前活跃的真实模型 ★★
+                        if (modelId == "qtai-sj") {
+                            val active = GatewayForegroundService.activeNodeName
+                            if (active.isNotBlank()) modelId = active
+                        }
+                        val claudeMsgs = body["messages"]?.jsonArray ?: throw Exception("messages is required")
+                        val stream = body["stream"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false
+                        val maxTokens = body["max_tokens"]?.jsonPrimitive?.content?.toIntOrNull() ?: 1024
+                        val systemPrompt = body["system"]?.jsonPrimitive?.content ?: ""
+                        // 转换 Claude 消息为 OpenAI 格式
+                        val openaiMsgs = mutableListOf<JsonObject>()
+                        if (systemPrompt.isNotBlank()) {
+                            openaiMsgs.add(buildJsonObject { put("role", JsonPrimitive("system")); put("content", JsonPrimitive(systemPrompt)) })
+                        }
+                        for (msg in claudeMsgs) {
+                            val obj = msg.jsonObject
+                            val role = obj["role"]?.jsonPrimitive?.content ?: "user"
+                            val content = obj["content"]
+                            if (content != null) {
+                                // Claude content 可以是 string 或 array
+                                val text = try { content.jsonPrimitive.content } catch (_: Exception) {
+                                    content.jsonArray.mapNotNull { part ->
+                                        try { val p = part.jsonObject; if (p["type"]?.jsonPrimitive?.content == "text") p["text"]?.jsonPrimitive?.content else null } catch (_: Exception) { null }
+                                    }.joinToString("\n")
+                                }
+                                openaiMsgs.add(buildJsonObject { put("role", JsonPrimitive(if (role == "assistant") "assistant" else "user")); put("content", JsonPrimitive(text)) })
+                            }
+                        }
+                        // 构造 OpenAI chat 请求
+                        val chatBody = buildJsonObject {
+                            put("model", JsonPrimitive(modelId))
+                            put("messages", JsonArray(openaiMsgs))
+                            put("max_tokens", JsonPrimitive(maxTokens))
+                            put("stream", JsonPrimitive(stream))
+                            body["temperature"]?.let { put("temperature", it) }
+                            body["top_p"]?.let { put("top_p", it) }
+                            body["stop_sequences"]?.let { put("stop", it) }
+                            body["tools"]?.let { put("tools", it) }
+                            body["tool_choice"]?.let { put("tool_choice", it) }
+                        }
+                        // 查找模型并转发
+                        val models = database.aiModelDao().getEnabledModelsList()
+                        val targetModel = models.find { it.modelId == modelId } ?: models.firstOrNull()
+                        if (targetModel == null) { call.respondText(openAIError(HttpStatusCode.NotFound, "Model $modelId not found").second, ContentType.Application.Json, status = HttpStatusCode.NotFound); return@post }
+                        val provider = database.providerDao().getProviderById(targetModel.providerId)
+                        if (provider == null || !provider.isEnabled) { call.respondText(openAIError(HttpStatusCode.NotFound, "Provider for $modelId not available").second, ContentType.Application.Json, status = HttpStatusCode.NotFound); return@post }
+                        val upstreamUrl = provider.resolvedBaseUrl.trimEnd('/')
+                        val upstreamBody = sanitizeRequestBody(chatBody.toString())
+                        val client = UpstreamClient.getClientForModel(targetModel.useProxy)
+                        val req = okhttp3.Request.Builder().url("$upstreamUrl/v1/chat/completions")
+                            .post(upstreamBody.toByteArray(Charsets.UTF_8).toRequestBody(DEFAULT_CT))
+                            .apply { if (!provider.apiKey.isNullOrBlank()) header("Authorization", "Bearer ${provider.apiKey}") }
+                            .build()
+                        val resp = withContext(Dispatchers.IO) { client.newCall(req).execute() }
+                        val respBody = resp.body?.string() ?: "{}"
+                        resp.close()
+                        GatewayForegroundService.totalDownloadBytes.addAndGet(respBody.length.toLong())
+                        GatewayForegroundService.trafficDownloadBytes.addAndGet(respBody.length.toLong())
+                        // 将 OpenAI chat 响应转换为 Claude 格式
+                        val chatResp = try { proxyJson.parseToJsonElement(respBody).jsonObject } catch (_: Exception) { null }
+                        val contentText = try { chatResp?.get("choices")?.jsonArray?.get(0)?.jsonObject?.get("message")?.jsonObject?.get("content")?.jsonPrimitive?.content ?: "" } catch (_: Exception) { "" }
+                        val stopReason = try { chatResp?.get("choices")?.jsonArray?.get(0)?.jsonObject?.get("finish_reason")?.jsonPrimitive?.content?.let { if (it == "stop") "end_turn" else it } ?: "end_turn" } catch (_: Exception) { "end_turn" }
+                        val promptTokens = try { chatResp?.get("usage")?.jsonObject?.get("prompt_tokens")?.jsonPrimitive?.content?.toIntOrNull() ?: 0 } catch (_: Exception) { 0 }
+                        val completionTokens = try { chatResp?.get("usage")?.jsonObject?.get("completion_tokens")?.jsonPrimitive?.content?.toIntOrNull() ?: 0 } catch (_: Exception) { 0 }
+                        val claudeResp = buildJsonObject {
+                            put("id", JsonPrimitive("msg_${UUID.randomUUID().toString().take(8)}"))
+                            put("type", JsonPrimitive("message"))
+                            put("role", JsonPrimitive("assistant"))
+                            put("content", JsonArray(listOf(buildJsonObject {
+                                put("type", JsonPrimitive("text"))
+                                put("text", JsonPrimitive(contentText))
+                            })))
+                            put("model", JsonPrimitive(modelId))
+                            put("stop_reason", JsonPrimitive(stopReason))
+                            put("usage", buildJsonObject {
+                                put("input_tokens", JsonPrimitive(promptTokens))
+                                put("output_tokens", JsonPrimitive(completionTokens))
+                            })
+                        }
+                        call.respondText(claudeResp.toString(), ContentType.Application.Json.withCharset(Charsets.UTF_8))
+                        logAccess(call, modelId, 200, System.currentTimeMillis() - (try { body["created"]?.jsonPrimitive?.content?.toLongOrNull() ?: System.currentTimeMillis() } catch (_: Exception) { System.currentTimeMillis() }))
+                    } catch (e: Exception) {
+                        val (s, b) = openAIError(HttpStatusCode.InternalServerError, e.message ?: "Messages failed", "server_error")
+                        call.respondText(contentType = ContentType.Application.Json, status = s, text = b)
+                    }
+                }
+
+                // ★★★ 新增接口：嵌入向量（POST /v1/embeddings）★★★
+                post("/v1/embeddings") {
+                    if (!validateApiKey(call)) {
+                        val (s, b) = openAIError(HttpStatusCode.Unauthorized, "Invalid or missing API key", "invalid_api_key")
+                        call.respondText(contentType = ContentType.Application.Json, status = s, text = b)
+                        return@post
+                    }
+                    try {
+                        val rawBytes = call.receive<ByteArray>()
+                        GatewayForegroundService.trafficUploadBytes.addAndGet(rawBytes.size.toLong())
+                        GatewayForegroundService.totalUploadBytes.addAndGet(rawBytes.size.toLong())
+                        val body = proxyJson.parseToJsonElement(String(rawBytes, Charsets.UTF_8)).jsonObject
+                        var modelId = body["model"]?.jsonPrimitive?.content ?: throw Exception("model is required")
+                        // ★★ qtai-sj 支持：自动解析为当前活跃的真实模型 ★★
+                        if (modelId == "qtai-sj") {
+                            val active = GatewayForegroundService.activeNodeName
+                            if (active.isNotBlank()) modelId = active
+                        }
+                        val input = body["input"] ?: throw Exception("input is required")
+                        // 查找模型和提供商
+                        val models = database.aiModelDao().getEnabledModelsList()
+                        val targetModel = models.find { it.modelId == modelId } ?: models.firstOrNull()
+                        if (targetModel == null) { call.respondText(openAIError(HttpStatusCode.NotFound, "Model $modelId not found").second, ContentType.Application.Json, status = HttpStatusCode.NotFound); return@post }
+                        val provider = database.providerDao().getProviderById(targetModel.providerId)
+                        if (provider == null || !provider.isEnabled) { call.respondText(openAIError(HttpStatusCode.NotFound, "Provider for $modelId not available").second, ContentType.Application.Json, status = HttpStatusCode.NotFound); return@post }
+                        val upstreamUrl = provider.resolvedBaseUrl.trimEnd('/')
+                        // 保留原始 body 但确保 model 正确
+                        val upstreamBody = sanitizeRequestBody(rawBytes.decodeToString())
+                        val client = UpstreamClient.getClientForModel(targetModel.useProxy)
+                        val req = okhttp3.Request.Builder().url("$upstreamUrl/v1/embeddings")
+                            .post(upstreamBody.toByteArray(Charsets.UTF_8).toRequestBody(DEFAULT_CT))
+                            .apply { if (!provider.apiKey.isNullOrBlank()) header("Authorization", "Bearer ${provider.apiKey}") }
+                            .build()
+                        val resp = withContext(Dispatchers.IO) { client.newCall(req).execute() }
+                        val respBody = resp.body?.string() ?: "{}"
+                        resp.close()
+                        GatewayForegroundService.totalDownloadBytes.addAndGet(respBody.length.toLong())
+                        GatewayForegroundService.trafficDownloadBytes.addAndGet(respBody.length.toLong())
+                        call.respondText(respBody, ContentType.Application.Json.withCharset(Charsets.UTF_8), status = HttpStatusCode.fromValue(resp.code.takeIf { it > 0 } ?: 200))
+                        logAccess(call, modelId, resp.code, System.currentTimeMillis() - (try { body["created"]?.jsonPrimitive?.content?.toLongOrNull() ?: System.currentTimeMillis() } catch (_: Exception) { System.currentTimeMillis() }))
+                    } catch (e: Exception) {
+                        val (s, b) = openAIError(HttpStatusCode.InternalServerError, e.message ?: "Embeddings failed", "server_error")
+                        call.respondText(contentType = ContentType.Application.Json, status = s, text = b)
+                    }
+                }
+
+                // ★★★ 新增接口：重排序（POST /v1/rerank）★★★
+                post("/v1/rerank") {
+                    if (!validateApiKey(call)) { val (s,b)=openAIError(HttpStatusCode.Unauthorized,"Invalid or missing API key","invalid_api_key"); call.respondText(contentType=ContentType.Application.Json,status=s,text=b); return@post }
+                    try { val rawBytes=call.receive<ByteArray>(); GatewayForegroundService.trafficUploadBytes.addAndGet(rawBytes.size.toLong()); GatewayForegroundService.totalUploadBytes.addAndGet(rawBytes.size.toLong())
+                        val body=proxyJson.parseToJsonElement(String(rawBytes,Charsets.UTF_8)).jsonObject; var modelId=body["model"]?.jsonPrimitive?.content?:throw Exception("model required")
+                        if (modelId=="qtai-sj"){val active=GatewayForegroundService.activeNodeName;if(active.isNotBlank())modelId=active}
+                        val models=database.aiModelDao().getEnabledModelsList(); val targetModel=models.find{it.modelId==modelId}?:models.firstOrNull()
+                        if(targetModel==null){call.respondText(openAIError(HttpStatusCode.NotFound,"Model $modelId not found").second,ContentType.Application.Json,status=HttpStatusCode.NotFound);return@post}
+                        val provider=database.providerDao().getProviderById(targetModel.providerId)
+                        if(provider==null||!provider.isEnabled){call.respondText(openAIError(HttpStatusCode.NotFound,"Provider for $modelId not available").second,ContentType.Application.Json,status=HttpStatusCode.NotFound);return@post}
+                        val upstreamUrl=provider.resolvedBaseUrl.trimEnd('/'); val upstreamBody=sanitizeRequestBody(rawBytes.decodeToString())
+                        val client=UpstreamClient.getClientForModel(targetModel.useProxy)
+                        val req=okhttp3.Request.Builder().url("$upstreamUrl/v1/rerank").post(upstreamBody.toByteArray(Charsets.UTF_8).toRequestBody(DEFAULT_CT)).apply{if(!provider.apiKey.isNullOrBlank())header("Authorization","Bearer ${provider.apiKey}")}.build()
+                        val rStartMs=System.currentTimeMillis()
+                        val resp=withContext(Dispatchers.IO){client.newCall(req).execute()}; val respBody=resp.body?.string()?:"{}"; resp.close()
+                        GatewayForegroundService.totalDownloadBytes.addAndGet(respBody.length.toLong()); GatewayForegroundService.trafficDownloadBytes.addAndGet(respBody.length.toLong())
+                        call.respondText(respBody,ContentType.Application.Json.withCharset(Charsets.UTF_8),status=HttpStatusCode.fromValue(resp.code.takeIf{it>0}?:200))
+                        logAccess(call,modelId,resp.code,System.currentTimeMillis()-rStartMs)
+                    }catch(e:Exception){val(s,b)=openAIError(HttpStatusCode.InternalServerError,e.message?:"Rerank failed","server_error");call.respondText(contentType=ContentType.Application.Json,status=s,text=b)}
+                }
+
+                // ★★★ 新增接口：内容审核（POST /v1/moderations）★★★
+                post("/v1/moderations") {
+                    if (!validateApiKey(call)) { val (s,b)=openAIError(HttpStatusCode.Unauthorized,"Invalid or missing API key","invalid_api_key"); call.respondText(contentType=ContentType.Application.Json,status=s,text=b); return@post }
+                    try { val rawBytes=call.receive<ByteArray>(); GatewayForegroundService.trafficUploadBytes.addAndGet(rawBytes.size.toLong()); GatewayForegroundService.totalUploadBytes.addAndGet(rawBytes.size.toLong())
+                        val body=proxyJson.parseToJsonElement(String(rawBytes,Charsets.UTF_8)).jsonObject; var modelId=body["model"]?.jsonPrimitive?.content?:""
+                        if (modelId=="qtai-sj"){val active=GatewayForegroundService.activeNodeName;if(active.isNotBlank())modelId=active}
+                        val models=database.aiModelDao().getEnabledModelsList()
+                        val targetModel=if(modelId.isNotBlank())models.find{it.modelId==modelId}else{null}
+                        val effectiveModel=targetModel?:models.firstOrNull()
+                        if(effectiveModel==null){call.respondText(openAIError(HttpStatusCode.NotFound,"No available model").second,ContentType.Application.Json,status=HttpStatusCode.NotFound);return@post}
+                        val provider=database.providerDao().getProviderById(effectiveModel.providerId)
+                        if(provider==null||!provider.isEnabled){call.respondText(openAIError(HttpStatusCode.NotFound,"Provider for $modelId not available").second,ContentType.Application.Json,status=HttpStatusCode.NotFound);return@post}
+                        val upstreamUrl=provider.resolvedBaseUrl.trimEnd('/'); val upstreamBody=sanitizeRequestBody(rawBytes.decodeToString())
+                        val client=UpstreamClient.getClientForModel(effectiveModel.useProxy)
+                        val req=okhttp3.Request.Builder().url("$upstreamUrl/v1/moderations").post(upstreamBody.toByteArray(Charsets.UTF_8).toRequestBody(DEFAULT_CT)).apply{if(!provider.apiKey.isNullOrBlank())header("Authorization","Bearer ${provider.apiKey}")}.build()
+                        val mStartMs=System.currentTimeMillis()
+                        val resp=withContext(Dispatchers.IO){client.newCall(req).execute()}; val respBody=resp.body?.string()?:"{}"; resp.close()
+                        GatewayForegroundService.totalDownloadBytes.addAndGet(respBody.length.toLong()); GatewayForegroundService.trafficDownloadBytes.addAndGet(respBody.length.toLong())
+                        call.respondText(respBody,ContentType.Application.Json.withCharset(Charsets.UTF_8),status=HttpStatusCode.fromValue(resp.code.takeIf{it>0}?:200))
+                        logAccess(call,modelId,resp.code,System.currentTimeMillis()-mStartMs)
+                    }catch(e:Exception){val(s,b)=openAIError(HttpStatusCode.InternalServerError,e.message?:"Moderations failed","server_error");call.respondText(contentType=ContentType.Application.Json,status=s,text=b)}
+                }
+
+                // ★★★ 新增接口：文本转语音（POST /v1/audio/speech）★★★
+                post("/v1/audio/speech") {
+                    if (!validateApiKey(call)) { val (s,b)=openAIError(HttpStatusCode.Unauthorized,"Invalid or missing API key","invalid_api_key"); call.respondText(contentType=ContentType.Application.Json,status=s,text=b); return@post }
+                    try { val rawBytes=call.receive<ByteArray>(); GatewayForegroundService.trafficUploadBytes.addAndGet(rawBytes.size.toLong()); GatewayForegroundService.totalUploadBytes.addAndGet(rawBytes.size.toLong())
+                        val body=proxyJson.parseToJsonElement(String(rawBytes,Charsets.UTF_8)).jsonObject; var modelId=body["model"]?.jsonPrimitive?.content?:throw Exception("model required")
+                        if (modelId=="qtai-sj"){val active=GatewayForegroundService.activeNodeName;if(active.isNotBlank())modelId=active}
+                        val models=database.aiModelDao().getEnabledModelsList(); val targetModel=models.find{it.modelId==modelId}?:models.firstOrNull()
+                        if(targetModel==null){call.respondText(openAIError(HttpStatusCode.NotFound,"Model $modelId not found").second,ContentType.Application.Json,status=HttpStatusCode.NotFound);return@post}
+                        val provider=database.providerDao().getProviderById(targetModel.providerId)
+                        if(provider==null||!provider.isEnabled){call.respondText(openAIError(HttpStatusCode.NotFound,"Provider for $modelId not available").second,ContentType.Application.Json,status=HttpStatusCode.NotFound);return@post}
+                        val upstreamUrl=provider.resolvedBaseUrl.trimEnd('/'); val upstreamBody=rawBytes // 保持二进制
+                        val client=UpstreamClient.getClientForModel(targetModel.useProxy)
+                        val contentType=call.request.headers["Content-Type"]?: "application/json"
+                        val req=okhttp3.Request.Builder().url("$upstreamUrl/v1/audio/speech").post(upstreamBody.toRequestBody(contentType.toMediaType())).apply{if(!provider.apiKey.isNullOrBlank())header("Authorization","Bearer ${provider.apiKey}")}.build()
+                        val startMs=System.currentTimeMillis()
+                        val computedLatency=startMs
+                        val resp=withContext(Dispatchers.IO){client.newCall(req).execute()}; val respBytes=resp.body?.bytes()?:ByteArray(0); resp.close()
+                        GatewayForegroundService.totalDownloadBytes.addAndGet(respBytes.size.toLong()); GatewayForegroundService.trafficDownloadBytes.addAndGet(respBytes.size.toLong())
+                        val respContentType=resp.header("Content-Type")?:"audio/mpeg"
+                        call.respondBytesWriter(contentType=ContentType.parse(respContentType)){writeFully(respBytes)}
+                        logAccess(call,modelId,resp.code,System.currentTimeMillis()-startMs)
+                    }catch(e:Exception){val(s,b)=openAIError(HttpStatusCode.InternalServerError,e.message?:"TTS failed","server_error");call.respondText(contentType=ContentType.Application.Json,status=s,text=b)}
+                }
+
+                // ★★★ 新增接口：图像生成（POST /v1/images/generations）★★★
+                post("/v1/images/generations") {
+                    if (!validateApiKey(call)) { val (s,b)=openAIError(HttpStatusCode.Unauthorized,"Invalid or missing API key","invalid_api_key"); call.respondText(contentType=ContentType.Application.Json,status=s,text=b); return@post }
+                    try { val rawBytes=call.receive<ByteArray>(); GatewayForegroundService.trafficUploadBytes.addAndGet(rawBytes.size.toLong()); GatewayForegroundService.totalUploadBytes.addAndGet(rawBytes.size.toLong())
+                        val body=proxyJson.parseToJsonElement(String(rawBytes,Charsets.UTF_8)).jsonObject; var modelId=body["model"]?.jsonPrimitive?.content?:"dall-e-3"
+                        if (modelId=="qtai-sj"){val active=GatewayForegroundService.activeNodeName;if(active.isNotBlank())modelId=active}
+                        val models=database.aiModelDao().getEnabledModelsList(); val targetModel=models.find{it.modelId==modelId}?:models.firstOrNull()
+                        if(targetModel==null){call.respondText(openAIError(HttpStatusCode.NotFound,"Model $modelId not found").second,ContentType.Application.Json,status=HttpStatusCode.NotFound);return@post}
+                        val provider=database.providerDao().getProviderById(targetModel.providerId)
+                        if(provider==null||!provider.isEnabled){call.respondText(openAIError(HttpStatusCode.NotFound,"Provider for $modelId not available").second,ContentType.Application.Json,status=HttpStatusCode.NotFound);return@post}
+                        val upstreamUrl=provider.resolvedBaseUrl.trimEnd('/'); val upstreamBody=sanitizeRequestBody(rawBytes.decodeToString())
+                        val client=UpstreamClient.getClientForModel(targetModel.useProxy)
+                        val req=okhttp3.Request.Builder().url("$upstreamUrl/v1/images/generations").post(upstreamBody.toByteArray(Charsets.UTF_8).toRequestBody(DEFAULT_CT)).apply{if(!provider.apiKey.isNullOrBlank())header("Authorization","Bearer ${provider.apiKey}")}.build()
+                        val imgStartMs=System.currentTimeMillis()
+                        val resp=withContext(Dispatchers.IO){client.newCall(req).execute()}; val respBody=resp.body?.string()?:"{}"; resp.close()
+                        GatewayForegroundService.totalDownloadBytes.addAndGet(respBody.length.toLong()); GatewayForegroundService.trafficDownloadBytes.addAndGet(respBody.length.toLong())
+                        call.respondText(respBody,ContentType.Application.Json.withCharset(Charsets.UTF_8),status=HttpStatusCode.fromValue(resp.code.takeIf{it>0}?:200))
+                        logAccess(call,modelId,resp.code,System.currentTimeMillis()-imgStartMs)
+                    }catch(e:Exception){val(s,b)=openAIError(HttpStatusCode.InternalServerError,e.message?:"Image generation failed","server_error");call.respondText(contentType=ContentType.Application.Json,status=s,text=b)}
+                }
+
+                // ★★★ 新增接口：视频生成-同步（POST /v1/videos）★★★
+                post("/v1/videos") {
+                    if (!validateApiKey(call)) { val (s,b)=openAIError(HttpStatusCode.Unauthorized,"Invalid or missing API key","invalid_api_key"); call.respondText(contentType=ContentType.Application.Json,status=s,text=b); return@post }
+                    try { val rawBytes=call.receive<ByteArray>(); GatewayForegroundService.trafficUploadBytes.addAndGet(rawBytes.size.toLong()); GatewayForegroundService.totalUploadBytes.addAndGet(rawBytes.size.toLong())
+                        val body=proxyJson.parseToJsonElement(String(rawBytes,Charsets.UTF_8)).jsonObject; var modelId=body["model"]?.jsonPrimitive?.content?:"sora"
+                        if (modelId=="qtai-sj"){val active=GatewayForegroundService.activeNodeName;if(active.isNotBlank())modelId=active}
+                        val models=database.aiModelDao().getEnabledModelsList(); val targetModel=models.find{it.modelId==modelId}?:models.firstOrNull()
+                        if(targetModel==null){call.respondText(openAIError(HttpStatusCode.NotFound,"Model $modelId not found").second,ContentType.Application.Json,status=HttpStatusCode.NotFound);return@post}
+                        val provider=database.providerDao().getProviderById(targetModel.providerId)
+                        if(provider==null||!provider.isEnabled){call.respondText(openAIError(HttpStatusCode.NotFound,"Provider for $modelId not available").second,ContentType.Application.Json,status=HttpStatusCode.NotFound);return@post}
+                        val upstreamUrl=provider.resolvedBaseUrl.trimEnd('/'); val upstreamBody=rawBytes
+                        val client=UpstreamClient.getClientForModel(targetModel.useProxy)
+                        val contentType=call.request.headers["Content-Type"]?:"application/json"
+                        val req=okhttp3.Request.Builder().url("$upstreamUrl/v1/videos").post(upstreamBody.toRequestBody(contentType.toMediaType())).apply{if(!provider.apiKey.isNullOrBlank())header("Authorization","Bearer ${provider.apiKey}")}.build()
+                        val vStartMs=System.currentTimeMillis()
+                        val resp=withContext(Dispatchers.IO){client.newCall(req).execute()}; val respBody=resp.body?.string()?:"{}"; resp.close()
+                        GatewayForegroundService.totalDownloadBytes.addAndGet(respBody.length.toLong()); GatewayForegroundService.trafficDownloadBytes.addAndGet(respBody.length.toLong())
+                        call.respondText(respBody,ContentType.Application.Json.withCharset(Charsets.UTF_8),status=HttpStatusCode.fromValue(resp.code.takeIf{it>0}?:200))
+                        logAccess(call,modelId,resp.code,System.currentTimeMillis()-vStartMs)
+                    }catch(e:Exception){val(s,b)=openAIError(HttpStatusCode.InternalServerError,e.message?:"Video sync failed","server_error");call.respondText(contentType=ContentType.Application.Json,status=s,text=b)}
+                }
+
+                // ★★★ 新增接口：视频生成-异步任务（POST /v1/video/generations）★★★
+                post("/v1/video/generations") {
+                    if (!validateApiKey(call)) { val (s,b)=openAIError(HttpStatusCode.Unauthorized,"Invalid or missing API key","invalid_api_key"); call.respondText(contentType=ContentType.Application.Json,status=s,text=b); return@post }
+                    try { val rawBytes=call.receive<ByteArray>(); GatewayForegroundService.trafficUploadBytes.addAndGet(rawBytes.size.toLong()); GatewayForegroundService.totalUploadBytes.addAndGet(rawBytes.size.toLong())
+                        val body=proxyJson.parseToJsonElement(String(rawBytes,Charsets.UTF_8)).jsonObject; var modelId=body["model"]?.jsonPrimitive?.content?:"sora"
+                        if (modelId=="qtai-sj"){val active=GatewayForegroundService.activeNodeName;if(active.isNotBlank())modelId=active}
+                        val models=database.aiModelDao().getEnabledModelsList(); val targetModel=models.find{it.modelId==modelId}?:models.firstOrNull()
+                        if(targetModel==null){call.respondText(openAIError(HttpStatusCode.NotFound,"Model $modelId not found").second,ContentType.Application.Json,status=HttpStatusCode.NotFound);return@post}
+                        val provider=database.providerDao().getProviderById(targetModel.providerId)
+                        if(provider==null||!provider.isEnabled){call.respondText(openAIError(HttpStatusCode.NotFound,"Provider for $modelId not available").second,ContentType.Application.Json,status=HttpStatusCode.NotFound);return@post}
+                        val upstreamUrl=provider.resolvedBaseUrl.trimEnd('/'); val upstreamBody=sanitizeRequestBody(rawBytes.decodeToString())
+                        val client=UpstreamClient.getClientForModel(targetModel.useProxy)
+                        val req=okhttp3.Request.Builder().url("$upstreamUrl/v1/video/generations").post(upstreamBody.toByteArray(Charsets.UTF_8).toRequestBody(DEFAULT_CT)).apply{if(!provider.apiKey.isNullOrBlank())header("Authorization","Bearer ${provider.apiKey}")}.build()
+                        val vTaskStartMs=System.currentTimeMillis()
+                        val resp=withContext(Dispatchers.IO){client.newCall(req).execute()}; val respBody=resp.body?.string()?:"{}"; resp.close()
+                        GatewayForegroundService.totalDownloadBytes.addAndGet(respBody.length.toLong()); GatewayForegroundService.trafficDownloadBytes.addAndGet(respBody.length.toLong())
+                        call.respondText(respBody,ContentType.Application.Json.withCharset(Charsets.UTF_8),status=HttpStatusCode.fromValue(resp.code.takeIf{it>0}?:200))
+                        logAccess(call,modelId,resp.code,System.currentTimeMillis()-vTaskStartMs)
+                    }catch(e:Exception){val(s,b)=openAIError(HttpStatusCode.InternalServerError,e.message?:"Video task failed","server_error");call.respondText(contentType=ContentType.Application.Json,status=s,text=b)}
+                }
+
+                // ★★★ 新增接口：获取视频任务状态（GET /v1/video/generations/{task_id}）★★★
+                get("/v1/video/generations/{task_id}") {
+                    if (!validateApiKey(call)) { val (s,b)=openAIError(HttpStatusCode.Unauthorized,"Invalid or missing API key","invalid_api_key"); call.respondText(contentType=ContentType.Application.Json,status=s,text=b); return@get }
+                    try { val taskId=call.parameters["task_id"]?:""
+                        val body=proxyJson.parseToJsonElement("{}").jsonObject; var modelId="sora"
+                        val models=database.aiModelDao().getEnabledModelsList(); val targetModel=models.firstOrNull()
+                        if(targetModel==null){call.respondText(openAIError(HttpStatusCode.NotFound,"No available model").second,ContentType.Application.Json,status=HttpStatusCode.NotFound);return@get}
+                        val provider=database.providerDao().getProviderById(targetModel.providerId)
+                        if(provider==null||!provider.isEnabled){call.respondText(openAIError(HttpStatusCode.NotFound,"No available provider").second,ContentType.Application.Json,status=HttpStatusCode.NotFound);return@get}
+                        val upstreamUrl=provider.resolvedBaseUrl.trimEnd('/')
+                        val client=UpstreamClient.getClientForModel(targetModel.useProxy)
+                        val req=okhttp3.Request.Builder().url("$upstreamUrl/v1/video/generations/$taskId").get().apply{if(!provider.apiKey.isNullOrBlank())header("Authorization","Bearer ${provider.apiKey}")}.build()
+                        val vGetStartMs=System.currentTimeMillis()
+                        val resp=withContext(Dispatchers.IO){client.newCall(req).execute()}; val respBody=resp.body?.string()?:"{}"; resp.close()
+                        GatewayForegroundService.totalDownloadBytes.addAndGet(respBody.length.toLong()); GatewayForegroundService.trafficDownloadBytes.addAndGet(respBody.length.toLong())
+                        call.respondText(respBody,ContentType.Application.Json.withCharset(Charsets.UTF_8),status=HttpStatusCode.fromValue(resp.code.takeIf{it>0}?:200))
+                        logAccess(call,modelId,resp.code,System.currentTimeMillis()-vGetStartMs)
+                    }catch(e:Exception){val(s,b)=openAIError(HttpStatusCode.InternalServerError,e.message?:"Video task status failed","server_error");call.respondText(contentType=ContentType.Application.Json,status=s,text=b)}
+                }
+
+                // ★★★ Gemini 格式：POST /v1beta/models/{model}:generateContent ★★★
+                post("/v1beta/models/{model}:generateContent") {
+                    if (!validateApiKey(call)) { val (s,b)=openAIError(HttpStatusCode.Unauthorized,"Invalid or missing API key","invalid_api_key"); call.respondText(contentType=ContentType.Application.Json,status=s,text=b); return@post }
+                    try { val rawBytes=call.receive<ByteArray>(); GatewayForegroundService.trafficUploadBytes.addAndGet(rawBytes.size.toLong()); GatewayForegroundService.totalUploadBytes.addAndGet(rawBytes.size.toLong())
+                        val geminiModel=call.parameters["model"]?:""
+                        var modelId=geminiModel; if (modelId=="qtai-sj"){val active=GatewayForegroundService.activeNodeName;if(active.isNotBlank())modelId=active}
+                        val models=database.aiModelDao().getEnabledModelsList(); val targetModel=models.find{it.modelId==modelId}?:models.firstOrNull()
+                        if(targetModel==null){call.respondText(openAIError(HttpStatusCode.NotFound,"Model $modelId not found").second,ContentType.Application.Json,status=HttpStatusCode.NotFound);return@post}
+                        val provider=database.providerDao().getProviderById(targetModel.providerId)
+                        if(provider==null||!provider.isEnabled){call.respondText(openAIError(HttpStatusCode.NotFound,"Provider for $modelId not available").second,ContentType.Application.Json,status=HttpStatusCode.NotFound);return@post}
+                        val upstreamUrl=provider.resolvedBaseUrl.trimEnd('/'); val upstreamBody=rawBytes
+                        val client=UpstreamClient.getClientForModel(targetModel.useProxy)
+                        val contentType=call.request.headers["Content-Type"]?:"application/json"
+                        val req=okhttp3.Request.Builder().url("$upstreamUrl/v1beta/models/$geminiModel:generateContent").post(upstreamBody.toRequestBody(contentType.toMediaType())).apply{if(!provider.apiKey.isNullOrBlank())header("Authorization","Bearer ${provider.apiKey}")}.build()
+                        val gStartMs=System.currentTimeMillis()
+                        val resp=withContext(Dispatchers.IO){client.newCall(req).execute()}; val respBody=resp.body?.string()?:"{}"; resp.close()
+                        GatewayForegroundService.totalDownloadBytes.addAndGet(respBody.length.toLong()); GatewayForegroundService.trafficDownloadBytes.addAndGet(respBody.length.toLong())
+                        call.respondText(respBody,ContentType.Application.Json.withCharset(Charsets.UTF_8),status=HttpStatusCode.fromValue(resp.code.takeIf{it>0}?:200))
+                        logAccess(call,modelId,resp.code,System.currentTimeMillis()-gStartMs)
+                    }catch(e:Exception){val(s,b)=openAIError(HttpStatusCode.InternalServerError,e.message?:"Gemini generate failed","server_error");call.respondText(contentType=ContentType.Application.Json,status=s,text=b)}
+                }
+
+                // ★★★ Gemini 引擎嵌入：POST /v1/engines/{model}/embeddings ★★★
+                post("/v1/engines/{model}/embeddings") {
+                    if (!validateApiKey(call)) { val (s,b)=openAIError(HttpStatusCode.Unauthorized,"Invalid or missing API key","invalid_api_key"); call.respondText(contentType=ContentType.Application.Json,status=s,text=b); return@post }
+                    try { val rawBytes=call.receive<ByteArray>(); GatewayForegroundService.trafficUploadBytes.addAndGet(rawBytes.size.toLong()); GatewayForegroundService.totalUploadBytes.addAndGet(rawBytes.size.toLong())
+                        val engineModel=call.parameters["model"]?:""
+                        var modelId=engineModel; if (modelId=="qtai-sj"){val active=GatewayForegroundService.activeNodeName;if(active.isNotBlank())modelId=active}
+                        val models=database.aiModelDao().getEnabledModelsList(); val targetModel=models.find{it.modelId==modelId}?:models.firstOrNull()
+                        if(targetModel==null){call.respondText(openAIError(HttpStatusCode.NotFound,"Model $modelId not found").second,ContentType.Application.Json,status=HttpStatusCode.NotFound);return@post}
+                        val provider=database.providerDao().getProviderById(targetModel.providerId)
+                        if(provider==null||!provider.isEnabled){call.respondText(openAIError(HttpStatusCode.NotFound,"Provider for $modelId not available").second,ContentType.Application.Json,status=HttpStatusCode.NotFound);return@post}
+                        val upstreamUrl=provider.resolvedBaseUrl.trimEnd('/'); val upstreamBody=sanitizeRequestBody(rawBytes.decodeToString())
+                        val client=UpstreamClient.getClientForModel(targetModel.useProxy)
+                        val req=okhttp3.Request.Builder().url("$upstreamUrl/v1/engines/$engineModel/embeddings").post(upstreamBody.toByteArray(Charsets.UTF_8).toRequestBody(DEFAULT_CT)).apply{if(!provider.apiKey.isNullOrBlank())header("Authorization","Bearer ${provider.apiKey}")}.build()
+                        val eStartMs=System.currentTimeMillis()
+                        val resp=withContext(Dispatchers.IO){client.newCall(req).execute()}; val respBody=resp.body?.string()?:"{}"; resp.close()
+                        GatewayForegroundService.totalDownloadBytes.addAndGet(respBody.length.toLong()); GatewayForegroundService.trafficDownloadBytes.addAndGet(respBody.length.toLong())
+                        call.respondText(respBody,ContentType.Application.Json.withCharset(Charsets.UTF_8),status=HttpStatusCode.fromValue(resp.code.takeIf{it>0}?:200))
+                        logAccess(call,modelId,resp.code,System.currentTimeMillis()-eStartMs)
+                    }catch(e:Exception){val(s,b)=openAIError(HttpStatusCode.InternalServerError,e.message?:"Engine embeddings failed","server_error");call.respondText(contentType=ContentType.Application.Json,status=s,text=b)}
+                }
+
+                // ★★★ WebSocket 实时语音（/v1/realtime）★★★
+                webSocket("/v1/realtime") {
+                    val model = call.parameters["model"] ?: "gpt-4o-realtime"
+                    GatewayForegroundService.addDebugLog("🔊 WebSocket connected: model=$model")
+                    try {
+                        for (frame in incoming) {
+                            when (frame) {
+                                is Frame.Text -> {
+                                    val text = frame.readText()
+                                    GatewayForegroundService.addDebugLog("🔊 WS received: ${text.take(100)}")
+                                    // 回显确认
+                                    send(Frame.Text("{\"type\":\"response.audio.done\",\"model\":\"$model\"}"))
+                                }
+                                is Frame.Close -> {
+                                    GatewayForegroundService.addDebugLog("🔊 WebSocket closed")
+                                    close()
+                                }
+                                else -> {}
+                            }
+                        }
+                    } catch (_: Exception) { }
+                }
+
+                // ★★★ 未实现接口（POST /v1/files + GET /v1/files）★★★
+                get("/v1/files") {
+                    val (s, b) = openAIError(HttpStatusCode.NotImplemented, "This endpoint is not implemented.", "not_implemented")
+                    call.respondText(contentType = ContentType.Application.Json, status = s, text = b)
+                }
+
                 // === 通用代理转发：拦截所有 /v1/* 请求 ===
                 // ★★ 去掉了 runBlocking！Ktor 路由 handler 本身就在协程中
                 post("/v1/{path...}") {
@@ -197,11 +653,15 @@ private const val logMaxSize = 1000
 private fun validateApiKey(call: ApplicationCall): Boolean {
     val requireKey = GatewayForegroundService.getRequireApiKey()
     if (!requireKey) return true
+    // ★★ 本地请求免密钥 ★★
+    val remoteIp = call.request.local.remoteHost ?: ""
+    if (KeyManager.isLocalRequest(remoteIp)) return true
     val authHeader = call.request.headers["Authorization"]
     if (authHeader.isNullOrBlank()) return false
     val apiKey = authHeader.removePrefix("Bearer ").trim()
-    val allowedKeys = GatewayForegroundService.getAllowedApiKeys()
-    return apiKey in allowedKeys
+    // 验证密钥是否存在且启用
+    val entry = KeyManager.validateKey(apiKey)
+    return entry != null
 }
 
 private fun logAccess(call: ApplicationCall, modelId: String, statusCode: Int, durationMs: Long) {
@@ -540,6 +1000,76 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
             } catch (_: Exception) { "" }
             
             if (userMsg.isNotBlank()) {
+                // ★★★ 群聊模式：不喊前缀也能用，直接走群聊引擎 ★★★
+                if (GroupChatManager.isEnabled()) {
+                    GatewayScheduler.recordModelUsage("qtai-sj")
+                    val groupChatResult = GroupChatManager.executeGroupChat(database, userMsg)
+                    val groupStream = requestJson?.get("stream")?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false
+                    if (groupStream) {
+                        val chunkId = "chatcmpl-group-${UUID.randomUUID().toString().take(8)}"
+                        val created = System.currentTimeMillis() / 1000
+                        call.respondBytesWriter(contentType = ContentType.Text.EventStream) {
+                            val roleChunk = proxyJson.encodeToString(buildJsonObject {
+                                put("id", JsonPrimitive(chunkId))
+                                put("object", JsonPrimitive("chat.completion.chunk"))
+                                put("created", JsonPrimitive(created))
+                                put("model", JsonPrimitive("qtai-sj"))
+                                put("choices", JsonArray(listOf(buildJsonObject {
+                                    put("index", JsonPrimitive(0))
+                                    put("delta", buildJsonObject { put("role", JsonPrimitive("assistant")) })
+                                    put("finish_reason", JsonNull)
+                                })))
+                            })
+                            writeFully(("data: $roleChunk\n\n").toByteArray())
+                            val contentChunk = proxyJson.encodeToString(buildJsonObject {
+                                put("id", JsonPrimitive(chunkId))
+                                put("object", JsonPrimitive("chat.completion.chunk"))
+                                put("created", JsonPrimitive(created))
+                                put("model", JsonPrimitive("qtai-sj"))
+                                put("choices", JsonArray(listOf(buildJsonObject {
+                                    put("index", JsonPrimitive(0))
+                                    put("delta", buildJsonObject { put("content", JsonPrimitive(groupChatResult)) })
+                                    put("finish_reason", JsonNull)
+                                })))
+                            })
+                            writeFully(("data: $contentChunk\n\n").toByteArray())
+                            val stopChunk = proxyJson.encodeToString(buildJsonObject {
+                                put("id", JsonPrimitive(chunkId))
+                                put("object", JsonPrimitive("chat.completion.chunk"))
+                                put("created", JsonPrimitive(created))
+                                put("model", JsonPrimitive("qtai-sj"))
+                                put("choices", JsonArray(listOf(buildJsonObject {
+                                    put("index", JsonPrimitive(0))
+                                    put("delta", buildJsonObject {})
+                                    put("finish_reason", JsonPrimitive("stop"))
+                                })))
+                            })
+                            writeFully(("data: $stopChunk\n\n").toByteArray())
+                            writeFully("data: [DONE]\n\n".toByteArray())
+                        }
+                    } else {
+                        val groupResp = buildJsonObject {
+                            put("id", JsonPrimitive("chatcmpl-group-${UUID.randomUUID().toString().take(8)}"))
+                            put("object", JsonPrimitive("chat.completion"))
+                            put("created", JsonPrimitive(System.currentTimeMillis() / 1000))
+                            put("model", JsonPrimitive("qtai-sj"))
+                            put("choices", JsonArray(listOf(buildJsonObject {
+                                put("index", JsonPrimitive(0))
+                                put("message", buildJsonObject { put("role", JsonPrimitive("assistant")); put("content", JsonPrimitive(groupChatResult)) })
+                                put("finish_reason", JsonPrimitive("stop"))
+                            })))
+                            put("usage", buildJsonObject {
+                                put("prompt_tokens", JsonPrimitive(userMsg.length / 4))
+                                put("completion_tokens", JsonPrimitive(groupChatResult.length / 4))
+                                put("total_tokens", JsonPrimitive((userMsg.length + groupChatResult.length) / 4))
+                            })
+                        }
+                        call.respondText(contentType = ContentType.Application.Json.withCharset(Charsets.UTF_8), text = groupResp.toString())
+                    }
+                    logAccess(call, "qtai-sj", 200, System.currentTimeMillis() - startMs)
+                    return
+                }
+
                 // ★★ 必须前缀才解析指令：固定前缀(綦小桐/qtai-sj/XiaoTong) + 自定义人格名称 ★★
                 val customName = GatewayForegroundService.getQtaiSjName()
                 val namePattern = if (customName.isNotBlank()) "綦小桐|qtai-sj|xiaotong|${Regex.escape(customName)}" else "綦小桐|qtai-sj|xiaotong"

@@ -117,6 +117,7 @@ fun DataManagementScreen(
     var showResetConfirm by remember { mutableStateOf(false) }
     var showAddServiceDialog by remember { mutableStateOf(false) }
     var showDebugLogs by remember { mutableStateOf(false) }
+    var showKeyManagement by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
@@ -652,6 +653,7 @@ fun DataManagementScreen(
             Spacer(modifier = Modifier.height(8.dp))
 
             // ★★ 人格设置卡片（綦小桐）★★
+            // ★ 实时读取配置，避免 stale 数据 ★
             val pCfg = BrainMemoryManager.getConfig()
             var personaEnabled by remember { mutableStateOf(pCfg.personaEnabled) }
             var personaName by remember { mutableStateOf(pCfg.personaName) }
@@ -660,6 +662,21 @@ fun DataManagementScreen(
             var personaStyle by remember { mutableStateOf(pCfg.personaStyle) }
             var personaBg by remember { mutableStateOf(pCfg.personaBackground) }
             var envAware by remember { mutableStateOf(pCfg.envAwareness) }
+
+            // ★ 监听 config 变化刷新本地状态
+            LaunchedEffect(Unit) {
+                while (true) {
+                    delay(500)
+                    val cfg = BrainMemoryManager.getConfig()
+                    if (cfg.personaEnabled != personaEnabled) personaEnabled = cfg.personaEnabled
+                    if (cfg.personaName != personaName) personaName = cfg.personaName
+                    if (cfg.personaAge.toString() != personaAge) personaAge = cfg.personaAge.toString()
+                    if (cfg.personaTraits != personaTraits) personaTraits = cfg.personaTraits
+                    if (cfg.personaStyle != personaStyle) personaStyle = cfg.personaStyle
+                    if (cfg.personaBackground != personaBg) personaBg = cfg.personaBackground
+                    if (cfg.envAwareness != envAware) envAware = cfg.envAwareness
+                }
+            }
 
             Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -676,7 +693,7 @@ fun DataManagementScreen(
                         Text(localizedText("启用人格系统", "Enable persona system"), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                         Switch(checked = personaEnabled, onCheckedChange = { e ->
                             personaEnabled = e
-                            BrainMemoryManager.updateConfig(pCfg.copy(personaEnabled = e))
+                            BrainMemoryManager.updateConfig(BrainMemoryManager.getConfig().copy(personaEnabled = e))
                         })
                     }
                     Spacer(modifier = Modifier.height(4.dp))
@@ -684,12 +701,12 @@ fun DataManagementScreen(
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedTextField(value = personaName, onValueChange = { v ->
                             personaName = v
-                            BrainMemoryManager.updateConfig(pCfg.copy(personaName = v))
+                            BrainMemoryManager.updateConfig(BrainMemoryManager.getConfig().copy(personaName = v))
                             GatewayForegroundService.saveQtaiSjName(v)
                         }, label = { Text(localizedText("名字", "Name")) }, singleLine = true, modifier = Modifier.weight(1f))
                         OutlinedTextField(value = personaAge, onValueChange = { v ->
                             personaAge = v
-                            v.toIntOrNull()?.let { BrainMemoryManager.updateConfig(pCfg.copy(personaAge = it)) }
+                            v.toIntOrNull()?.let { BrainMemoryManager.updateConfig(BrainMemoryManager.getConfig().copy(personaAge = it)) }
                         }, label = { Text(localizedText("年龄", "Age")) }, singleLine = true, modifier = Modifier.width(80.dp),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                     }
@@ -697,7 +714,7 @@ fun DataManagementScreen(
 
                     OutlinedTextField(value = localizeGeneratedContent(personaTraits), onValueChange = { v ->
                         personaTraits = v
-                        BrainMemoryManager.updateConfig(pCfg.copy(personaTraits = v))
+                        BrainMemoryManager.updateConfig(BrainMemoryManager.getConfig().copy(personaTraits = v))
                     }, label = { Text(localizedText("性格特征（逗号分隔）", "Personality traits (comma-separated)")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     Spacer(modifier = Modifier.height(4.dp))
 
@@ -715,7 +732,7 @@ fun DataManagementScreen(
                             styleOptions.forEach { (storedValue, label) ->
                                 DropdownMenuItem(text = { Text(label) }, onClick = {
                                     personaStyle = storedValue
-                                    BrainMemoryManager.updateConfig(pCfg.copy(personaStyle = storedValue))
+                                    BrainMemoryManager.updateConfig(BrainMemoryManager.getConfig().copy(personaStyle = storedValue))
                                     styleExpanded = false
                                 })
                             }
@@ -725,7 +742,7 @@ fun DataManagementScreen(
 
                     OutlinedTextField(value = localizeGeneratedContent(personaBg), onValueChange = { v ->
                         personaBg = v
-                        BrainMemoryManager.updateConfig(pCfg.copy(personaBackground = v))
+                        BrainMemoryManager.updateConfig(BrainMemoryManager.getConfig().copy(personaBackground = v))
                     }, label = { Text(localizedText("背景设定", "Background setting")) }, modifier = Modifier.fillMaxWidth(),
                     minLines = 2, maxLines = 3)
                     Spacer(modifier = Modifier.height(4.dp))
@@ -734,7 +751,7 @@ fun DataManagementScreen(
                         Text(localizedText("环境感知（时间/网络）", "Context awareness (time/network)"), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                         Switch(checked = envAware, onCheckedChange = { e ->
                             envAware = e
-                            BrainMemoryManager.updateConfig(pCfg.copy(envAwareness = e))
+                            BrainMemoryManager.updateConfig(BrainMemoryManager.getConfig().copy(envAwareness = e))
                         })
                     }
                 }
@@ -820,6 +837,22 @@ fun DataManagementScreen(
             }
 
             Spacer(modifier = Modifier.height(8.dp))
+
+            // ★ 密钥管理按钮
+            Card(modifier = Modifier.fillMaxWidth().clickable { showKeyManagement = true }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.VpnKey, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(8.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(localizedText("🔑 API 密钥管理", "🔑 API Key management"), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                            Text(localizedText("管理访问密钥，本地请求免密钥，每把钥匙可单独控制模型访问权限", "Manage access keys. Local requests are exempt. Each key can control model access individually"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
 
             // ★ Debug 抓包模式
             val debugMode by viewModel.debugMode.collectAsState()
@@ -1257,6 +1290,13 @@ fun DataManagementScreen(
             }
         } // end showDebugLogs
     } // end Box
+    // 密钥管理全屏覆盖
+    if (showKeyManagement) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            KeyManagementScreen(onDismiss = { showKeyManagement = false })
+        }
+    }
+
     // 代理管理弹窗（AboutScreen 连点触发）
     val showProxyDialog by viewModel.showProxyConfigDialog.collectAsState()
     if (showProxyDialog) {
@@ -1348,12 +1388,67 @@ private fun SmartAddServiceDialog(viewModel: GatewayViewModel, onDismiss: () -> 
                 OutlinedTextField(value = form.port, onValueChange = { viewModel.updateFormField("port", it) },
                     label = { Text(localizedText("端口 (可选)", "Port (optional)")) }, placeholder = { Text(localizedText("如 11434, 8080", "e.g. 11434, 8080")) }, singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = form.apiKey, onValueChange = { viewModel.updateFormField("apiKey", it) },
-                    label = { Text(localizedText("API Key (可选)", "API key (optional)")) }, placeholder = { Text("sk-...") }, singleLine = true,
-                    visualTransformation = if (showApiKey) VisualTransformation.None else PasswordVisualTransformation(),
-                    trailingIcon = { IconButton(onClick = { showApiKey = !showApiKey }) {
-                        Icon(if (showApiKey) Icons.Default.Visibility else Icons.Default.VisibilityOff, contentDescription = null) } },
-                    modifier = Modifier.fillMaxWidth())
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(value = form.apiKey, onValueChange = { viewModel.updateFormField("apiKey", it) },
+                        label = { Text(localizedText("API Key (可选)", "API key (optional)")) }, placeholder = { Text("sk-...") }, singleLine = true,
+                        visualTransformation = if (showApiKey) VisualTransformation.None else PasswordVisualTransformation(),
+                        trailingIcon = { IconButton(onClick = { showApiKey = !showApiKey }) {
+                            Icon(if (showApiKey) Icons.Default.Visibility else Icons.Default.VisibilityOff, contentDescription = null) } },
+                        modifier = Modifier.weight(1f))
+                }
+
+                // ★★★ API 路径选择（自动补全）★★★
+                val apiPathOptions = listOf("/v1/chat/completions", "/v1/messages", "/v1/completions", "/v1/embeddings", "/v1/rerank", "/v1/moderations", "/v1/audio/speech", "/v1/images/generations", "/v1/videos", "/chat/completions", "/completions", "/generate")
+                var chatPathExpanded by remember { mutableStateOf(false) }
+                var chatPathText by remember(form.chatPath) { mutableStateOf(form.chatPath) }
+                ExposedDropdownMenuBox(expanded = chatPathExpanded, onExpandedChange = { chatPathExpanded = it }) {
+                    OutlinedTextField(
+                        value = chatPathText,
+                        onValueChange = { v -> chatPathText = v; viewModel.updateFormField("chatPath", v); chatPathExpanded = true },
+                        label = { Text(localizedText("对话接口路径", "Chat API path")) },
+                        placeholder = { Text("/v1/chat/completions") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().menuAnchor(),
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = chatPathExpanded) }
+                    )
+                    ExposedDropdownMenu(expanded = chatPathExpanded, onDismissRequest = { chatPathExpanded = false }) {
+                        val filtered = apiPathOptions.filter { chatPathText.isBlank() || it.contains(chatPathText, ignoreCase = true) }
+                        filtered.forEach { option ->
+                            DropdownMenuItem(
+                                text = { Text(option, style = MaterialTheme.typography.bodyMedium) },
+                                onClick = { chatPathText = option; viewModel.updateFormField("chatPath", option); chatPathExpanded = false }
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(localizedText("💡 输入 /c 自动补全 /v1/chat/completions，/m 补全 /v1/messages 等", "💡 Type /c to auto-complete /v1/chat/completions, /m for /v1/messages, etc."),
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+                // ★★★ 模型列表接口路径（自动补全）★★★
+                val apiPathOptions2 = listOf("/v1/models", "/api/tags", "/v1beta/models", "/models")
+                var apiPathExpanded by remember { mutableStateOf(false) }
+                var apiPathText by remember(form.apiPath) { mutableStateOf(form.apiPath) }
+                ExposedDropdownMenuBox(expanded = apiPathExpanded, onExpandedChange = { apiPathExpanded = it }) {
+                    OutlinedTextField(
+                        value = apiPathText,
+                        onValueChange = { v -> apiPathText = v; viewModel.updateFormField("apiPath", v); apiPathExpanded = true },
+                        label = { Text(localizedText("模型列表接口路径", "Models API path")) },
+                        placeholder = { Text("/v1/models") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().menuAnchor(),
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = apiPathExpanded) }
+                    )
+                    ExposedDropdownMenu(expanded = apiPathExpanded, onDismissRequest = { apiPathExpanded = false }) {
+                        val filtered = apiPathOptions2.filter { apiPathText.isBlank() || it.contains(apiPathText, ignoreCase = true) }
+                        filtered.forEach { option ->
+                            DropdownMenuItem(
+                                text = { Text(option, style = MaterialTheme.typography.bodyMedium) },
+                                onClick = { apiPathText = option; viewModel.updateFormField("apiPath", option); apiPathExpanded = false }
+                            )
+                        }
+                    }
+                }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { isTesting = true; testResult = null; viewModel.fetchAvailableModels(form.baseUrl, form.apiKey.ifBlank { null }) },

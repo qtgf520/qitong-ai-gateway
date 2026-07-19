@@ -6,9 +6,12 @@ import com.qtwl.gateway.data.model.Conversation
 import com.qtwl.gateway.data.model.Provider
 import com.qtwl.gateway.data.model.TokenUsage
 import com.qtwl.gateway.service.GatewayForegroundService
+import com.qtwl.gateway.service.KeyManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.decodeFromString
 
 /**
  * 备份管理器 —— 负责数据的 JSON 序列化与反序列化
@@ -32,9 +35,10 @@ class BackupManager(private val database: AppDatabase) {
             val messages = database.chatMessageDao().getAllMessagesOnce()
             val tokenUsage = database.tokenUsageDao().getAllUsageOnce()
 
-            // ★ 导出配置：代理列表 + 网关端口
+            // ★ 导出配置：代理列表 + 网关端口 + 密钥列表
             val proxyListJson = GatewayForegroundService.getProxyListJson()
             val gatewayPort = GatewayForegroundService.getGatewayPort()
+            val apiKeyEntriesJson = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }.encodeToString(KeyManager.getAllKeys())
 
             val backupData = BackupData(
                 providers = providers,
@@ -43,7 +47,8 @@ class BackupManager(private val database: AppDatabase) {
                 messages = messages,
                 tokenUsage = tokenUsage,
                 proxyListJson = proxyListJson,
-                gatewayPort = gatewayPort
+                gatewayPort = gatewayPort,
+                apiKeyEntriesJson = apiKeyEntriesJson
             )
 
             val jsonString = json.encodeToString(BackupData.serializer(), backupData)
@@ -85,12 +90,20 @@ class BackupManager(private val database: AppDatabase) {
                 database.tokenUsageDao().insertAll(backupData.tokenUsage)
             }
 
-            // ★ 恢复配置：代理列表 + 网关端口
+            // ★ 恢复配置：代理列表 + 网关端口 + 密钥列表
             if (backupData.proxyListJson.isNotBlank()) {
                 GatewayForegroundService.saveProxyListJson(backupData.proxyListJson)
             }
             if (backupData.gatewayPort != 8889) {
                 GatewayForegroundService.saveGatewayPort(backupData.gatewayPort)
+            }
+            // ★ 恢复密钥
+            if (backupData.apiKeyEntriesJson.isNotBlank()) {
+                try {
+                    val keys = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }.decodeFromString<List<com.qtwl.gateway.service.ApiKeyEntry>>(backupData.apiKeyEntriesJson)
+                    KeyManager.clearAllKeys()
+                    keys.forEach { KeyManager.addKey(it.key, it.label, it.allowedModels, it.qtaiSjAccess) }
+                } catch (_: Exception) { }
             }
 
             Result.success(Unit)

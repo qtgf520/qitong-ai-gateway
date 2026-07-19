@@ -449,7 +449,9 @@ fun refreshTokenStats() {
         val defaultType: String,       // 类型标识
         val defaultBaseUrl: String,    // 默认基础地址
         val defaultPort: String,       // 默认端口
-        val exampleApiKey: String      // API Key 提示
+        val exampleApiKey: String,      // API Key 提示
+        val defaultChatPath: String = "/v1/chat/completions",  // 聊天接口路径
+        val defaultApiPath: String = "/v1/models"               // 模型列表接口路径
     )
     
 companion object {
@@ -466,7 +468,9 @@ companion object {
                     defaultType = "Anthropic",
                     defaultBaseUrl = "https://api.anthropic.com",
                     defaultPort = "443",
-                    exampleApiKey = "sk-ant-..."
+                    exampleApiKey = "sk-ant-...",
+                    defaultChatPath = "/v1/messages",
+                    defaultApiPath = "/v1/models"
                 ),
                 ProviderTypePreset(
                     displayName = "Google (Gemini)",
@@ -548,7 +552,9 @@ companion object {
         val baseUrl: String = "",
         val port: String = "",
         val apiKey: String = "",
-        val orderIndex: Int = 0
+        val orderIndex: Int = 0,
+        val chatPath: String = "/v1/chat/completions",  // 聊天接口路径
+        val apiPath: String = "/v1/models"               // 模型列表接口路径
     )
 
     private val _providerForm = MutableStateFlow(ProviderForm())
@@ -1014,7 +1020,9 @@ companion object {
             type = preset.defaultType,
             baseUrl = preset.defaultBaseUrl,
             port = preset.defaultPort,
-            apiKey = preset.exampleApiKey
+            apiKey = preset.exampleApiKey,
+            chatPath = preset.defaultChatPath,
+            apiPath = preset.defaultApiPath
         )
     }
 
@@ -1047,6 +1055,8 @@ companion object {
             "baseUrl" -> _providerForm.value.copy(baseUrl = value)
             "port" -> _providerForm.value.copy(port = value)
             "apiKey" -> _providerForm.value.copy(apiKey = value)
+            "chatPath" -> _providerForm.value.copy(chatPath = value)
+            "apiPath" -> _providerForm.value.copy(apiPath = value)
             "orderIndex" -> _providerForm.value.copy(orderIndex = value.toIntOrNull() ?: 0)
             else -> _providerForm.value
         }
@@ -1082,7 +1092,8 @@ companion object {
                         baseUrl = form.baseUrl.trimEnd('/'),
                         port = form.port,
                         apiKey = form.apiKey.ifBlank { null },
-                        orderIndex = form.orderIndex
+                        orderIndex = form.orderIndex,
+                        chatPath = form.chatPath
                     )
                 )
                 _showAddProviderDialog.value = false
@@ -1929,10 +1940,12 @@ fun getDisplayModelName(model: AiModel): String {
         viewModelScope.launch {
             try {
                 _syncResult.value = null
+                val apiPath = _providerForm.value.apiPath
                 withContext(Dispatchers.IO) {
                     val response = UpstreamClient.fetchModels(
                         baseUrl = baseUrl.trimEnd('/'),
-                        apiKey = apiKey
+                        apiKey = apiKey,
+                        apiPath = apiPath
                     )
 
                     if (!response.isSuccessful) {
