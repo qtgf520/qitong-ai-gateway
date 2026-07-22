@@ -23,6 +23,8 @@ import com.qtwl.gateway.utils.ToolAction
 import com.qtwl.gateway.utils.ToolExecutor
 import com.qtwl.gateway.utils.SkillRegistry
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.withCharset
 import io.ktor.server.application.ApplicationCall
@@ -30,15 +32,16 @@ import io.ktor.server.application.call
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.EmbeddedServer
 import io.ktor.server.engine.embeddedServer
+import io.ktor.server.request.httpMethod
 import io.ktor.server.request.receive
 import io.ktor.server.response.respondBytesWriter
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
+import io.ktor.server.routing.options
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
-import io.ktor.utils.io.writeFully
-import io.ktor.server.request.httpMethod
 import io.ktor.util.AttributeKey
+import io.ktor.utils.io.writeFully
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
@@ -86,6 +89,15 @@ class GatewayService(private val database: AppDatabase) {
             // ★★ 安装 WebSocket 支持 ★★★
             install(io.ktor.server.websocket.WebSockets)
             routing {
+                // ★★★ CORS 预检请求处理 ★★★
+                options("/{path...}") {
+                    call.response.headers.append("Access-Control-Allow-Origin", "*")
+                    call.response.headers.append("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+                    call.response.headers.append("Access-Control-Allow-Headers", "Content-Type, Authorization, x-api-key, anthropic-version, x-goog-api-key")
+                    call.response.headers.append("Access-Control-Max-Age", "86400")
+                    call.respondText("", ContentType.Application.Json, HttpStatusCode.OK)
+                }
+
                 // 健康检查（不需要验证）
                 get("/health") {
                     val running = GatewayForegroundService.isServiceRunning
@@ -108,6 +120,7 @@ class GatewayService(private val database: AppDatabase) {
 
                 // 获取模型列表 (OpenAI Compatible)
                 get("/v1/models") {
+                    corsResponse(call)
                     if (!validateApiKey(call)) {
                         val (s, b) = openAIError(HttpStatusCode.Unauthorized, "Invalid or missing API key", "invalid_api_key")
                         call.respondText(contentType = ContentType.Application.Json, status = s, text = b)
@@ -147,6 +160,19 @@ class GatewayService(private val database: AppDatabase) {
                         val (status, body) = openAIError(HttpStatusCode.InternalServerError, "Failed to fetch models: ${e.message}", "server_error")
                         call.respondText(contentType = ContentType.Application.Json, status = status, text = body)
                     }
+                }
+
+                // ★★★ GET /v1/chat/completions 返回标准错误（浏览器测试用）★★★
+                get("/v1/chat/completions") {
+                    corsResponse(call)
+                    val (s, b) = openAIError(HttpStatusCode.BadRequest, "This endpoint requires a POST request. Use POST with a JSON body containing 'model' and 'messages'.", "invalid_request_error", 400)
+                    call.respondText(contentType = ContentType.Application.Json, status = s, text = b)
+                }
+
+                // ★★★ 兼容不带 /v1 前缀的路径 ★★★
+                post("/chat/completions") {
+                    corsResponse(call)
+                    proxyRequest(call, database)
                 }
 
                 // ★★★ 新增接口：文本补全（OpenAI Completions 格式）★★★
@@ -745,6 +771,12 @@ private suspend fun executeWithRetry(client: okhttp3.OkHttpClient, request: okht
 }
 
 /** OpenAI 标准错误响应 */
+private fun corsResponse(call: ApplicationCall) {
+    call.response.headers.append("Access-Control-Allow-Origin", "*")
+    call.response.headers.append("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+    call.response.headers.append("Access-Control-Allow-Headers", "Content-Type, Authorization, x-api-key, anthropic-version, x-goog-api-key")
+}
+
 private fun openAIError(status: HttpStatusCode, message: String, type: String = "invalid_request_error", code: Int? = null): Pair<HttpStatusCode, String> {
     val errorJson = buildJsonObject {
         put("error", buildJsonObject {
@@ -934,13 +966,32 @@ private fun startSessionCleanup() {
  * ★ v3.3.2 新增会话记忆：同一会话失败的模型自动跳过，走上次成功的模型
  */
 private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
+    // ★★ 所有响应加 CORS 头 ★★
+    corsResponse(call)
+    
     // ★ 请求开始 → 清零上一轮会话流量（在计数之前，避免清零本轮） ★
     GatewayForegroundService.resetNotificationTraffic()
     
     // 1. 读取原始请求体（二进制，兼容所有 Content-Type）
     val startMs = System.currentTimeMillis()
-    val rawBytes = call.receive<ByteArray>()
+    val rawBytes = try { call.receive<ByteArray>() } catch (_: Exception) { ByteArray(0) }
     val requestBodyStr = String(rawBytes, Charsets.UTF_8)
+
+    // ★★★ 检查空 messages ★★★
+    if (requestBodyStr.isNotBlank()) {
+        try {
+            val j = proxyJson.parseToJsonElement(requestBodyStr).jsonObject
+            val msgs = j["messages"]
+            if (msgs != null) {
+                val arr = msgs.jsonArray
+                if (arr.isEmpty()) {
+                    val (s, b) = openAIError(HttpStatusCode.BadRequest, "messages array is empty. Provide at least one message.", "invalid_request_error", 400)
+                    call.respondText(contentType = ContentType.Application.Json, status = s, text = b)
+                    return
+                }
+            }
+        } catch (_: Exception) { }
+    }
 
     // ★★★ 全模型统计：所有请求都计上传流量（通知栏+总统计）★★★
     GatewayForegroundService.trafficUploadBytes.addAndGet(rawBytes.size.toLong())

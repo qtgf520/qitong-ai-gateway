@@ -2,7 +2,28 @@
 
 > 包名：com.qtwl.gateway
 > 签名证书：qitong.jks (别名: qitong)
-> 最后更新：2026-07-15
+> 最后更新：2026-07-22
+
+---
+
+## 🔄 v3.11.0（正式发布）
+
+### 🎯 修复：外部测试 6 个兼容性问题
+
+| # | 问题 | 修复 |
+|---|------|------|
+| 1 | **CORS 跨域缺失** | 新增 `OPTIONS` 预检路由，所有响应加 `Access-Control-Allow-Origin: *` |
+| 2 | **GET /v1/chat/completions 返回500** | 改为返回 400 标准 OpenAI 错误 `{"error":{"message":"...","code":400}}` |
+| 3 | **空 messages 数组导致挂起** | 新增空 messages 检测，返回 400 `"messages array is empty"` |
+| 4 | **500 错误响应体为空** | 统一使用 `openAIError()` 返回 JSON 格式错误体 |
+| 5 | **非标准 stream 格式** | `ignoreUnknownKeys=true` 兼容 `reasoning_content` 等额外字段 |
+| 6 | **路径不统一** | 新增 `POST /chat/completions`（不带 v1 前缀）兼容路径 |
+
+### ✨ 其他改进
+- **CORS 全覆盖** — `corsResponse()` 在 `proxyRequest` 开头调用，所有路由自动加 CORS 头
+- **空 body 保护** — `call.receive<ByteArray>()` 加 try-catch，空 body 不崩溃
+- **qtai-sj 全接口适配** — 所有 16 个接口均支持 `model: "qtai-sj"` 自动解析为当前活跃模型
+- **群聊不喊前缀** — 开启群聊后直接走群聊引擎，无需喊綦小桐
 
 ---
 

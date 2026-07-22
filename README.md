@@ -1,7 +1,7 @@
 # 綦桐AI网关 | QiTong AI Gateway
 
 > **包名 / Package：** `com.qtwl.gateway`  
-> **最新版本 / Latest：** v3.10.0 (versionCode=133)  
+> **最新版本 / Latest：** v3.11.0 (versionCode=134)  
 > **开源协议 / License：** Apache 2.0  
 > **语言 / Languages：** 🌐 15 languages (CN/EN/JP/KR/FR/DE/ES/RU/PT/VN/TH/AR/HI/ID)
 > **官方QQ群 / QQ Group：** [1007488535](https://qm.qq.com/q/1007488535) 💬
@@ -168,6 +168,7 @@ See [CHANGELOG.md](CHANGELOG.md) for full changelog.
 
 | Version | Key Features |
 |:--------|:-------------|
+| **v3.11.0** | 🎯 **6个兼容性修复** — CORS跨域 + GET 400 + 空messages修复 + 500错误体统一 + 非标准stream兼容 + 不带v1路径 |
 | **v3.10.0** | 🚀 **完整API接口适配(16个)** + 🔑 **密钥管理系统** + 备份恢复密钥 + WebSocket实时语音 + 群聊不喊前缀 |
 | v3.9.4 | 🐛 群聊开关修复 + 后台保活(WakeLock+Alarm) + 启动权限检查 + 自启状态恢复 |
 | v3.9.3 | 🐛 群聊开关修复 + 后台保活 + 启动权限检查 |
