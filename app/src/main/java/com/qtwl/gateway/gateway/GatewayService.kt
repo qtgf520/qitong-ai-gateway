@@ -977,20 +977,52 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
     val rawBytes = try { call.receive<ByteArray>() } catch (_: Exception) { ByteArray(0) }
     val requestBodyStr = String(rawBytes, Charsets.UTF_8)
 
-    // ★★★ 检查空 messages ★★★
+    // ★★★ 全面请求体校验：给所有错误情况返回标准400，绝不挂起 ★★★
     if (requestBodyStr.isNotBlank()) {
         try {
             val j = proxyJson.parseToJsonElement(requestBodyStr).jsonObject
-            val msgs = j["messages"]
-            if (msgs != null) {
-                val arr = msgs.jsonArray
-                if (arr.isEmpty()) {
+            
+            // 1️⃣ 检查空body {}：没有任何字段
+            if (j.isEmpty()) {
+                val (s, b) = openAIError(HttpStatusCode.BadRequest, "Request body is empty. Provide at least 'model' and 'messages'.", "invalid_request_error", 400)
+                call.respondText(contentType = ContentType.Application.Json, status = s, text = b)
+                return
+            }
+            
+            // 2️⃣ 检查 model 字段缺失
+            if (!j.containsKey("model")) {
+                val (s, b) = openAIError(HttpStatusCode.BadRequest, "Missing required field 'model'. Provide a model ID (e.g. 'gpt-4').", "invalid_request_error", 400)
+                call.respondText(contentType = ContentType.Application.Json, status = s, text = b)
+                return
+            }
+            
+            // 3️⃣ 检查 chat 请求必须有 messages 字段（有model但无messages = 非法请求）
+            if (!j.containsKey("messages")) {
+                val (s, b) = openAIError(HttpStatusCode.BadRequest, "Missing required field 'messages'. Provide a non-empty array of message objects.", "invalid_request_error", 400)
+                call.respondText(contentType = ContentType.Application.Json, status = s, text = b)
+                return
+            }
+            
+            // 3️⃣ 如果包含 messages 字段，检查它的类型和内容
+            if (j.containsKey("messages")) {
+                val msgs = j["messages"]
+                if (msgs !is JsonArray) {
+                    val (s, b) = openAIError(HttpStatusCode.BadRequest, "'messages' must be a non-empty array of message objects.", "invalid_request_error", 400)
+                    call.respondText(contentType = ContentType.Application.Json, status = s, text = b)
+                    return
+                }
+                if (msgs.isEmpty()) {
                     val (s, b) = openAIError(HttpStatusCode.BadRequest, "messages array is empty. Provide at least one message.", "invalid_request_error", 400)
                     call.respondText(contentType = ContentType.Application.Json, status = s, text = b)
                     return
                 }
             }
         } catch (_: Exception) { }
+    } else {
+        // 4️⃣ 空body（无任何内容）
+        val (s, b) = openAIError(HttpStatusCode.BadRequest, "Request body is empty. Send a valid JSON with 'model' and 'messages'.", "invalid_request_error", 400)
+        call.respondText(contentType = ContentType.Application.Json, status = s, text = b)
+        return
     }
 
     // ★★★ 全模型统计：所有请求都计上传流量（通知栏+总统计）★★★
