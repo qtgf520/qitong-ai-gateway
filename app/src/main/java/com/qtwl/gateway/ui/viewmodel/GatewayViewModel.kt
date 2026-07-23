@@ -3,6 +3,8 @@ package com.qtwl.gateway.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import android.app.ActivityManager
+import android.content.Context
 import com.qtwl.gateway.GatewayApplication
 import com.qtwl.gateway.data.db.AppDatabase
 import com.qtwl.gateway.data.model.AiModel
@@ -564,8 +566,25 @@ companion object {
     init {
         refreshTokenStats()
         loadProxyListFromPrefs()
-        // 同步真实服务运行状态
-        _serviceRunning.value = GatewayForegroundService.isServiceRunning
+        // ★★ 智能检测网关服务是否真正在运行 ★★
+        val spRunning = GatewayForegroundService.isServiceRunning
+        var actualRunning = spRunning
+        if (spRunning) {
+            // 双重确认：检查前台服务是否真的存活
+            try {
+                val ctx = GatewayApplication.getInstance()
+                val am = ctx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+                val runningServices = am.getRunningServices(Int.MAX_VALUE)
+                val isAlive = runningServices.any { it.service.shortClassName.contains("GatewayForegroundService") }
+                if (!isAlive) {
+                    // 服务已死但标记为运行中 → 修正状态
+                    actualRunning = false
+                    GatewayForegroundService.isServiceRunning = false
+                    GatewayForegroundService.saveGatewayRunningState(false)
+                }
+            } catch (_: Exception) { }
+        }
+        _serviceRunning.value = actualRunning
         // ★★ 加载上次测速缓存到排行榜，同步本地模型（去重+移除不存在的+添加新模型）★★
         val cached = loadPipelineCache()
         if (cached.isNotEmpty()) {

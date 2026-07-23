@@ -6,6 +6,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.Manifest
+import android.net.Uri
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
 import android.os.Build
@@ -58,7 +59,12 @@ import androidx.compose.foundation.background
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import com.qtwl.gateway.utils.CrashHandler
+import com.qtwl.gateway.utils.SkillRegistry
+import com.qtwl.gateway.utils.CustomSkillManager
 import com.qtwl.gateway.utils.localizedText
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import com.qtwl.gateway.utils.localizeRuntimeText
 import com.qtwl.gateway.utils.localizeGeneratedName
 import com.qtwl.gateway.utils.localizeGeneratedContent
@@ -118,6 +124,7 @@ fun DataManagementScreen(
     var showAddServiceDialog by remember { mutableStateOf(false) }
     var showDebugLogs by remember { mutableStateOf(false) }
     var showKeyManagement by remember { mutableStateOf(false) }
+    var showSkillManagement by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
@@ -838,6 +845,41 @@ fun DataManagementScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
 
+            // ★★★ 綦小桐技能管理 ★★★
+            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.SmartToy, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(8.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(localizedText("🤖 綦小桐技能管理", "🤖 QiTong AI skills"), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                            Text(localizedText("管理綦小桐的连续对话和技能开关", "Manage continuous chat and skill toggles"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    // 连续对话模式开关
+                    val continuousChat = remember { mutableStateOf(GatewayForegroundService.isContinuousChat()) }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text(localizedText("💬 连续对话模式", "💬 Continuous chat mode"), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                        Switch(checked = continuousChat.value, onCheckedChange = { e ->
+                            continuousChat.value = e
+                            GatewayForegroundService.setContinuousChat(e)
+                            scope.launch { snackbarHostState.showSnackbar(if (e) localizedText("✅ 连续对话已开启，所有消息自动走綦小桐大脑", "✅ Continuous chat ON") else localizedText("✅ 连续对话已关闭，需喊綦小桐才能触发", "✅ Continuous chat OFF")) }
+                        })
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Text(if (continuousChat.value) localizedText("🔵 开启后所有消息自动由綦小桐大脑处理，无需喊前缀", "🔵 All messages auto-processed by 綦小桐 brain, no prefix needed") else localizedText("⚪ 关闭后需喊「綦小桐」或前缀才能触发大脑", "⚪ Say '綦小桐' or prefix to trigger brain"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    
+                    // 技能列表
+                    Spacer(Modifier.height(8.dp))
+                    Button(onClick = { showSkillManagement = true }, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Default.List, contentDescription = null)
+                        Spacer(Modifier.width(4.dp))
+                        Text(localizedText("📋 管理技能 (${SkillRegistry.allSkills.size}内置 + ${CustomSkillManager.getAll().size}自定义)", "📋 Manage skills (${SkillRegistry.allSkills.size} built-in + ${CustomSkillManager.getAll().size} custom)"))
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
             // ★ 密钥管理按钮
             Card(modifier = Modifier.fillMaxWidth().clickable { showKeyManagement = true }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -1294,6 +1336,12 @@ fun DataManagementScreen(
     if (showKeyManagement) {
         Box(modifier = Modifier.fillMaxSize()) {
             KeyManagementScreen(onDismiss = { showKeyManagement = false })
+        }
+    }
+    // 技能管理全屏覆盖
+    if (showSkillManagement) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            SkillManagementScreen(onDismiss = { showSkillManagement = false })
         }
     }
 
@@ -1792,8 +1840,122 @@ fun AboutScreen(viewModel: GatewayViewModel = viewModel(factory = GatewayViewMod
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            // ★★★ 崩溃日志卡片 ★★★
+            if (CrashHandler.hasCrashLog()) {
+                Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Error.copy(alpha = 0.1f))) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Warning, contentDescription = null, tint = Error)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(localizedText("💥 检测到崩溃日志", "💥 Crash log detected"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Error)
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(localizedText("APP上次运行发生崩溃，已自动保存日志。", "The app crashed last time, log has been saved."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = {
+                                scope.launch {
+                                    val log = CrashHandler.getCrashLog()
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                    clipboard.setPrimaryClip(ClipData.newPlainText("Crash Log", log))
+                                    snackbarHostState.showSnackbar(localizedText("✅ 崩溃日志已复制", "✅ Crash log copied"))
+                                }
+                            }, modifier = Modifier.weight(1f)) {
+                                Icon(Icons.Default.ContentCopy, contentDescription = null, tint = Error)
+                                Spacer(Modifier.width(4.dp))
+                                Text(localizedText("复制日志", "Copy log"), color = Error)
+                            }
+                            Button(onClick = {
+                                CrashHandler.submitCrashLogToGitHub(title = "崩溃报告 v$appVersion") { success, msg ->
+                                    scope.launch { snackbarHostState.showSnackbar(msg) }
+                                }
+                            }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Error)) {
+                                Icon(Icons.Default.BugReport, contentDescription = null)
+                                Spacer(Modifier.width(4.dp))
+                                Text(localizedText("提交反馈", "Report"), color = MaterialTheme.colorScheme.onError)
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        TextButton(onClick = { CrashHandler.clearCrashLog() }) {
+                            Text(localizedText("🗑️ 清除日志", "🗑️ Clear log"), style = MaterialTheme.typography.bodySmall, color = Error.copy(alpha = 0.7f))
+                        }
+                    }
+                }
+            }
 
+            // ★★★ 自动更新检查卡片 ★★★
+            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.SystemUpdate, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(localizedText("🔄 检查更新", "🔄 Check for updates"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    var updateStatus by remember { mutableStateOf("") }
+                    var isChecking by remember { mutableStateOf(false) }
+                    if (updateStatus.isNotBlank()) {
+                        Text(updateStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = {
+                            isChecking = true
+                            updateStatus = localizedText("⏳ 正在检查...", "⏳ Checking...")
+                            Thread {
+                                try {
+                                    val url = java.net.URL("https://api.github.com/repos/qtgf520/qitong-ai-gateway/releases/latest")
+                                    val conn = url.openConnection() as java.net.HttpURLConnection
+                                    conn.connectTimeout = 5000
+                                    conn.readTimeout = 5000
+                                    val body = conn.inputStream.bufferedReader().readText()
+                                    conn.disconnect()
+                                    val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+                                    val release = json.parseToJsonElement(body).jsonObject
+                                    val latestTag = release["tag_name"]?.jsonPrimitive?.content ?: "unknown"
+                                    val latestName = release["name"]?.jsonPrimitive?.content ?: latestTag
+                                    val releaseUrl = release["html_url"]?.jsonPrimitive?.content ?: ""
+                                    val bodyText = release["body"]?.jsonPrimitive?.content ?: ""
+                                    val current = appVersion
+                                    val isNewer = latestTag.removePrefix("v") > current.removePrefix("v")
+                                    scope.launch {
+                                        if (isNewer) {
+                                            updateStatus = localizedText("🎉 发现新版本: $latestName\n当前版本: v$current", "🎉 New version: $latestName\nCurrent: v$current")
+                                        } else {
+                                            updateStatus = localizedText("✅ 已是最新版本: v$current", "✅ Already latest: v$current")
+                                        }
+                                    }
+                                } catch (e: Exception) {
+                                    scope.launch {
+                                        updateStatus = localizedText("❌ 检查失败: ${e.message}", "❌ Check failed: ${e.message}")
+                                    }
+                                }
+                                isChecking = false
+                            }.start()
+                        }, modifier = Modifier.weight(1f), enabled = !isChecking) {
+                            if (isChecking) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            } else {
+                                Icon(Icons.Default.Refresh, contentDescription = null)
+                            }
+                            Spacer(Modifier.width(4.dp))
+                            Text(localizedText("检查更新", "Check update"))
+                        }
+                        OutlinedButton(onClick = {
+                            try {
+                                val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/qtgf520/qitong-ai-gateway/releases"))
+                                context.startActivity(intent)
+                            } catch (_: Exception) {}
+                        }, modifier = Modifier.weight(1f)) {
+                            Icon(Icons.Default.OpenInNew, contentDescription = null)
+                            Spacer(Modifier.width(4.dp))
+                            Text(localizedText("查看发布页", "View releases"))
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
             // 隐藏的秘密通道 — 连点3次打开代理管理
             Surface(modifier = Modifier.fillMaxWidth().height(40.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), shape = MaterialTheme.shapes.small,
                 onClick = {

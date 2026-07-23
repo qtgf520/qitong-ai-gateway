@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import com.qtwl.gateway.data.db.AppDatabase
 import com.qtwl.gateway.service.GatewayForegroundService
 import com.qtwl.gateway.utils.TranslationManager
+import com.qtwl.gateway.utils.CrashHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -21,6 +22,7 @@ class GatewayApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        CrashHandler.init(this)  // ★ 初始化全局崩溃捕获
         TranslationManager.init(this)  // ★ 初始化多语言
         createNotificationChannel()
         // ★★ 从 SharedPreferences 恢复上次网关运行状态（进程重建时最可靠的初始化）★★

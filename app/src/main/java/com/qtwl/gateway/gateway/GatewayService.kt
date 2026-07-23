@@ -1070,7 +1070,8 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
         var modelId = requestJson?.get("model")?.jsonPrimitive?.content
         val stream = requestJson?.get("stream")?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false
         
-        if (modelId == "qtai-sj") {
+        if (modelId == "qtai-sj" || GatewayForegroundService.isContinuousChat()) {
+            // 连续对话模式：所有消息走綦小桐大脑
             // 从 messages 中提取用户最后一句指令
             var userMsg = try {
                 val msgs = requestJson?.get("messages")?.jsonArray

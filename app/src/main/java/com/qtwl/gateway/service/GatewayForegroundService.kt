@@ -290,6 +290,8 @@ class GatewayForegroundService : Service() {
         private const val KEY_TRAFFIC_UPLOAD = "traffic_upload"
         private const val KEY_TRAFFIC_DOWNLOAD = "traffic_download"
         private const val KEY_GATEWAY_RUNNING = "gateway_was_running" // ★★ 自启状态记录 ★★
+        private const val KEY_CONTINUOUS_CHAT = "continuous_chat" // ★★ 连续对话模式 ★★
+        private const val DISABLED_SKILLS = "disabled_skills" // ★★ 禁用的技能编码列表 ★★
         private const val DEFAULT_PORT = 8889
         private const val DEFAULT_PROXY_PORT = 7890
 
@@ -391,6 +393,22 @@ val totalDownloadBytes = java.util.concurrent.atomic.AtomicLong(0L)   // ★ APP
         GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).edit().putString(KEY_QTAI_SJ_NAME, name).apply()
     }
     fun getQtaiSjName(): String = GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).getString(KEY_QTAI_SJ_NAME, "") ?: ""
+
+    // ★★ 连续对话模式 ★★
+    fun setContinuousChat(enabled: Boolean) {
+        GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).edit().putBoolean(KEY_CONTINUOUS_CHAT, enabled).apply()
+    }
+    fun isContinuousChat(): Boolean = GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).getBoolean(KEY_CONTINUOUS_CHAT, false)
+
+    // ★★ 禁用技能列表（逗号分隔编码） ★★
+    fun setDisabledSkills(skills: Set<String>) {
+        GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).edit().putString(DISABLED_SKILLS, skills.joinToString(",")).apply()
+    }
+    fun getDisabledSkills(): Set<String> {
+        val raw = GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).getString(DISABLED_SKILLS, "") ?: ""
+        return raw.split(",").map { it.trim() }.filter { it.isNotBlank() }.toSet()
+    }
+    fun isSkillEnabled(code: String): Boolean = code !in getDisabledSkills()
     
     fun saveForcedModel(modelId: String) {
         // ★ 保存上一个真实模型（用于qtai-sj选中时知道用户选过什么模型）

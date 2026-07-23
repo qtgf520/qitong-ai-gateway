@@ -19,6 +19,7 @@ import com.qtwl.gateway.service.GatewayForegroundService
  *  7xxxxx - APP导航&UI操作
  *  8xxxxx - 服务商&模型管理
  *  9xxxxx - 高级功能（记忆/群聊/思考）
+ *  0xxxxx - 搜索功能（百度/必应/搜狗/夸克）
  */
 object SkillRegistry {
 
@@ -101,6 +102,10 @@ object SkillRegistry {
         Skill("900009", "切换QT自动化", "开启/关闭綦小桐自动化切换", "开关qtai/自动化切换"),
         Skill("900010", "开启API密钥验证", "开启API密钥接入验证", "开密钥验证/需要Key"),
         Skill("900011", "关闭API密钥验证", "关闭API密钥验证", "关密钥验证/不要Key"),
+
+        // ========== 0xxxxx 搜索功能 ==========
+        Skill("000001", "搜索引擎搜索", "使用百度/必应/搜狗/夸克搜索互联网信息，用【指令:000001:关键词】传参", "搜索xxx/查一下xxx/百度一下xxx/帮我搜xxx"),
+        Skill("000002", "搜索图片", "搜索互联网图片，用【指令:000002:关键词】传参", "搜图/找图片/搜xxx的图片"),
     )
 
     /** 根据编码找到技能 */
@@ -133,6 +138,7 @@ object SkillRegistry {
                 '7' -> "页面导航"
                 '8' -> "服务商管理"
                 '9' -> "高级功能"
+                '0' -> "搜索功能"
                 else -> "其他"
             }
             sb.append("\n[$groupName]\n")

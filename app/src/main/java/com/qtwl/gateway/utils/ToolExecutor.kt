@@ -2,6 +2,11 @@ package com.qtwl.gateway.utils
 
 import com.qtwl.gateway.gateway.GatewayScheduler
 import com.qtwl.gateway.service.GatewayForegroundService
+import java.net.URL
+import java.net.HttpURLConnection
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.jsonArray
 
 /**
  * 綦小桐工具调用系统 v2（技能编码版）
@@ -290,6 +295,54 @@ object ToolExecutor {
             "900011" -> {
                 GatewayForegroundService.saveRequireApiKey(false)
                 "✅ 已关闭API密钥验证"
+            }
+
+            // ========== 0xxxxx 搜索功能 ==========
+            "000001" -> {
+                if (param.isNotBlank()) {
+                    try {
+                        val query = java.net.URLEncoder.encode(param, "UTF-8")
+                        val url = URL("https://api.duckduckgo.com/?q=$query&format=json&no_html=1&skip_disambig=1")
+                        val conn = url.openConnection() as HttpURLConnection
+                        conn.connectTimeout = 5000
+                        conn.readTimeout = 5000
+                        val body = conn.inputStream.bufferedReader().readText()
+                        conn.disconnect()
+                        val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+                        val result = json.parseToJsonElement(body).jsonObject
+                        val abstractText = result["AbstractText"]?.jsonPrimitive?.content ?: ""
+                        val answer = result["Answer"]?.jsonPrimitive?.content ?: ""
+                        val results = result["RelatedTopics"]?.jsonArray
+                        val items = if (results != null) {
+                            results.mapNotNull { 
+                                try { it.jsonObject["Text"]?.jsonPrimitive?.content } catch (_: Exception) { null }
+                            }.filter { it.isNotBlank() }.take(5)
+                        } else emptyList()
+                        
+                        buildString {
+                            if (answer.isNotBlank()) appendLine("💡 答案: $answer")
+                            if (abstractText.isNotBlank()) appendLine("📝 摘要: $abstractText")
+                            if (items.isNotEmpty()) {
+                                appendLine("🔍 搜索结果:")
+                                items.forEachIndexed { i, item -> appendLine("  ${i+1}. $item") }
+                            }
+                            if (answer.isBlank() && abstractText.isBlank() && items.isEmpty()) {
+                                append("⚠️ 未找到\"$param\"的相关结果，建议换个关键词试试")
+                            }
+                        }
+                    } catch (e: Exception) {
+                        "⚠️ 搜索失败: ${e.message}"
+                    }
+                } else {
+                    "⚠️ 请指定搜索关键词，例如：搜索今天的天气"
+                }
+            }
+            "000002" -> {
+                if (param.isNotBlank()) {
+                    "🔍 正在搜索图片: \"$param\"，请打开APP查看搜索结果"
+                } else {
+                    "⚠️ 请指定要搜索的图片关键词"
+                }
             }
 
             else -> "⚠️ 未知技能编码: $code"
