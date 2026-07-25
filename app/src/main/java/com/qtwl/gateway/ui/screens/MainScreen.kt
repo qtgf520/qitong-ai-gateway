@@ -560,46 +560,74 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                     ) {
                         itemsIndexed(doneItems) { index, item ->
                             val itemKey = "${item.providerId}::${item.modelId}"
-                            Row(
+                            val isSelected = itemKey == forcedModelKey || item.modelId == forcedModelKey
+                            Card(
                                 modifier = Modifier.fillMaxWidth()
                                     .clickable { viewModel.forceModel(item.modelId, item.providerId) }
                                     .then(
-                                        if (itemKey == forcedModelKey || item.modelId == forcedModelKey) Modifier.background(
+                                        if (isSelected) Modifier.background(
                                             Warning.copy(alpha = 0.12f), MaterialTheme.shapes.small
                                         ) else Modifier
-                                    )
-                                    .padding(horizontal = 4.dp, vertical = 2.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        text = "#${index + 1} ",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
-                                    )
-                                    if (itemKey == forcedModelKey || item.modelId == forcedModelKey) {
-                                        Text("🎯 ", style = MaterialTheme.typography.bodySmall)
-                                    }
-                                    Text(
-                                        text = item.modelName,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        fontWeight = if (itemKey == forcedModelKey || item.modelId == forcedModelKey) FontWeight.Bold else FontWeight.Normal,
-                                        maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                }
-                                Text(
-                                    text = localizeRuntimeText(item.status),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    fontWeight = FontWeight.Medium,
-                                    color = when {
-                                        item.status.startsWith("✅") -> Online
-                                        item.status.startsWith("❌") -> Error
-                                        else -> MaterialTheme.colorScheme.onSurfaceVariant
-                                    }
+                                    ),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (isSelected) Warning.copy(alpha = 0.08f)
+                                        else MaterialTheme.colorScheme.surface
                                 )
+                            ) {
+                                Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
+                                    // 第一行：排名 + 模型名 + 选中标记
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = "#${index + 1} ",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+                                        )
+                                        if (isSelected) {
+                                            Text("🎯 ", style = MaterialTheme.typography.bodySmall)
+                                        }
+                                        Text(
+                                            text = item.modelName,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+                                    // 第二行：测速指标 + 状态
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        val statusText = item.status
+                                        val isError = statusText.startsWith("❌")
+                                        val isSuccess = statusText.startsWith("✅")
+                                        Spacer(modifier = Modifier.width(16.dp))
+                                        if (isSuccess) {
+                                            // 提取 TTFT/TPS 数字
+                                            val ttftMatch = Regex("TTFT=(\\d+)ms").find(statusText)
+                                            val tpsMatch = Regex("TPS=([\\d.]+)").find(statusText)
+                                            val latencyMatch = Regex("(\\d+)ms$").find(statusText)
+                                            if (ttftMatch != null) {
+                                                Text("⚡ ${ttftMatch.groupValues[1]}ms", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                            }
+                                            if (tpsMatch != null) {
+                                                Text("🚀 ${tpsMatch.groupValues[1]} tok/s", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                            }
+                                            if (latencyMatch != null) {
+                                                Text("⏱ ${latencyMatch.groupValues[1]}ms", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            }
+                                            Spacer(modifier = Modifier.weight(1f))
+                                            Text("✅ 可用", style = MaterialTheme.typography.labelSmall, color = Online)
+                                        } else if (isError) {
+                                            Spacer(modifier = Modifier.weight(1f))
+                                            Text("❌ 不可用", style = MaterialTheme.typography.labelSmall, color = Error)
+                                        } else {
+                                            Spacer(modifier = Modifier.weight(1f))
+                                            Text(localizeRuntimeText(statusText), style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                    }
+                                }
                             }
                         }
                     }

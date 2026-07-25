@@ -9,13 +9,14 @@ import androidx.work.WorkManager
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.Constraints
 import androidx.work.NetworkType
+import androidx.work.WorkInfo
 import java.io.File
 import java.util.concurrent.TimeUnit
 import java.util.Calendar
 
 /**
  * WorkManager 定时自动备份 Worker
- * 每24小时执行一次，自动备份到 Downloads/QiTongGateway/
+ * 每24小时执行一次，自动备份到 QiTongGateway/backups/
  */
 class AutoBackupWorker(
     context: Context,
@@ -53,30 +54,37 @@ class AutoBackupWorker(
         private const val WORK_NAME = "auto_backup"
 
         /**
-         * 调度定时备份
-         * @param hour 每日几点执行（0-23）
-         * @param minute 每日几分执行（0-59）
+         * 调度定时备份 — 宽松约束+防重复
          */
         fun schedule(context: Context, hour: Int = 3, minute: Int = 0) {
+            val workManager = WorkManager.getInstance(context)
+            // ★ 检查是否已在调度中，避免重复 REPLACE 重置计时器
+            try {
+                val existing = workManager.getWorkInfosForUniqueWork(WORK_NAME).get()
+                if (existing.isNotEmpty() && existing.any { it.state == WorkInfo.State.ENQUEUED || it.state == WorkInfo.State.RUNNING }) {
+                    Log.i(TAG, "定时备份已在调度中，跳过重复注册")
+                    return
+                }
+            } catch (_: Exception) { }
+
+            // ★ 放宽约束：不要求网络+不要求电量
             val constraints = Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
-                .setRequiresBatteryNotLow(true)
                 .build()
 
             val request = PeriodicWorkRequestBuilder<AutoBackupWorker>(
                 24, TimeUnit.HOURS,
-                15, TimeUnit.MINUTES
+                30, TimeUnit.MINUTES  // 弹性窗口30分钟
             )
                 .setConstraints(constraints)
                 .setInitialDelay(calculateInitialDelay(hour, minute), TimeUnit.MILLISECONDS)
+                .addTag("qitong_auto_backup")
                 .build()
 
-            WorkManager.getInstance(context)
-                .enqueueUniquePeriodicWork(
-                    WORK_NAME,
-                    ExistingPeriodicWorkPolicy.REPLACE,
-                    request
-                )
+            workManager.enqueueUniquePeriodicWork(
+                WORK_NAME,
+                ExistingPeriodicWorkPolicy.KEEP,  // ★ KEEP 不 REPLACE，避免重置计时器
+                request
+            )
             Log.i(TAG, "定时备份已调度: 每日 ${hour}:${minute.toString().padStart(2, '0')}")
         }
 
@@ -86,6 +94,18 @@ class AutoBackupWorker(
         fun cancel(context: Context) {
             WorkManager.getInstance(context).cancelUniqueWork(WORK_NAME)
             Log.i(TAG, "定时备份已取消")
+        }
+
+        /**
+         * 调度一次性测试备份（10秒后执行）
+         */
+        fun scheduleTest(context: Context) {
+            val testRequest = androidx.work.OneTimeWorkRequestBuilder<AutoBackupWorker>()
+                .setInitialDelay(10, java.util.concurrent.TimeUnit.SECONDS)
+                .addTag("qitong_backup_test")
+                .build()
+            WorkManager.getInstance(context).enqueue(testRequest)
+            Log.i(TAG, "测试备份已调度（10秒后执行）")
         }
 
         private fun calculateInitialDelay(hour: Int, minute: Int): Long {

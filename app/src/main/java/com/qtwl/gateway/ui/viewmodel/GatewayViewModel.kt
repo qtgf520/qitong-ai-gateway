@@ -81,6 +81,19 @@ val pipelineProgress: StateFlow<Float> = _pipelineProgress.asStateFlow()
 private val _pipelineRunning = MutableStateFlow(false)
 val pipelineRunning: StateFlow<Boolean> = _pipelineRunning.asStateFlow()
 
+/** ★★ qtai-sj 虚拟模型独立状态 ★★ */
+data class QtaiSjStatus(
+    val available: Boolean = false,
+    val bestModelId: String? = null,
+    val bestModelName: String? = null,
+    val bestTtft: Long = 0,
+    val lastUpdated: Long = 0,
+    val isTesting: Boolean = false,
+)
+
+private val _qtaiSjStatus = MutableStateFlow(QtaiSjStatus())
+val qtaiSjStatus: StateFlow<QtaiSjStatus> = _qtaiSjStatus.asStateFlow()
+
 private var pipelineJob: kotlinx.coroutines.Job? = null
 
 /** ★★ qtai-sj 记忆管理器（SharedPreferences 存储，不升级数据库）★★ */
@@ -2183,12 +2196,13 @@ fun clearChatError() {
         pipelineJob?.cancel()
         pipelineJob = viewModelScope.launch {
             _pipelineRunning.value = true
+            _qtaiSjStatus.value = _qtaiSjStatus.value.copy(isTesting = true)
             _pipelineProgress.value = 0f
             try {
                 var firstRound = true
                 while (_pipelineRunning.value) {
                     val enabledList = database.aiModelDao().getEnabledModelsList().filter { it.isEnabled }
-                    if (enabledList.isEmpty()) { _pipelineRunning.value = false; return@launch }
+                    if (enabledList.isEmpty()) { _pipelineRunning.value = false; refreshQtaiSjStatus(); return@launch }
 
                     // 保留旧测速结果，新模型加入等待中
                     val oldStatus = _pipelineStatus.value
@@ -2282,12 +2296,38 @@ fun clearChatError() {
                 }
             } catch (_: Exception) { }
             _pipelineRunning.value = false
+            refreshQtaiSjStatus()
         }
     }
 
     fun stopPipelineTest() {
         _pipelineRunning.value = false
         pipelineJob?.cancel()
+        refreshQtaiSjStatus()
+    }
+
+    /** ★★ 刷新 qtai-sj 虚拟模型状态（基于测速排行）★★ */
+    private fun refreshQtaiSjStatus() {
+        val sorted = com.qtwl.gateway.gateway.GatewayScheduler.pipelineSortedModelIds
+        if (sorted.isNotEmpty()) {
+            val bestId = sorted.first()
+            val bestModel = enabledModels.value.find { it.modelId == bestId }
+            val bestMetrics = com.qtwl.gateway.gateway.GatewayScheduler.healthCache[bestId]
+            _qtaiSjStatus.value = QtaiSjStatus(
+                available = true,
+                bestModelId = bestId,
+                bestModelName = bestModel?.displayName ?: bestId,
+                bestTtft = bestMetrics?.latencyMs ?: 0,
+                lastUpdated = System.currentTimeMillis(),
+                isTesting = false,
+            )
+        } else {
+            _qtaiSjStatus.value = QtaiSjStatus(
+                available = false,
+                lastUpdated = System.currentTimeMillis(),
+                isTesting = _pipelineRunning.value,
+            )
+        }
     }
 
     // ★ 自动故障转移

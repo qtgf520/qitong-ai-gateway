@@ -4,6 +4,7 @@ import android.util.Log
 import com.qtwl.gateway.data.model.SpeedMetrics
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -14,8 +15,9 @@ import java.util.concurrent.TimeUnit
 /**
  * 模型测速器 — 三指标精准采集
  * TTFT: Time To First Token（首字延迟）
- * TPS: Tokens Per Second（首字之后每秒token数，不算TTFT）
+ * TPS: Tokens Per Second
  * totalMs: 总耗时
+ * 兼容 SSE 流式 + 非 SSE 完整 JSON 响应
  */
 class ModelSpeedTester(
     private val client: OkHttpClient = OkHttpClient.Builder()
@@ -44,73 +46,100 @@ class ModelSpeedTester(
         var firstContent = ""
 
         try {
-            client.newCall(request).execute().use { resp ->
-                if (!resp.isSuccessful) {
-                    val errBody = resp.body?.string()?.take(200) ?: "unknown"
-                    Log.w(TAG, "测速失败 HTTP ${resp.code}: $errBody")
-                    return@withContext SpeedMetrics(
-                        ttftMs = -1, tps = 0.0, totalMs = -1, tokenCount = 0, measuredAt = System.currentTimeMillis()
-                    )
-                }
-                val source = resp.body!!.source()
-                while (!source.exhausted()) {
-                    val line = source.readUtf8Line() ?: continue
-                    if (!line.startsWith("data:")) continue
-                    val data = line.removePrefix("data:").trim()
-                    if (data == "[DONE]" || data == "{\"done\":true}") break
+            // ★ 总超时 30 秒
+            val result = withTimeoutOrNull(30000L) {
+                client.newCall(request).execute().use { resp ->
+                    if (!resp.isSuccessful) {
+                        val errBody = resp.body?.string()?.take(200) ?: "unknown"
+                        Log.w(TAG, "测速失败 HTTP ${resp.code}: $errBody")
+                        return@use SpeedMetrics(
+                            ttftMs = -1, tps = 0.0, totalMs = -1, tokenCount = 0, measuredAt = System.currentTimeMillis()
+                        )
+                    }
 
-                    val delta = parseDelta(data) ?: continue
-                    if (delta.isNotEmpty()) {
-                        if (tFirst == null) {
-                            tFirst = System.currentTimeMillis()
-                            firstContent = delta
+                    // ★ 检测响应格式：SSE 还是完整 JSON
+                    val contentType = resp.header("Content-Type", "") ?: ""
+                    val isSSE = "text/event-stream" in contentType
+
+                    if (isSSE) {
+                        // ★ SSE 流式解析
+                        val source = resp.body!!.source()
+                        while (!source.exhausted()) {
+                            val line = source.readUtf8Line() ?: continue
+                            if (!line.startsWith("data:")) continue
+                            val data = line.removePrefix("data:").trim()
+                            if (data == "[DONE]" || data == "{\"done\":true}") break
+
+                            val delta = parseDelta(data) ?: continue
+                            if (delta.isNotEmpty()) {
+                                if (tFirst == null) {
+                                    tFirst = System.currentTimeMillis()
+                                    firstContent = delta
+                                }
+                                tokenCount += estimateTokens(delta)
+                                tEnd = System.currentTimeMillis()
+                            }
                         }
-                        tokenCount += estimateTokens(delta)
-                        tEnd = System.currentTimeMillis()
+                        if (tEnd == 0L) tEnd = System.currentTimeMillis()
+                    } else {
+                        // ★ 非 SSE 格式：完整 JSON 响应
+                        val fullBody = resp.body!!.string()
+                        val jsonObj = try { JSONObject(fullBody) } catch (_: Exception) { null }
+                        val message = jsonObj?.optJSONArray("choices")
+                            ?.optJSONObject(0)
+                            ?.optJSONObject("message")
+                        val content = message?.optString("content", "") ?: ""
+
+                        if (content.isNotEmpty()) {
+                            tFirst = System.currentTimeMillis()
+                            tEnd = tFirst!!
+                            tokenCount = estimateTokens(content)
+                            firstContent = content
+                        } else {
+                            Log.w(TAG, "测速 $modelId 响应格式无法解析: ${fullBody.take(200)}")
+                            return@use SpeedMetrics(
+                                ttftMs = -1, tps = 0.0, totalMs = -1, tokenCount = 0, measuredAt = System.currentTimeMillis()
+                            )
+                        }
                     }
                 }
+
+                SpeedMetrics(
+                    ttftMs = if (tFirst != null) (tFirst!! - t0) else -1,
+                    tps = if (tEnd > 0 && tokenCount > 0) {
+                        val decodeMs = if (tFirst != null && tEnd > tFirst!!) (tEnd - tFirst!!).toDouble() else 0.0
+                        if (decodeMs > 0) tokenCount / (decodeMs / 1000.0) else 0.0
+                    } else 0.0,
+                    totalMs = if (tEnd > 0) tEnd - t0 else -1,
+                    tokenCount = tokenCount,
+                    measuredAt = System.currentTimeMillis()
+                )
             }
+
+            // ★ 超时处理
+            if (result == null) {
+                Log.w(TAG, "测速超时(30s): $modelId")
+                return@withContext SpeedMetrics(
+                    ttftMs = -1, tps = 0.0, totalMs = -1, tokenCount = 0, measuredAt = System.currentTimeMillis()
+                )
+            }
+            result
         } catch (e: Exception) {
             Log.w(TAG, "测速异常: ${e.message}")
-            return@withContext SpeedMetrics(
+            SpeedMetrics(
                 ttftMs = -1, tps = 0.0, totalMs = -1, tokenCount = 0, measuredAt = System.currentTimeMillis()
             )
         }
-
-        if (tEnd == 0L) tEnd = System.currentTimeMillis()
-
-        val ttft = (tFirst ?: t0) - t0
-        val decodeMs = if (tFirst != null && tEnd > tFirst!!) {
-            (tEnd - tFirst!!).toDouble()
-        } else 0.0
-        val tps = if (decodeMs > 0 && tokenCount > 0) {
-            tokenCount / (decodeMs / 1000.0)
-        } else 0.0
-
-        val metrics = SpeedMetrics(
-            ttftMs = ttft,
-            tps = tps,
-            totalMs = tEnd - t0,
-            tokenCount = tokenCount,
-            measuredAt = System.currentTimeMillis()
-        )
-        Log.d(TAG, "测速完成 $modelId → TTFT=${ttft}ms TPS=${"%.1f".format(tps)} 总=${tEnd - t0}ms tokens=$tokenCount")
-        metrics
     }
 
     private fun parseDelta(jsonStr: String): String? = try {
         val obj = JSONObject(jsonStr)
         val choices = obj.optJSONArray("choices") ?: return null
         val choice = choices.optJSONObject(0) ?: return null
-        // 支持 delta.content (OpenAI) 和 delta.reasoning_content (Claude thinking)
         val delta = choice.optJSONObject("delta")
         delta?.optString("content", null)
     } catch (_: Exception) { null }
 
-    /**
-     * 启发式 token 估算：
-     * 中文按 0.65 token/字，英文及其他按 1 token/4 字符
-     */
     private fun estimateTokens(text: String): Int {
         val chinese = text.count { it in '\u4e00'..'\u9fa5' }
         val other = text.length - chinese

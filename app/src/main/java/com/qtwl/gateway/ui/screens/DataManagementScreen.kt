@@ -387,9 +387,20 @@ fun DataManagementScreen(
                         Text(localizedText("⏱️ 下次自动备份: ", "⏱️ Next automatic backup: ") + String.format("%02d", autoBackupHour.value) + ":" + String.format("%02d", autoBackupMinute.value),
                             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                     } else {
-                        Text(localizedText("💡 备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加密)", "💡 Backup format: .qtbk (GZIP+SHA256+AES-256)"),
-                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+Text(localizedText("💡 备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加密)", "💡 Backup format: .qtbk (GZIP+SHA256+AES-256)"))
                     }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    // ★ 测试备份按钮
+                    OutlinedButton(onClick = {
+                        com.qtwl.gateway.data.db.AutoBackupWorker.scheduleTest(context)
+                        scope.launch { snackbarHostState.showSnackbar(localizedText("🧪 测试备份已调度（10秒后执行）", "🧪 Test backup scheduled (10 seconds)")) }
+                    }, modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.secondary)) {
+                        Icon(Icons.Default.BugReport, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(localizedText("🧪 测试备份（10秒后执行）", "🧪 Test backup (10 seconds)"))
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
 
                     // 扫描并列出备份文件弹窗
                     if (showBackupList) {
