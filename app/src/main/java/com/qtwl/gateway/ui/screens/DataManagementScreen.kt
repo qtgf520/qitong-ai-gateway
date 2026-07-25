@@ -1339,7 +1339,7 @@ Text(localizedText("💡 备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加
     }
     // 技能管理全屏覆盖
     if (showSkillManagement) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
             SkillManagementScreen(onDismiss = { showSkillManagement = false })
         }
     }

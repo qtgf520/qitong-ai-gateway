@@ -1416,9 +1416,11 @@ ${SkillRegistry.buildSkillPrompt()}
 - 你使用自然语言理解用户的意图，然后从技能池中选择最合适的技能来执行
 - 用户永远不需要知道编码数字，完全由你决定
 - 同一件事用户有多种说法，你都能理解并命中对应编码
-- 在回复末尾加上【指令:编码】来执行技能，例如【指令:600002】表示查排行
+- 在回复末尾加上【指令:编码】来执行技能（这只是你内部调用的标记，用户看不到！）
+- 你的回复直接就是给用户的自然语言回答，不要暴露任何编码、指令标记
 - 如果用户只是聊天/问问题，不需要执行任何技能，直接回复即可
 - 如果用户明确要求操作（如切换模型、查状态等），先理解语义，再调用对应编码
+- 例如：用户说"查排行"→ 你回复"当前排行是这样的：1.xxx 2.xxx" 同时末尾加【指令:600002】
 
 记住：你是${customName.ifBlank { "綦小桐" }}，要有自己的思考和个性，像真人一样回复用户。""" + ThinkingConfigManager.buildThinkingPrompt()
 
@@ -1492,16 +1494,27 @@ if (BrainMemoryManager.getConfig().enabled && userMsg.isNotBlank() && brainConte
 // ★★ 解析脑子回复中是否有技能编码并执行（支持带参数）★★
 val skillCodeParams = ToolExecutor.extractSkillCodesWithParams(brainContent)
 if (skillCodeParams.isNotEmpty()) {
+    // ★ 先剥离大脑回复中的【指令:xxx】标记（只对用户说自然语言）
+    val cleanBrain = brainContent.replace(Regex("【指令:\\d{6}(?::[^】]+)?】"), "").trim()
+    
     val skillResults = StringBuilder()
     skillCodeParams.forEach { (code, param) ->
         val skill = SkillRegistry.getSkillByCode(code)
         val result = ToolExecutor.executeByCode(code, param, null)
         GatewayForegroundService.addDebugLog("🧠 执行技能 ${skill?.name ?: code}: param=$param → $result")
-        skillResults.append("\n")
-        skillResults.append("【指令:").append(code).append(if (param.isNotBlank()) ":$param" else "").append("】\n—\n").append(result)
+        if (result.isNotBlank()) {
+            skillResults.append("\n").append(result)
+        }
     }
     GatewayForegroundService.addDebugLog("🧠 技能执行完成: ${skillCodeParams.size}个")
-    brainContent += "\n\n${skillResults.toString()}"
+    // ★ 用自然语言结果替换，不暴露任何编码！
+    brainContent = if (skillResults.isNotBlank()) {
+        // 如果大脑已经有自然语言回复了，把结果附加在后面
+        // 如果大脑只是输出编码没说话，结果就是回复
+        "$cleanBrain\n\n$skillResults"
+    } else {
+        cleanBrain
+    }
 } else if (actualCmd.isNotBlank()) {
     // ★ 大脑没输出编码 → 兜底：用actualCmd走旧式硬指令匹配（兼容）
     val fallbackActions = ToolExecutor.parseCommand(actualCmd)
@@ -1510,7 +1523,7 @@ if (skillCodeParams.isNotEmpty()) {
         val fallbackResults = fallbackActions.map { action ->
             ToolExecutor.execute(action, null)
         }.joinToString("\n")
-        brainContent += "\n\n📋 执行结果：\n$fallbackResults"
+        brainContent += "\n\n$fallbackResults"
     }
 }
 
