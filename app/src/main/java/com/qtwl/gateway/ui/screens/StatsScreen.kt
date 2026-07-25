@@ -34,6 +34,7 @@ import java.util.Date
 import java.util.Locale
 import com.qtwl.gateway.utils.localizedText
 import com.qtwl.gateway.utils.localizeRuntimeText
+import kotlinx.coroutines.delay
 
 /**
  * 用量统计屏幕 —— Token消耗监控面板
@@ -53,8 +54,14 @@ fun StatsScreen(viewModel: GatewayViewModel) {
     val gwDownload = com.qtwl.gateway.service.GatewayForegroundService.trafficDownloadBytes.get()
     val gwTotalUpload = com.qtwl.gateway.service.GatewayForegroundService.totalUploadBytes.get()
     val gwTotalDownload = com.qtwl.gateway.service.GatewayForegroundService.totalDownloadBytes.get()
-    // 当前活跃模型
-    val activeModel = com.qtwl.gateway.service.GatewayForegroundService.activeNodeName
+    // 当前活跃模型（轮询方式）
+    var activeModel by remember { mutableStateOf("") }
+    LaunchedEffect(Unit) {
+        while (true) {
+            activeModel = com.qtwl.gateway.service.GatewayForegroundService.activeNodeName
+            delay(2000)
+        }
+    }
 
     val snackbarHostState = remember { SnackbarHostState() }
 
