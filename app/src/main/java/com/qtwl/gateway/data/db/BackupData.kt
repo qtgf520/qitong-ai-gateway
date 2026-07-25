@@ -17,7 +17,7 @@ import kotlinx.serialization.json.Json
  */
 @Serializable
 data class BackupData(
-    val version: Int = 3,
+    val version: Int = 4,
     val timestamp: Long = System.currentTimeMillis(),
     val providers: List<Provider> = emptyList(),
     val models: List<AiModel> = emptyList(),
@@ -26,5 +26,6 @@ data class BackupData(
     val tokenUsage: List<TokenUsage> = emptyList(),
     val proxyListJson: String = "",           // ★ 代理列表配置
     val gatewayPort: Int = 8889,               // ★ 网关端口
-    val apiKeyEntriesJson: String = ""         // ★ 密钥列表
+    val apiKeyEntriesJson: String = "",         // ★ 密钥列表
+    val settingsJson: String = ""               // ★ 所有设置（v4新增，包含自启/隐藏多任务/代理/故障转移等）
 )

@@ -7,6 +7,7 @@ import com.qtwl.gateway.data.model.Provider
 import com.qtwl.gateway.data.model.TokenUsage
 import com.qtwl.gateway.service.GatewayForegroundService
 import com.qtwl.gateway.service.KeyManager
+import com.qtwl.gateway.GatewayApplication
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -54,6 +55,18 @@ class BackupManager(private val database: AppDatabase) {
             val proxyListJson = GatewayForegroundService.getProxyListJson()
             val gatewayPort = GatewayForegroundService.getGatewayPort()
             val apiKeyEntriesJson = Json { ignoreUnknownKeys = true }.encodeToString(KeyManager.getAllKeys())
+            // ★ 收集所有设置（SharedPreferences 中所有以 config_ 开头的键值对）
+            val prefs = GatewayApplication.getInstance().getSharedPreferences("gateway_config", android.content.Context.MODE_PRIVATE)
+            val allEntries = prefs.all.filterKeys { it.startsWith("config_") || 
+                it in listOf("proxy_enabled", "auto_failover", "debug_mode", "qtai_sj_enabled", "wake_enabled", "hide_from_recents", 
+                    "gateway_port", "gateway_was_running", "continuous_chat", "disabled_skills", "searxng_url",
+                    "qtai_sj_brain", "qtai_sj_name", "forced_model", "last_real_model", "failover_model",
+                    "current_model_idx", "auto_backup_enabled", "auto_backup_hour", "auto_backup_minute",
+                    "chat_memory_json", "chat_memory_enabled", "chat_memory_max", "capabilities_json_v2",
+                    "capabilities_auto_detect", "custom_skills_json", "app_version",
+                    "require_api_key", "brain_memory_config", "thinking_config", "group_chat_enabled")
+            }
+            val settingsJson = org.json.JSONObject(allEntries.mapValues { it.value.toString() }).toString()
 
             val backupData = BackupData(
                 providers = providers,
@@ -63,7 +76,8 @@ class BackupManager(private val database: AppDatabase) {
                 tokenUsage = tokenUsage,
                 proxyListJson = proxyListJson,
                 gatewayPort = gatewayPort,
-                apiKeyEntriesJson = apiKeyEntriesJson
+                apiKeyEntriesJson = apiKeyEntriesJson,
+                settingsJson = settingsJson
             )
 
             val payload = json.encodeToString(BackupData.serializer(), backupData).toByteArray(Charsets.UTF_8)
@@ -137,6 +151,28 @@ class BackupManager(private val database: AppDatabase) {
                     val keys = Json { ignoreUnknownKeys = true }.decodeFromString<List<com.qtwl.gateway.service.ApiKeyEntry>>(backupData.apiKeyEntriesJson)
                     KeyManager.clearAllKeys()
                     keys.forEach { KeyManager.addKey(it.key, it.label, it.allowedModels, it.qtaiSjAccess) }
+                } catch (_: Exception) { }
+            }
+
+            // ★ 恢复所有设置（v4+）
+            if (backupData.settingsJson.isNotBlank()) {
+                try {
+                    val settingsMap = Json { ignoreUnknownKeys = true }.decodeFromString<Map<String, String>>(backupData.settingsJson)
+                    val prefs = GatewayApplication.getInstance().getSharedPreferences("gateway_config", android.content.Context.MODE_PRIVATE)
+                    prefs.edit().apply {
+                        for ((key, value) in settingsMap) {
+                            when (key) {
+                                "proxy_enabled", "auto_failover", "debug_mode", "qtai_sj_enabled", "wake_enabled",
+                                "hide_from_recents", "gateway_was_running", "continuous_chat", "require_api_key",
+                                "chat_memory_enabled", "capabilities_auto_detect", "group_chat_enabled",
+                                "auto_backup_enabled" -> putBoolean(key, value.toBooleanStrictOrNull() ?: false)
+                                "gateway_port", "auto_backup_hour", "auto_backup_minute", "chat_memory_max",
+                                "current_model_idx" -> putInt(key, value.toIntOrNull() ?: 0)
+                                else -> putString(key, value)
+                            }
+                        }
+                        apply()
+                    }
                 } catch (_: Exception) { }
             }
 

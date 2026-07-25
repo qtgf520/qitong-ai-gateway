@@ -4,6 +4,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.ui.input.pointer.pointerInput
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -853,14 +856,41 @@ fun ProvidersScreen(viewModel: GatewayViewModel) {
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(providers, key = { it.id }) { provider ->
+                itemsIndexed(providers.sortedBy { it.orderIndex }, key = { _, p -> p.id }) { index, provider ->
+                    var showMoveMenu by remember { mutableStateOf(false) }
                     ProviderCard(
                         provider = provider,
                         onToggleEnabled = { viewModel.toggleProviderEnabled(provider) },
                         onEdit = { viewModel.showEditProvider(provider) },
                         onDelete = { viewModel.deleteProvider(provider) },
-                        onSync = { viewModel.syncModels(provider) }
+                        onSync = { viewModel.syncModels(provider) },
+                        modifier = Modifier.combinedClickable(
+                            onClick = { },
+                            onLongClick = { showMoveMenu = true }
+                        )
                     )
+                    // 长按弹出移动菜单
+                    if (showMoveMenu) {
+                        AlertDialog(
+                            onDismissRequest = { showMoveMenu = false },
+                            title = { Text(provider.name, fontWeight = FontWeight.Bold) },
+                            text = {
+                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    if (index > 0) {
+                                        TextButton(onClick = { viewModel.moveProvider(provider, -1); showMoveMenu = false }, modifier = Modifier.fillMaxWidth()) {
+                                            Text("▲  上移")
+                                        }
+                                    }
+                                    if (index < providers.sortedBy { it.orderIndex }.size - 1) {
+                                        TextButton(onClick = { viewModel.moveProvider(provider, 1); showMoveMenu = false }, modifier = Modifier.fillMaxWidth()) {
+                                            Text("▼  下移")
+                                        }
+                                    }
+                                }
+                            },
+                            confirmButton = { TextButton(onClick = { showMoveMenu = false }) { Text(tr("close")) } }
+                        )
+                    }
                 }
             }
         }
@@ -893,10 +923,11 @@ private fun ProviderCard(
     onToggleEnabled: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
-    onSync: () -> Unit
+    onSync: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
             containerColor = if (provider.isEnabled)
                 MaterialTheme.colorScheme.surface
@@ -1399,12 +1430,17 @@ fun ModelsScreen(viewModel: GatewayViewModel) {
         ) + fromDb
     }
 
-    // 按服务商分组（恢复原方式）
+    // 按服务商分组（按服务商 orderIndex 排序）
     val groupedModels: List<Triple<String, String, Pair<List<AiModel>, List<String>>>> = remember(filteredModels, providers, languageTick) {
         val providerMap = providers.associateBy { it.id }
+        val providerOrder = providers.sortedBy { it.orderIndex }.map { it.id }
         filteredModels.groupBy { model ->
             providerMap[model.providerId]?.name ?: if (model.modelId == "qtai-sj") "🔄 Auto switch" else "Unknown"
-        }.entries.sortedBy { it.key }.map { (providerName, modelList) ->
+        }.entries.sortedBy { entry ->
+            val firstModel = entry.value.firstOrNull()
+            val pid = firstModel?.providerId ?: 0L
+            providerOrder.indexOf(pid).let { if (it < 0) Int.MAX_VALUE else it }
+        }.map { (providerName, modelList) ->
             Triple(providerName, providerName, modelList to emptyList())
         }
     }
@@ -1567,7 +1603,6 @@ fun ModelsScreen(viewModel: GatewayViewModel) {
         )
     }
 }
-
 @Composable
 private fun ModelCard(model: AiModel, viewModel: GatewayViewModel) {
     Card(
@@ -1579,142 +1614,98 @@ private fun ModelCard(model: AiModel, viewModel: GatewayViewModel) {
                 MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
         )
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = localizeGeneratedName(model.displayName),
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier.weight(1f, fill = false)
-                    )
-                    if (!model.isEnabled) {
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Surface(
-                            color = Error.copy(alpha = 0.15f),
-                            shape = MaterialTheme.shapes.small
-                        ) {
-                            Text(
-                                text = localizedText("已禁用", "Disabled"),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Error,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
-                            )
-                        }
-                    }
-                }
-                Text(
-                    text = "ID: ${model.modelId}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            // ★★ qtai-sj：隐藏不适用的按钮（测试、编辑别名、代理模式、同步状态）★★
-            if (model.modelId != "qtai-sj") {
-                // 测试按钮
-                IconButton(
-                    onClick = { viewModel.testModelSpeed(model) },
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.PlayArrow,
-                        contentDescription = localizedText("测试", "Test"),
-                        modifier = Modifier.size(18.dp),
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                }
-                // 编辑别名按钮
-                IconButton(
-                    onClick = { viewModel.showEditModelAlias(model) },
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Edit,
-                        contentDescription = localizedText("编辑别名", "Edit alias"),
-                        modifier = Modifier.size(18.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-// ★★ qtai-sj：绑定脑子 + 启用开关 ★★
-                    if (model.modelId == "qtai-sj") {
-                        val qtaiSjEnabled by viewModel.qtaiSjEnabled.collectAsState()
-                        val brainModelId = com.qtwl.gateway.service.GatewayForegroundService.getQtaiSjBrain()
-                        var showBrainPicker by remember { mutableStateOf(false) }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Switch(checked = qtaiSjEnabled, onCheckedChange = { viewModel.toggleQtaiSj() })
-                            Spacer(Modifier.width(4.dp))
-                            TextButton(onClick = { showBrainPicker = true }) {
-                                Text(if (brainModelId.isNotBlank()) "🧠" else localizedText("🧠绑定", "🧠 Bind"), style = MaterialTheme.typography.labelSmall)
+        Column(modifier = Modifier.padding(12.dp)) {
+            // 第一行：模型名称 + ID
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = localizeGeneratedName(model.displayName),
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        if (!model.isEnabled) {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Surface(
+                                color = Error.copy(alpha = 0.15f),
+                                shape = MaterialTheme.shapes.small
+                            ) {
+                                Text(
+                                    text = localizedText("已禁用", "Disabled"),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Error,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
+                                )
                             }
                         }
-                        if (showBrainPicker) {
-                            val enabledModels by viewModel.enabledModels.collectAsState()
-                            AlertDialog(
-                                onDismissRequest = { showBrainPicker = false },
-                                title = { Text(tr("select_brain")) },
-                                text = { LazyColumn(modifier = Modifier.heightIn(max = 300.dp)) {
-                                    items(enabledModels) { m ->
-                                        Row(modifier = Modifier.fillMaxWidth().clickable {
-                                            com.qtwl.gateway.service.GatewayForegroundService.saveQtaiSjBrain(m.modelId); showBrainPicker = false
-                                        }.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                            RadioButton(selected = m.modelId == brainModelId, onClick = {
-                                                com.qtwl.gateway.service.GatewayForegroundService.saveQtaiSjBrain(m.modelId); showBrainPicker = false
-                                            })
-                                            Spacer(Modifier.width(8.dp)); Text(m.displayName)
-                                        }
-                                    }
-                                } },
-                                confirmButton = { TextButton(onClick = { showBrainPicker = false }) { Text(tr("cancel")) } }
-                            )
-                        }
-                    } else {
-                // 启用/禁用开关
-                Switch(
-                    checked = model.isEnabled,
-                    onCheckedChange = { viewModel.toggleModelEnabled(model) }
-                )
-            }
-
-                        if (model.modelId != "qtai-sj") {
-                // ★ 代理模式按钮（走代理/直连）
-                IconButton(
-                    onClick = { viewModel.toggleModelProxy(model) },
-                    modifier = Modifier.size(36.dp)
-                ) {
+                    }
                     Text(
-                        text = if (model.useProxy) "🔄" else "🔗",
-                        style = MaterialTheme.typography.labelLarge
+                        text = "ID: ${model.modelId}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+            }
 
-                // 同步状态标签
-                Surface(
-                    color = when (model.syncStatus) {
-                        "Synced" -> Online.copy(alpha = 0.15f)
-                        "Pending" -> Warning.copy(alpha = 0.15f)
-                        "Failed" -> Error.copy(alpha = 0.15f)
-                        else -> Offline.copy(alpha = 0.15f)
-                    },
-                    shape = MaterialTheme.shapes.small
-                ) {
-                    Text(
-                        text = when (model.syncStatus) {
-                            "Synced" -> localizedText("✅ 已同步", "✅ Synced")
-                            "Pending" -> localizedText("⏳ 待同步", "⏳ Pending sync")
-                            "Failed" -> localizedText("❌ 失败", "❌ Failed")
-                            else -> model.syncStatus
-                        },
-                        style = MaterialTheme.typography.labelSmall,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                    )
+            // 第二行：操作按钮
+            if (model.modelId == "qtai-sj") {
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    val qtaiSjEnabled by viewModel.qtaiSjEnabled.collectAsState()
+                    val brainModelId = com.qtwl.gateway.service.GatewayForegroundService.getQtaiSjBrain()
+                    var showBrainPicker by remember { mutableStateOf(false) }
+                    Switch(checked = qtaiSjEnabled, onCheckedChange = { viewModel.toggleQtaiSj() })
+                    Spacer(Modifier.width(4.dp))
+                    TextButton(onClick = { showBrainPicker = true }) {
+                        Text(if (brainModelId.isNotBlank()) "🧠 $brainModelId" else localizedText("🧠绑定", "🧠 Bind"), style = MaterialTheme.typography.labelSmall)
+                    }
+                    if (showBrainPicker) {
+                        val enabledModels by viewModel.enabledModels.collectAsState()
+                        AlertDialog(
+                            onDismissRequest = { showBrainPicker = false },
+                            title = { Text(tr("select_brain")) },
+                            text = { LazyColumn(modifier = Modifier.heightIn(max = 300.dp)) {
+                                item { TextButton(onClick = { com.qtwl.gateway.service.GatewayForegroundService.saveQtaiSjBrain(""); showBrainPicker = false }) { Text(tr("clear_brain")) } }
+                                items(enabledModels) { m ->
+                                    val isSelected = m.modelId == brainModelId
+                                    Row(modifier = Modifier.fillMaxWidth().clickable {
+                                        com.qtwl.gateway.service.GatewayForegroundService.saveQtaiSjBrain(m.modelId); showBrainPicker = false
+                                    }.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        RadioButton(selected = isSelected, onClick = {
+                                            com.qtwl.gateway.service.GatewayForegroundService.saveQtaiSjBrain(m.modelId); showBrainPicker = false
+                                        })
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(m.displayName, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
+                                    }
+                                }
+                            } },
+                            confirmButton = { TextButton(onClick = { showBrainPicker = false }) { Text(tr("close")) } }
+                        )
+                    }
+                }
+            } else {
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { viewModel.testModelSpeed(model) }, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = localizedText("测试", "Test"), modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                    }
+                    Text(localizedText("测试", "Test"), style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.CenterVertically))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    IconButton(onClick = { viewModel.showEditModelAlias(model) }, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Default.Edit, contentDescription = localizedText("编辑别名", "Edit alias"), modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Text(localizedText("别名", "Alias"), style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.CenterVertically))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    IconButton(onClick = { viewModel.deleteModel(model) }, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Default.Delete, contentDescription = localizedText("删除", "Delete"), modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.error)
+                    }
+                    Text(localizedText("删除", "Delete"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.align(Alignment.CenterVertically))
+                    Spacer(modifier = Modifier.weight(1f))
+                    IconButton(onClick = { viewModel.toggleModelProxy(model) }, modifier = Modifier.size(32.dp)) {
+                        Text(if (model.useProxy) "🔄" else "🔗", style = MaterialTheme.typography.labelLarge)
+                    }
+                    Switch(checked = model.isEnabled, onCheckedChange = { viewModel.toggleModelEnabled(model) }, modifier = Modifier.height(24.dp))
                 }
             }
         }

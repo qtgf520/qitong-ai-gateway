@@ -192,11 +192,17 @@ object ToolExecutor {
                 "📊 网关状态：${if (running) "运行中" else "已停止"} | 端口: $port | 故障转移: ${if (failover) "开" else "关"} | qtai-sj: ${if (qtaiSj) "开" else "关"}"
             }
             "600002" -> {
-                if (GatewayScheduler.pipelineSortedModelIds.isEmpty()) {
-                    "⚠️ 暂无测速数据，请先启动测速"
-                } else {
+                if (GatewayScheduler.pipelineSortedModelIds.isNotEmpty()) {
                     val list = GatewayScheduler.pipelineSortedModelIds.mapIndexed { i, id -> "  ${i+1}. $id" }.joinToString("\n")
                     "📈 测速排行（共${GatewayScheduler.pipelineSortedModelIds.size}个）：\n$list"
+                } else {
+                    // ★ 没有测速数据时，返回缓存中的模型列表
+                    val cachedStatus = com.qtwl.gateway.service.GatewayForegroundService.getGatewayConfig("pipeline_cache", "")
+                    if (cachedStatus.isNotBlank()) {
+                        "📈 测速排行（缓存数据）\n$cachedStatus"
+                    } else {
+                        "📋 暂无测速数据，但已启用模型可直接使用。请尝试发送消息或启动测速获取排行。"
+                    }
                 }
             }
             "600003" -> {
@@ -516,11 +522,16 @@ object ToolExecutor {
                 "📊 网关状态：${if (running) "运行中" else "已停止"} | 端口: $port | 故障转移: ${if (failover) "开" else "关"} | qtai-sj: ${if (qtaiSj) "开" else "关"}"
             }
             is ToolAction.QueryRanking -> {
-                if (GatewayScheduler.pipelineSortedModelIds.isEmpty()) {
-                    "⚠️ 暂无测速数据，请先启动测速"
-                } else {
+                if (GatewayScheduler.pipelineSortedModelIds.isNotEmpty()) {
                     val list = GatewayScheduler.pipelineSortedModelIds.mapIndexed { i, id -> "  ${i+1}. $id" }.joinToString("\n")
                     "📈 测速排行（共${GatewayScheduler.pipelineSortedModelIds.size}个）：\n$list"
+                } else {
+                    val cachedStatus = com.qtwl.gateway.service.GatewayForegroundService.getGatewayConfig("pipeline_cache", "")
+                    if (cachedStatus.isNotBlank()) {
+                        "📈 测速排行（缓存数据）\n$cachedStatus"
+                    } else {
+                        "📋 暂无测速数据，但已启用模型可直接使用。请尝试发送消息或启动测速获取排行。"
+                    }
                 }
             }
             is ToolAction.QueryCurrentModel -> {

@@ -1381,19 +1381,33 @@ if (brainModelId.isNotBlank()) {
 // ★★★ qtai-sj统计：记录使用（不覆盖activeNodeName，保持用户选的真实模型）★★★
             GatewayScheduler.recordModelUsage(brainModelId)
         // ★ 用脑子模型分析用户意图（带排行榜+模型能力标记）★★
-        val rankingInfo = if (GatewayScheduler.pipelineSortedModelIds.isEmpty()) "暂无测速数据" 
-                                else "当前测速排行（按速度排序）：\n" + GatewayScheduler.pipelineSortedModelIds.mapIndexed { i, id -> 
-                                    val m = database.aiModelDao().getEnabledModelsList().find { it.modelId == id }
-                                    val displayName = m?.customAlias?.takeIf { it.isNotBlank() } ?: m?.displayName ?: id
-                                    val caps = if (m != null) ModelCapabilityManager.getCapabilities(m.modelId) else Triple(false, false, false)
-                                    val tags = buildString {
-                                        if (caps.first) append("🛠️")
-                                        if (caps.second) append("👁️")
-                                        if (caps.third) append("🎨")
-                                        if (isEmpty()) append("💬")
-                                    }
-                                    "  ${i+1}. $id ($displayName) $tags"
-                                }.joinToString("\n")
+        val rankingInfo = if (GatewayScheduler.pipelineSortedModelIds.isNotEmpty()) {
+            "当前测速排行（按速度排序）：\n" + GatewayScheduler.pipelineSortedModelIds.mapIndexed { i, id -> 
+                val m = database.aiModelDao().getEnabledModelsList().find { it.modelId == id }
+                val displayName = m?.customAlias?.takeIf { it.isNotBlank() } ?: m?.displayName ?: id
+                val caps = if (m != null) ModelCapabilityManager.getCapabilities(m.modelId) else Triple(false, false, false)
+                val tags = buildString {
+                    if (caps.first) append("🛠️")
+                    if (caps.second) append("👁️")
+                    if (caps.third) append("🎨")
+                    if (isEmpty()) append("💬")
+                }
+                "  ${i+1}. $id ($displayName) $tags"
+            }.joinToString("\n")
+        } else {
+            val allEnabled = database.aiModelDao().getEnabledModelsList()
+            if (allEnabled.isEmpty()) "暂无可用模型，请先添加服务商"
+            else "当前可用模型（未测速）：\n" + allEnabled.mapIndexed { i, m ->
+                val caps = ModelCapabilityManager.getCapabilities(m.modelId)
+                val tags = buildString {
+                    if (caps.first) append("🛠️")
+                    if (caps.second) append("👁️")
+                    if (caps.third) append("🎨")
+                    if (isEmpty()) append("💬")
+                }
+                "  ${i+1}. ${m.modelId} (${m.displayName}) $tags"
+            }.joinToString("\n")
+        }
                             val brainPrompt = """你叫${customName.ifBlank { "綦小桐" }}，是綦桐AI网关的智能助手。你拥有完整的思考能力和网关控制能力。
 
 ${BrainMemoryManager.buildPersonaPrompt()}
@@ -1662,6 +1676,9 @@ if (brainContent.isNotBlank()) {
                 if (provider != null && provider.isEnabled) {
                     // ★★ 通知栏同步模型名 ★★
                     GatewayForegroundService.activeNodeName = finalTarget.modelId
+                    // ★★ 设置 modelId/providerId 属性，确保 token 统计能正确记录 ★★
+                    call.attributes.put(MODEL_ID_KEY, finalTarget.modelId)
+                    call.attributes.put(PROVIDER_ID_KEY, finalTarget.providerId)
                     // ★★ 透传：修正参数 + 替换model字段 + 可选人格注入 ★★
                     val sanitizedBody = sanitizeRequestBody(requestBodyStr)
                     val bodyWithPersona = if (BrainMemoryManager.getConfig().enabled) {
@@ -1927,7 +1944,7 @@ val attemptModels: List<AiModel> = if (allEnabled.isNotEmpty()) {
             } // ★★ 结束 attemptModels 非空判断 ★★
             val errMsg = when {
                 modelId == "qtai-sj" && !GatewayForegroundService.getQtaiSjEnabled() -> "🔄 自动化切换已禁用，请在模型页面开启"
-                modelId == "qtai-sj" && GatewayScheduler.pipelineSortedModelIds.isEmpty() -> "请先启动测速以获取可用模型排行"
+                modelId == "qtai-sj" && GatewayScheduler.pipelineSortedModelIds.isEmpty() && allEnabled.isEmpty() -> "暂无可用模型，请先添加服务商并同步模型"
                 autoFailover -> "All ${failCount} models failed. Last: $lastError"
                 else -> "Model '$modelId' error: $lastError"
             }

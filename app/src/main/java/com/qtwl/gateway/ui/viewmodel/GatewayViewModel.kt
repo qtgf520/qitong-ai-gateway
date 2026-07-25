@@ -681,6 +681,14 @@ companion object {
                     }
                 }
                 _pipelineStatus.value = merged
+                // ★ 更新缓存到 PipelineSortedModelIds，确保查排行不用等测完 ★
+                val sortedIds = merged.filter { it.status.startsWith("✅") || it.status.startsWith("❌") }.sortedBy { it.latencyMs }.map { it.modelId }
+                if (sortedIds.isNotEmpty()) {
+                    com.qtwl.gateway.gateway.GatewayScheduler.pipelineSortedModelIds = sortedIds
+                } else {
+                    // 缓存中还没测完的，就用所有模型（按顺序）
+                    com.qtwl.gateway.gateway.GatewayScheduler.pipelineSortedModelIds = merged.map { it.modelId }
+                }
                 savePipelineCache(merged)
             }
         }
@@ -690,8 +698,9 @@ companion object {
         }
         // ★★ 启动后台静默探针（30分钟循环，静默检测模型能力）★★
         ModelCapabilityManager.startSilentProbe(database, viewModelScope)
-        // ★★ 启动时自动全量测速，确保排行榜立即可用 ★★
-        if (!_pipelineRunning.value) {
+        // ★★ 根据持久化的测速开关状态决定是否启动测速 ★★
+        val pipelineEnabled = GatewayForegroundService.getGatewayConfig("pipeline_test_enabled", "true").toBoolean()
+        if (pipelineEnabled && !_pipelineRunning.value) {
             startPipelineTest()
         }
     }
@@ -1220,6 +1229,23 @@ companion object {
             } catch (e: Exception) {
                 _snackbarMessage.value = "删除失败: ${e.message}"
             }
+        }
+    }
+
+    /** 移动服务商排序（上下） */
+    fun moveProvider(provider: Provider, direction: Int) {
+        viewModelScope.launch {
+            try {
+                val allProviders = database.providerDao().getAllProvidersOnce().sortedBy { it.orderIndex }
+                val idx = allProviders.indexOfFirst { it.id == provider.id }
+                if (idx < 0) return@launch
+                val targetIdx = idx + direction
+                if (targetIdx < 0 || targetIdx >= allProviders.size) return@launch
+                val target = allProviders[targetIdx]
+                // 交换 orderIndex
+                database.providerDao().update(provider.copy(orderIndex = target.orderIndex))
+                database.providerDao().update(target.copy(orderIndex = provider.orderIndex))
+            } catch (_: Exception) { }
         }
     }
 
@@ -2107,6 +2133,18 @@ fun getDisplayModelName(model: AiModel): String {
                 }
             } catch (e: Exception) {
                 _snackbarMessage.value = "❌ ${model.displayName} 测速失败: ${e.localizedMessage ?: e.message}"
+            }
+        }
+    }
+
+    /** 删除模型 */
+    fun deleteModel(model: AiModel) {
+        viewModelScope.launch {
+            try {
+                database.aiModelDao().delete(model)
+                _snackbarMessage.value = "🗑️ 已删除模型: ${model.displayName}"
+            } catch (e: Exception) {
+                _snackbarMessage.value = "删除失败: ${e.message}"
             }
         }
     }

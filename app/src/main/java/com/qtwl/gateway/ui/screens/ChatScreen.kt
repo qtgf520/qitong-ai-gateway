@@ -519,7 +519,12 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                             }
                         }
                     } else {
-                        items(enabledModels, key = { it.id }) { model ->
+                        // ★ 按测速排行排序（跑得快的排前面，未测速的排最后）
+                        val sortedModels = enabledModels.sortedBy { model ->
+                            val idx = com.qtwl.gateway.gateway.GatewayScheduler.pipelineSortedModelIds.indexOf(model.modelId)
+                            if (idx < 0) Int.MAX_VALUE else idx
+                        }
+                        items(sortedModels, key = { it.id }) { model ->
                             val isSelected = selectedModel?.id == model.id
                             Card(modifier = Modifier.fillMaxWidth().clickable { viewModel.selectModel(model); showModelSelector = false },
                                 colors = CardDefaults.cardColors(containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface)) {

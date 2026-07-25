@@ -39,6 +39,18 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        // ★★ 应用隐藏多任务设置（运行时从最近任务中移除）★★
+        val hideFromRecents = com.qtwl.gateway.service.GatewayForegroundService.getGatewayConfig("hide_from_recents", "false").toBoolean()
+        if (hideFromRecents) {
+            try {
+                val am = getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+                am.appTasks.firstOrNull()?.setExcludeFromRecents(true)
+            } catch (_: Exception) {}
+        }
+
+        // ★★ 恢复测速开关状态 ★★
+        val pipelineEnabled = com.qtwl.gateway.service.GatewayForegroundService.getGatewayConfig("pipeline_test_enabled", "true").toBoolean()
+
         // ★★ 打开软件时自动检查关键权限 ★★
         checkPermissionsOnStart()
 
