@@ -6,7 +6,33 @@
 
 ---
 
-## 🔄 v3.16.0（正式发布）
+## 🔄 v3.17.2（正式发布）
+
+### ✨ 新增
+- **📊 统计页「清空流量」按钮** — 点击清除总上传+总下载+持久化流量统计，与「清除数据」（Token用量）并列
+- **🧹 `clearTotalTraffic()` 方法** — GatewayForegroundService 新增，同时清除通知栏+总统计+持久化
+
+### 🐛 修复
+- **统计页当前模型不刷新** — `activeNodeName` 改为 `LaunchedEffect` 轮询方式（2秒），Compose 实时感知变化
+- **版本号统一** — 本地/远程/Release 全部统一为 3.17.2
+
+---
+
+## 🔄 v3.17.1（正式发布）
+
+### 🆕 新增
+- **🎯 三层技能路由器** — `SkillRouter.kt`，关键词匹配(Layer 1)→语义匹配(Layer 2)→LLM判断(Layer 3)，自然语言通杀全部技能
+- **🔍 搜索技能** — `SearchSkill.kt`，SearXNG集成，智能判断是否需要联网搜索
+- **🧑 人格系统升级** — 大五人格维度滑块（开放性/尽责性/外向性/宜人性/神经质/幽默感/共情力），管理页可调
+- **💾 备份完善** — WorkManager定时自动备份（`AutoBackupWorker.kt`），应用启动时恢复调度
+- **⚠️ 重置确认升级** — 需输入"确认重置"才能清空数据
+- **📲 转发处理** — `ReceiveShareActivity.kt`，接收外部ACTION_SEND转发消息
+- **🔄 应用启动恢复定时备份** — GatewayApplication.onCreate() 自动恢复WorkManager调度
+
+### 🐛 修复
+- **同名模型全选bug** — 排行榜强制选择用 `providerId::modelId` 精确匹配，不再一次选两个同名模型
+- **模型分类恢复** — 改回按服务商分组，不是按 modelId 分组
+- **统计页不显示模型** — 改用轮询方式同步 `activeNodeName`
 
 ### 🎯 三指标测速 + 能力标签 + 搜索 + 备份升级
 

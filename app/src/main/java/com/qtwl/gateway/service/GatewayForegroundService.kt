@@ -513,5 +513,18 @@ val totalDownloadBytes = java.util.concurrent.atomic.AtomicLong(0L)   // ★ APP
             trafficUploadBytes.set(0L)
             trafficDownloadBytes.set(0L)
         }
+        
+        /** ★★ 清除全部总统计（总上传+总下载+持久化）★★ */
+        fun clearTotalTraffic() {
+            totalUploadBytes.set(0L)
+            totalDownloadBytes.set(0L)
+            trafficUploadBytes.set(0L)
+            trafficDownloadBytes.set(0L)
+            // 清除持久化
+            GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).edit()
+                .putLong(KEY_TRAFFIC_UPLOAD + "_total", 0L)
+                .putLong(KEY_TRAFFIC_DOWNLOAD + "_total", 0L)
+                .apply()
+        }
     }
 }

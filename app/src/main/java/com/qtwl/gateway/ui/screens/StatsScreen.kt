@@ -337,6 +337,25 @@ fun StatsScreen(viewModel: GatewayViewModel) {
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(localizedText("清除数据", "Clear data"))
                     }
+                    // ★★ 新增：清除总流量统计按钮 ★★
+                    OutlinedButton(
+                        onClick = {
+                            com.qtwl.gateway.service.GatewayForegroundService.clearTotalTraffic()
+                            viewModel.refreshTokenStats()
+                        },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = Error
+                        )
+                    ) {
+                        Icon(
+                            Icons.Default.DeleteSweep,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(localizedText("清空流量", "Clear traffic"))
+                    }
                 }
                 Spacer(modifier = Modifier.height(80.dp))
             }
