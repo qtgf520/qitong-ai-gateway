@@ -471,20 +471,33 @@ class GatewayService(private val database: AppDatabase) {
                 post("/v1/images/generations") {
                     if (!validateApiKey(call)) { val (s,b)=openAIError(HttpStatusCode.Unauthorized,"Invalid or missing API key","invalid_api_key"); call.respondText(contentType=ContentType.Application.Json,status=s,text=b); return@post }
                     try { val rawBytes=call.receive<ByteArray>(); GatewayForegroundService.trafficUploadBytes.addAndGet(rawBytes.size.toLong()); GatewayForegroundService.totalUploadBytes.addAndGet(rawBytes.size.toLong())
-                        val body=proxyJson.parseToJsonElement(String(rawBytes,Charsets.UTF_8)).jsonObject; var modelId=body["model"]?.jsonPrimitive?.content?:"dall-e-3"
-                        if (modelId=="qtai-sj"){val active=GatewayForegroundService.activeNodeName;if(active.isNotBlank())modelId=active}
-                        val models=database.aiModelDao().getEnabledModelsList(); val targetModel=models.find{it.modelId==modelId}?:models.firstOrNull()
-                        if(targetModel==null){call.respondText(openAIError(HttpStatusCode.NotFound,"Model $modelId not found").second,ContentType.Application.Json,status=HttpStatusCode.NotFound);return@post}
+                        var bodyStr=String(rawBytes,Charsets.UTF_8)
+                        val body=proxyJson.parseToJsonElement(bodyStr).jsonObject
+                        var modelId=body["model"]?.jsonPrimitive?.content?:"dall-e-3"
+                        if (modelId=="qtai-sj"){
+                            val active=GatewayForegroundService.activeNodeName
+                            if(active.isNotBlank()) modelId=active
+                        }
+                        val models=database.aiModelDao().getEnabledModelsList()
+                        var targetModel=models.find{it.modelId==modelId}
+                        if(targetModel==null){
+                            // 兜底：用第一个已启用的模型
+                            targetModel=models.firstOrNull()
+                        }
+                        if(targetModel==null){call.respondText(openAIError(HttpStatusCode.NotFound,"No available model for image generation").second,ContentType.Application.Json,status=HttpStatusCode.NotFound);return@post}
                         val provider=database.providerDao().getProviderById(targetModel.providerId)
-                        if(provider==null||!provider.isEnabled){call.respondText(openAIError(HttpStatusCode.NotFound,"Provider for $modelId not available").second,ContentType.Application.Json,status=HttpStatusCode.NotFound);return@post}
-                        val upstreamUrl=provider.resolvedBaseUrl.trimEnd('/'); val upstreamBody=sanitizeRequestBody(rawBytes.decodeToString())
+                        if(provider==null||!provider.isEnabled){call.respondText(openAIError(HttpStatusCode.NotFound,"Provider for ${targetModel.modelId} not available").second,ContentType.Application.Json,status=HttpStatusCode.NotFound);return@post}
+                        // 替换body中的model为真实模型ID
+                        bodyStr=replaceModelInBody(bodyStr, targetModel.modelId)
+                        val upstreamUrl=provider.resolvedBaseUrl.trimEnd('/')
+                        val upstreamBody=sanitizeRequestBody(bodyStr)
                         val client=UpstreamClient.getClientForModel(targetModel.useProxy)
                         val req=okhttp3.Request.Builder().url("$upstreamUrl/v1/images/generations").post(upstreamBody.toByteArray(Charsets.UTF_8).toRequestBody(DEFAULT_CT)).apply{if(!provider.apiKey.isNullOrBlank())header("Authorization","Bearer ${provider.apiKey}")}.build()
                         val imgStartMs=System.currentTimeMillis()
                         val resp=withContext(Dispatchers.IO){client.newCall(req).execute()}; val respBody=resp.body?.string()?:"{}"; resp.close()
                         GatewayForegroundService.totalDownloadBytes.addAndGet(respBody.length.toLong()); GatewayForegroundService.trafficDownloadBytes.addAndGet(respBody.length.toLong())
                         call.respondText(respBody,ContentType.Application.Json.withCharset(Charsets.UTF_8),status=HttpStatusCode.fromValue(resp.code.takeIf{it>0}?:200))
-                        logAccess(call,modelId,resp.code,System.currentTimeMillis()-imgStartMs)
+                        logAccess(call,targetModel.modelId,resp.code,System.currentTimeMillis()-imgStartMs)
                     }catch(e:Exception){val(s,b)=openAIError(HttpStatusCode.InternalServerError,e.message?:"Image generation failed","server_error");call.respondText(contentType=ContentType.Application.Json,status=s,text=b)}
                 }
 
@@ -740,6 +753,13 @@ private fun sanitizeRequestBody(bodyStr: String): String {
         }
         return sb.toString()
     } catch (_: Exception) { return bodyStr }
+}
+
+/** 替换请求体中的model字段（用于qtai-sj解析后的真实模型ID替换） */
+private fun replaceModelInBody(bodyStr: String, newModelId: String): String {
+    return try {
+        Regex(""""model"\s*:\s*"[^"]*"""").replace(bodyStr) { "\"model\":\"$newModelId\"" }
+    } catch (_: Exception) { bodyStr }
 }
 
 private suspend fun executeWithRetry(client: okhttp3.OkHttpClient, request: okhttp3.Request, retries: Int = MAX_RETRIES): okhttp3.Response {

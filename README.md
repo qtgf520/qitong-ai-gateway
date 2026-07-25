@@ -1,7 +1,7 @@
 # 綦桐AI网关 | QiTong AI Gateway
 
 > **包名 / Package：** `com.qtwl.gateway`  
-> **最新版本 / Latest：** v3.13.0 (versionCode=137)  
+> **最新版本 / Latest：** v3.14.0 (versionCode=138)  
 > **开源协议 / License：** Apache 2.0  
 > **语言 / Languages：** 🌐 15 languages (CN/EN/JP/KR/FR/DE/ES/RU/PT/VN/TH/AR/HI/ID)
 > **官方QQ群 / QQ Group：** [1007488535](https://qm.qq.com/q/1007488535) 💬
@@ -168,6 +168,7 @@ See [CHANGELOG.md](CHANGELOG.md) for full changelog.
 
 | Version | Key Features |
 |:--------|:-------------|
+| **v3.14.0** | 🐛 **图像生成修复** — model字段未替换导致404 + 新增replaceModelInBody + 兜底机制 |
 | **v3.13.0** | 🎯 **綦小桐技能管理系统 + 连续对话模式** — 自定义技能/手动添加/Git导入/内置技能只读展示 |
 | **v3.12.0** | 🛡️ **崩溃捕获+自动更新+网关智能检测+搜索技能** — 闪退自动保存到GitHub Issues |
 | **v3.11.1** | 🐛 **请求体校验全面增强** — 缺失messages/model + 空body + messages非数组 全部返回400 |
