@@ -29,6 +29,12 @@ class GatewayApplication : Application() {
         if (GatewayForegroundService.getGatewayWasRunning()) {
             GatewayForegroundService.isServiceRunning = true
         }
+        // ★★ 恢复定时备份 WorkManager 调度 ★★
+        if (GatewayForegroundService.getGatewayConfig("auto_backup_enabled", "false").toBoolean()) {
+            val hour = GatewayForegroundService.getGatewayConfig("auto_backup_hour", "3").toIntOrNull() ?: 3
+            val minute = GatewayForegroundService.getGatewayConfig("auto_backup_minute", "0").toIntOrNull() ?: 0
+            com.qtwl.gateway.data.db.AutoBackupWorker.schedule(this, hour, minute)
+        }
     }
 
     private fun createNotificationChannel() {
