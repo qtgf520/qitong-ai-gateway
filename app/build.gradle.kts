@@ -120,6 +120,9 @@ dependencies {
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
 
+    // WorkManager (定时备份)
+    implementation("androidx.work:work-runtime-ktx:2.9.1")
+
     // Test
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

@@ -448,7 +448,7 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                 val doneItems = pStatus.filter {
                     it.status.startsWith("✅") || it.status.startsWith("❌")
                 }.sortedBy { it.latencyMs }
-                val forcedModelId by viewModel.forcedModelId.collectAsState()
+                val forcedModelKey by viewModel.forcedModelKey.collectAsState()
                 val hasReadyModel = doneItems.any { it.status.startsWith("✅") }
                 val allFailed = doneItems.isNotEmpty() && doneItems.all { it.status.startsWith("❌") }
 
@@ -536,15 +536,15 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                     Text(localizedText("✅ 已测速完成", "✅ Speed test complete"), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold,
                         color = Online)
                     Spacer(modifier = Modifier.height(4.dp))
-                    // ★ 显示强制模式指示
-                    if (forcedModelId.isNotBlank()) {
+// ★ 显示强制模式指示
+                    if (forcedModelKey.isNotBlank()) {
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = localizedText("🎯 强制模式: ", "🎯 Forced mode: ") + (doneItems.find { it.modelId == forcedModelId }?.modelName ?: forcedModelId),
+                                text = localizedText("🎯 强制模式: ", "🎯 Forced mode: ") + (doneItems.find { "${it.providerId}::${it.modelId}" == forcedModelKey || it.modelId == forcedModelKey }?.modelName ?: forcedModelKey),
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary
@@ -554,16 +554,17 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                             }
                         }
                     }
-                    LazyColumn(
+                        LazyColumn(
                         modifier = Modifier.fillMaxWidth().heightIn(max = 200.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         itemsIndexed(doneItems) { index, item ->
+                            val itemKey = "${item.providerId}::${item.modelId}"
                             Row(
                                 modifier = Modifier.fillMaxWidth()
-                                    .clickable { viewModel.forceModel(item.modelId) }
+                                    .clickable { viewModel.forceModel(item.modelId, item.providerId) }
                                     .then(
-                                        if (item.modelId == forcedModelId) Modifier.background(
+                                        if (itemKey == forcedModelKey || item.modelId == forcedModelKey) Modifier.background(
                                             Warning.copy(alpha = 0.12f), MaterialTheme.shapes.small
                                         ) else Modifier
                                     )
@@ -578,13 +579,13 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                                         fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
                                     )
-                                    if (item.modelId == forcedModelId) {
+                                    if (itemKey == forcedModelKey || item.modelId == forcedModelKey) {
                                         Text("🎯 ", style = MaterialTheme.typography.bodySmall)
                                     }
                                     Text(
                                         text = item.modelName,
                                         style = MaterialTheme.typography.bodySmall,
-                                        fontWeight = if (item.modelId == forcedModelId) FontWeight.Bold else FontWeight.Normal,
+                                        fontWeight = if (itemKey == forcedModelKey || item.modelId == forcedModelKey) FontWeight.Bold else FontWeight.Normal,
                                         maxLines = 1, overflow = TextOverflow.Ellipsis,
                                         modifier = Modifier.weight(1f)
                                     )
@@ -1370,16 +1371,13 @@ fun ModelsScreen(viewModel: GatewayViewModel) {
         ) + fromDb
     }
 
-    // 按 modelId 分组（同名模型归为一组）
-    val groupedModels = remember(filteredModels, providers, languageTick) {
+    // 按服务商分组（恢复原方式）
+    val groupedModels: List<Triple<String, String, Pair<List<AiModel>, List<String>>>> = remember(filteredModels, providers, languageTick) {
         val providerMap = providers.associateBy { it.id }
-        val byModelId = filteredModels.groupBy { it.modelId }
-        byModelId.entries.sortedBy { it.key }.map { (modelId, modelList) ->
-            val providerNames = modelList.map { model ->
-                providerMap[model.providerId]?.name ?: "Unknown"
-            }.distinct()
-            val displayName = modelList.firstOrNull()?.displayName ?: modelId
-            Triple(modelId, displayName, modelList to providerNames)
+        filteredModels.groupBy { model ->
+            providerMap[model.providerId]?.name ?: if (model.modelId == "qtai-sj") "🔄 Auto switch" else "Unknown"
+        }.entries.sortedBy { it.key }.map { (providerName, modelList) ->
+            Triple(providerName, providerName, modelList to emptyList())
         }
     }
 
@@ -1508,42 +1506,21 @@ fun ModelsScreen(viewModel: GatewayViewModel) {
                     }
                 }
             }
-            // 按 modelId 分组显示（同名模型归为一组）
-            groupedModels.forEach { (modelId, displayName, modelListWithProviders) ->
-                val (modelList, providerNames) = modelListWithProviders
-                item(key = "group_$modelId") {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                        )
-                    ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = "📦 $displayName",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                Text(
-                                    text = "×${modelList.size}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            Text(
-                                text = providerNames.joinToString(", "),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            modelList.forEach { model ->
-                                ModelCard(model = model, viewModel = viewModel)
-                            }
-                        }
-                    }
+// 按服务商分组显示模型
+            groupedModels.forEach { (providerName, _, modelListWithProviders) ->
+                val (modelList, _) = modelListWithProviders
+                item {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "📌 $providerName",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    )
+                }
+                items(modelList, key = { it.id }) { model ->
+                    ModelCard(model = model, viewModel = viewModel)
                 }
             }
 

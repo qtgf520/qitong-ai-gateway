@@ -65,6 +65,7 @@ import com.qtwl.gateway.data.model.CapabilityTag
 data class PipelineTestItem(
     val modelId: String,
     val modelName: String,
+    val providerId: Long = 0L,
     val status: String,
     val latencyMs: Long = 0,
     val isCurrent: Boolean = false
@@ -2198,6 +2199,7 @@ fun clearChatError() {
                         else PipelineTestItem(
                             modelId = model.modelId,
                             modelName = if (model.customAlias.isNotBlank()) model.customAlias else model.displayName,
+                            providerId = model.providerId,
                             status = "等待中"
                         )
                     }
@@ -2321,20 +2323,22 @@ fun clearChatError() {
     }
 
     // ★ 手动强制切换模型（点排行榜上的模型）
-    private val _forcedModelId = MutableStateFlow(GatewayForegroundService.getForcedModel())
-    val forcedModelId: StateFlow<String> = _forcedModelId.asStateFlow()
+    // 格式: "providerId::modelId" 精确匹配，避免同名模型混淆
+    private val _forcedModelKey = MutableStateFlow(GatewayForegroundService.getForcedModel())
+    val forcedModelKey: StateFlow<String> = _forcedModelKey.asStateFlow()
 
-    fun forceModel(modelId: String) {
-        val currentForced = _forcedModelId.value
-        if (currentForced == modelId) {
+    fun forceModel(modelId: String, providerId: Long = 0L) {
+        val modelKey = if (providerId != 0L) "$providerId::$modelId" else modelId
+        val currentForced = _forcedModelKey.value
+        if (currentForced == modelKey) {
             // 点击同一个模型 → 取消强制，回到自动排行
-            _forcedModelId.value = ""
+            _forcedModelKey.value = ""
             GatewayForegroundService.saveForcedModel("")
             _snackbarMessage.value = "↩️ 已取消强制切换，回到自动排行模式"
         } else {
             // 强制切换到该模型
-            _forcedModelId.value = modelId
-            GatewayForegroundService.saveForcedModel(modelId)
+            _forcedModelKey.value = modelKey
+            GatewayForegroundService.saveForcedModel(modelKey)
             // 从排行榜找模型名称
             val modelName = _pipelineStatus.value.find { it.modelId == modelId }?.modelName ?: modelId
             _snackbarMessage.value = "🎯 已强制切换到: $modelName"
@@ -2342,7 +2346,7 @@ fun clearChatError() {
     }
 
     fun clearForcedModel() {
-        _forcedModelId.value = ""
+        _forcedModelKey.value = ""
         GatewayForegroundService.saveForcedModel("")
     }
 

@@ -50,7 +50,20 @@ object BrainMemoryManager {
         val personaTraits: String = "温柔、细心、有幽默感、喜欢学习和思考",  // 性格特征
         val personaStyle: String = "亲切自然",     // 语气风格
         val personaBackground: String = "你是綦桐AI网关的智能助手綦小桐，由綦桐开发，擅长帮助用户使用AI网关、解答问题、管理记忆，像一个真实的朋友一样陪伴用户。",
-        val envAwareness: Boolean = true           // 环境感知开关
+        val envAwareness: Boolean = true,          // 环境感知开关
+        // ★★ 人格维度（大五人格）★★
+        val openness: Int = 8,                     // 开放性 1-10
+        val conscientiousness: Int = 6,            // 尽责性 1-10
+        val extraversion: Int = 7,                 // 外向性 1-10
+        val agreeableness: Int = 8,                // 宜人性 1-10
+        val neuroticism: Int = 3,                  // 神经质 1-10
+        val humorLevel: Int = 7,                   // 幽默感 1-10
+        val empathyLevel: Int = 8,                 // 共情力 1-10
+        val thinkingDepth: Int = 3,                // 思考深度 1-5
+        val catchphrases: String = "好嘞~,我看看啊,这个有意思,搞定了！,嗯嗯，明白了",  // 口头禅（逗号分隔）
+        val forbiddenWords: String = "作为一个AI,作为AI助手,AI语言模型",  // 禁用词
+        val expertise: String = "全栈通用",        // 专业领域
+        val communicationStyle: String = "自然亲切、像朋友聊天"  // 沟通风格描述
     )
 
     // ==================== 配置管理 ====================
@@ -259,7 +272,34 @@ object BrainMemoryManager {
         sb.appendLine(localizedText("你叫", "Your name is ") + cfg.personaName + localizedText("，", ", age ") + cfg.personaAge + localizedText("岁。", "."))
         sb.appendLine(localizedText("性格：", "Personality: ") + localizeGeneratedContent(cfg.personaTraits))
         sb.appendLine(localizedText("语气风格：", "Tone style: ") + localizeGeneratedName(cfg.personaStyle))
+        sb.appendLine(localizedText("沟通风格：", "Communication style: ") + localizeGeneratedContent(cfg.communicationStyle))
         sb.appendLine(localizedText("背景：", "Background: ") + localizeGeneratedContent(cfg.personaBackground))
+        sb.appendLine(localizedText("专业领域：", "Expertise: ") + localizeGeneratedContent(cfg.expertise))
+
+        // ★★ 大五人格维度 ★★
+        sb.appendLine(localizedText(
+            "【人格维度】",
+            "[Personality Dimensions]"
+        ))
+        sb.appendLine(localizedText("开放性：", "Openness: ") + "${cfg.openness}/10 " + when { cfg.openness >= 7 -> localizedText("创新求变，喜欢尝试新事物", "innovative, loves trying new things"); cfg.openness <= 3 -> localizedText("保守传统，喜欢稳定", "conservative, prefers stability"); else -> localizedText("适度开放", "moderately open") })
+        sb.appendLine(localizedText("尽责性：", "Conscientiousness: ") + "${cfg.conscientiousness}/10 " + when { cfg.conscientiousness >= 7 -> localizedText("严谨细致，做事有条理", "meticulous and organized"); cfg.conscientiousness <= 3 -> localizedText("随性灵活，不拘小节", "flexible and casual"); else -> localizedText("适度严谨", "moderately rigorous") })
+        sb.appendLine(localizedText("外向性：", "Extraversion: ") + "${cfg.extraversion}/10 " + when { cfg.extraversion >= 7 -> localizedText("活泼有活力，喜欢互动", "lively and energetic"); cfg.extraversion <= 3 -> localizedText("内敛沉思，喜欢独处", "introverted and contemplative"); else -> localizedText("适度外向", "moderately outgoing") })
+        sb.appendLine(localizedText("宜人性：", "Agreeableness: ") + "${cfg.agreeableness}/10 " + when { cfg.agreeableness >= 7 -> localizedText("温暖合作，乐于助人", "warm and helpful"); cfg.agreeableness <= 3 -> localizedText("批判质疑，直言不讳", "critical and direct"); else -> localizedText("适度友善", "moderately friendly") })
+        sb.appendLine(localizedText("幽默感：", "Humor: ") + "${cfg.humorLevel}/10 " + when { cfg.humorLevel >= 7 -> localizedText("幽默风趣，喜欢开玩笑", "humorous and witty"); cfg.humorLevel <= 3 -> localizedText("严肃认真，很少开玩笑", "serious and formal"); else -> localizedText("适度幽默", "moderately humorous") })
+        sb.appendLine(localizedText("共情力：", "Empathy: ") + "${cfg.empathyLevel}/10 " + when { cfg.empathyLevel >= 7 -> localizedText("高度共情，能感同身受", "highly empathetic"); cfg.empathyLevel <= 3 -> localizedText("理性客观，不太感性", "rational and objective"); else -> localizedText("适度共情", "moderately empathetic") })
+        sb.appendLine(localizedText("思考深度：", "Thinking depth: ") + "${cfg.thinkingDepth}/5 " + when { cfg.thinkingDepth >= 4 -> localizedText("深度思考，多角度分析", "deep thinking, multi-angle analysis"); cfg.thinkingDepth <= 2 -> localizedText("简洁直接，快速回答", "concise and direct"); else -> localizedText("适度思考", "moderately thoughtful") })
+
+        // ★★ 口头禅 ★★
+        if (cfg.catchphrases.isNotBlank()) {
+            sb.appendLine(localizedText("【口头禅】", "[Catchphrases]"))
+            sb.appendLine(cfg.catchphrases.replace(",", " / "))
+        }
+
+        // ★★ 禁用词 ★★
+        if (cfg.forbiddenWords.isNotBlank()) {
+            sb.appendLine(localizedText("【禁止用语】", "[Forbidden words]"))
+            sb.appendLine(localizedText("禁止说：", "Do not say: ") + cfg.forbiddenWords.replace(",", " / "))
+        }
 
         if (cfg.envAwareness) {
             try {
@@ -310,6 +350,16 @@ object BrainMemoryManager {
             }
         }
         return sb.toString()
+    }
+
+    /** 获取随机口头禅（30%概率） */
+    fun getRandomCatchphrase(): String? {
+        val cfg = _config
+        if (cfg.catchphrases.isBlank()) return null
+        if ((0..99).random() >= 30) return null
+        val phrases = cfg.catchphrases.split(",").map { it.trim() }.filter { it.isNotBlank() }
+        if (phrases.isEmpty()) return null
+        return phrases.random()
     }
 
 }

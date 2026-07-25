@@ -69,6 +69,22 @@ import com.qtwl.gateway.utils.localizeRuntimeText
 import com.qtwl.gateway.utils.localizeGeneratedName
 import com.qtwl.gateway.utils.localizeGeneratedContent
 
+@Composable
+private fun PersonaSlider(label: String, value: Int, range: IntRange, onChange: (Int) -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(label, style = MaterialTheme.typography.bodySmall)
+            Text("$value", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+        }
+        Slider(
+            value = value.toFloat(),
+            onValueChange = { onChange(it.toInt()) },
+            valueRange = range.first.toFloat()..range.last.toFloat(),
+            steps = range.last - range.first - 1
+        )
+    }
+}
+
 /**
  * 数据管理 & 添加服务 统一界面
  */
@@ -101,17 +117,20 @@ fun DataManagementScreen(
         if (uri != null) {
             scope.launch {
                 try {
-                    val inputStream = context.contentResolver.openInputStream(uri)
-                    val reader = BufferedReader(InputStreamReader(inputStream))
-                    val jsonString = reader.readText()
-                    reader.close()
+                    // 复制到临时文件
+                    val tempFile = java.io.File(context.cacheDir, "restore_temp.qtbk")
+                    context.contentResolver.openInputStream(uri)?.use { input ->
+                        tempFile.outputStream().use { output ->
+                            input.copyTo(output)
+                        }
+                    }
                     val result = withContext(Dispatchers.IO) {
-                        viewModel.restoreFromJson(jsonString)
+                        viewModel.restoreFromFile(tempFile.absolutePath)
                     }
                     result.onSuccess {
-                        snackbarHostState.showSnackbar(localizedText("✅ 数据导入成功！", "✅ Data imported successfully!"))
+                        snackbarHostState.showSnackbar(localizedText("✅ 数据恢复成功！", "✅ Data restored successfully!"))
                     }.onFailure { e ->
-                        snackbarHostState.showSnackbar(localizedText("❌ 导入失败: ", "❌ Import failed: ") + e.message)
+                        snackbarHostState.showSnackbar(localizedText("❌ 恢复失败: ", "❌ Restore failed: ") + e.message)
                     }
                 } catch (e: Exception) {
                     snackbarHostState.showSnackbar(localizedText("❌ 读取文件失败: ", "❌ Failed to read file: ") + e.message)
@@ -261,9 +280,13 @@ fun DataManagementScreen(
                                 autoBackupEnabled.value = enabled
                                 GatewayForegroundService.saveGatewayConfig("auto_backup_enabled", enabled.toString())
                                 if (enabled) {
-                                    // 保存时间到配置
                                     GatewayForegroundService.saveGatewayConfig("auto_backup_hour", autoBackupHour.value.toString())
                                     GatewayForegroundService.saveGatewayConfig("auto_backup_minute", autoBackupMinute.value.toString())
+                                    // 调度 WorkManager
+                                    com.qtwl.gateway.data.db.AutoBackupWorker.schedule(context, autoBackupHour.value, autoBackupMinute.value)
+                                } else {
+                                    // 取消 WorkManager
+                                    com.qtwl.gateway.data.db.AutoBackupWorker.cancel(context)
                                 }
                             }
                         )
@@ -318,71 +341,20 @@ fun DataManagementScreen(
                     HorizontalDivider()
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // ★ 按钮行：立即备份 | 恢复备份（自动扫 Downloads + 专用目录）
-                    val appBackupDir = File(Environment.getExternalStorageDirectory(), "QiTongGateway/backups")
+                    // ★ 按钮行：立即备份 | 恢复备份（自动扫 Downloads）
                     var showBackupList by remember { mutableStateOf(false) }
-                    // ★ 检查/请求文件存储权限
-                    val hasStoragePerm = if (Build.VERSION.SDK_INT >= 30) {
-                        // Android 11+ 用 MediaStore 不需要额外权限，但写专用目录需要
-                        Environment.getExternalStorageDirectory().canWrite()
-                    } else {
-                        ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
-                    }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = {
-                            // ★ 检查权限，没有则请求
-                            if (Build.VERSION.SDK_INT < 30 && !hasStoragePerm) {
-                                storagePermLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                                return@Button
-                            }
                             scope.launch {
                                 try {
-                                    val result = withContext(Dispatchers.IO) { viewModel.getBackupJson() }
-                                    result.onSuccess { json ->
-                                        val timeStr = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-                                        val fileName = "qitong_gateway_backup_$timeStr.json"
-
-                                        // ★ 存到 Downloads
-                                        if (Build.VERSION.SDK_INT >= 29) {
-                                            val values = ContentValues().apply {
-                                                put(MediaStore.Downloads.DISPLAY_NAME, fileName)
-                                                put(MediaStore.Downloads.MIME_TYPE, "application/json")
-                                                put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
-                                            }
-                                            val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-                                            uri?.let {
-                                                context.contentResolver.openOutputStream(it)?.use { os -> os.write(json.toByteArray()) }
-                                            }
-                                        } else {
-                                            val file = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), fileName)
-                                            file.writeText(json)
-                                        }
-
-                                        // ★ 再存到专用目录（Android 10+ 用 MediaStore 方式，避免 EPERM）
-                                        withContext(Dispatchers.IO) {
-                                            try {
-                                                if (Build.VERSION.SDK_INT >= 29) {
-                                                    // Android 10+ 用 MediaStore 存到 Downloads 子目录
-                                                    val values2 = ContentValues().apply {
-                                                        put(MediaStore.Downloads.DISPLAY_NAME, fileName)
-                                                        put(MediaStore.Downloads.MIME_TYPE, "application/json")
-                                                        put(MediaStore.Downloads.RELATIVE_PATH, "QiTongGateway/backups")
-                                                    }
-                                                    val uri2 = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values2)
-                                                    uri2?.let {
-                                                        context.contentResolver.openOutputStream(it)?.use { os -> os.write(json.toByteArray()) }
-                                                    }
-                                                } else {
-                                                    appBackupDir.mkdirs()
-                                                    File(appBackupDir, fileName).writeText(json)
-                                                }
-                                            } catch (e: Exception) {
-                                                // 专用目录写入失败不影响主备份，仅提示
-                                                android.util.Log.w("Backup", localizedText("专用目录备份失败: ", "Dedicated directory backup failed: ") + e.message)
-                                            }
-                                        }
-
-                                        snackbarHostState.showSnackbar(localizedText("✅ 备份完成: ", "✅ Backup complete: ") + fileName)
+                                    val db = com.qtwl.gateway.data.db.AppDatabase.getInstance(context)
+                                    val manager = com.qtwl.gateway.data.db.BackupManager(db)
+                                    val dir = manager.getBackupDir()
+                                    val timeStr = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+                                    val file = java.io.File(dir, "backup_$timeStr.qtbk")
+                                    val result = manager.exportToFile(file)
+                                    result.onSuccess {
+                                        snackbarHostState.showSnackbar(localizedText("✅ 备份完成: ", "✅ Backup complete: ") + file.name)
                                     }.onFailure { e -> snackbarHostState.showSnackbar(localizedText("❌ 备份失败: ", "❌ Backup failed: ") + e.message) }
                                 } catch (e: Exception) {
                                     snackbarHostState.showSnackbar(localizedText("❌ 备份失败: ", "❌ Backup failed: ") + e.message)
@@ -404,41 +376,30 @@ fun DataManagementScreen(
                     Spacer(modifier = Modifier.height(8.dp))
                     // ★ 第二行：手动导入（调文件选择器）
                     OutlinedButton(onClick = {
-                        filePickerLauncher.launch("application/json")
+                        filePickerLauncher.launch("*/*")
                     }, modifier = Modifier.fillMaxWidth()) {
                         Icon(Icons.Default.NoteAdd, contentDescription = null)
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text(localizedText("📂 手动导入（从文件选择器选择备份 JSON）", "📂 Manual import (select backup JSON from file picker)"))
+                        Text(localizedText("📂 手动导入（选择 .qtbk 文件）", "📂 Manual import (select .qtbk file)"))
                     }
                     Spacer(modifier = Modifier.height(4.dp))
                     if (autoBackupEnabled.value) {
                         Text(localizedText("⏱️ 下次自动备份: ", "⏱️ Next automatic backup: ") + String.format("%02d", autoBackupHour.value) + ":" + String.format("%02d", autoBackupMinute.value),
                             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                     } else {
-                        Text(localizedText("💡 备份到 Downloads + QiTongGateway/backups/ 专用目录", "💡 Back up to Downloads and the dedicated QiTongGateway/backups/ folder"),
+                        Text(localizedText("💡 备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加密)", "💡 Backup format: .qtbk (GZIP+SHA256+AES-256)"),
                             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
 
-                    // 扫描并列出备份文件弹窗（扫两个目录）
+                    // 扫描并列出备份文件弹窗
                     if (showBackupList) {
-                        var backupFiles by remember { mutableStateOf<List<File>>(emptyList()) }
+                        var backupFiles by remember { mutableStateOf<List<com.qtwl.gateway.data.db.BackupManager.BackupMetadata>>(emptyList()) }
                         var isLoading by remember { mutableStateOf(true) }
                         LaunchedEffect(showBackupList) {
                             withContext(Dispatchers.IO) {
-                                val files = mutableListOf<File>()
-                                // 扫 Downloads
-                                val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-                                downloadDir.listFiles()?.filter {
-                                    it.name.startsWith("qitong_gateway_backup") && it.name.endsWith(".json")
-                                }?.let { files.addAll(it) }
-                                // 扫专用目录
-                                if (appBackupDir.exists()) {
-                                    appBackupDir.listFiles()?.filter {
-                                        it.name.startsWith("qitong_gateway_backup") && it.name.endsWith(".json")
-                                    }?.let { files.addAll(it) }
-                                }
-                                // 去重排序
-                                backupFiles = files.distinctBy { it.name }.sortedByDescending { it.lastModified() }
+                                val db = com.qtwl.gateway.data.db.AppDatabase.getInstance(context)
+                                val manager = com.qtwl.gateway.data.db.BackupManager(db)
+                                backupFiles = manager.getBackupHistory()
                                 isLoading = false
                             }
                         }
@@ -451,16 +412,19 @@ fun DataManagementScreen(
                                         CircularProgressIndicator()
                                     }
                                 } else if (backupFiles.isEmpty()) {
-                                    Text(localizedText("Downloads 目录中未找到备份文件\\n请先点击「立即备份」创建备份", "No backup files found in Downloads\\nTap “Back up now” to create a backup first"), style = MaterialTheme.typography.bodyMedium)
+                                    Text(localizedText("未找到备份文件\n请先点击「立即备份」创建备份", "No backup files found\nTap Back up now to create a backup first"), style = MaterialTheme.typography.bodyMedium)
                                 } else {
                                     LazyColumn(modifier = Modifier.heightIn(max = 300.dp)) {
-                                        items(backupFiles) { file ->
+                                        items(backupFiles) { meta ->
                                             Card(
                                                 modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp).clickable {
                                                     scope.launch {
                                                         try {
-                                                            val json = file.readText()
-                                                            val result = withContext(Dispatchers.IO) { viewModel.restoreFromJson(json) }
+                                                            val result = withContext(Dispatchers.IO) {
+                                                                val db = com.qtwl.gateway.data.db.AppDatabase.getInstance(context)
+                                                                val manager = com.qtwl.gateway.data.db.BackupManager(db)
+                                                                manager.importFromFile(java.io.File(meta.filePath))
+                                                            }
                                                             result.onSuccess {
                                                                 snackbarHostState.showSnackbar(localizedText("✅ 数据恢复成功！", "✅ Data restored successfully!"))
                                                                 showBackupList = false
@@ -478,8 +442,8 @@ fun DataManagementScreen(
                                                     Icon(Icons.Default.Description, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                                                     Spacer(Modifier.width(8.dp))
                                                     Column(modifier = Modifier.weight(1f)) {
-                                                        Text(file.name, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                                        Text(formatFileSize(file.length()), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                        Text(meta.fileName, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                        Text(meta.sizeReadable + " - " + meta.createdAtReadable, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                                     }
                                                     Icon(Icons.Default.RestorePage, contentDescription = localizedText("恢复", "Restore"), tint = MaterialTheme.colorScheme.primary)
                                                 }
@@ -761,6 +725,30 @@ fun DataManagementScreen(
                             BrainMemoryManager.updateConfig(BrainMemoryManager.getConfig().copy(envAwareness = e))
                         })
                     }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    HorizontalDivider()
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // ★★ 人格维度滑块 ★★
+                    Text(localizedText("🎭 人格维度（大五人格）", "🎭 Personality Dimensions"), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    val pCfg = BrainMemoryManager.getConfig()
+                    var openness by remember { mutableStateOf(pCfg.openness) }
+                    var conscientiousness by remember { mutableStateOf(pCfg.conscientiousness) }
+                    var extraversion by remember { mutableStateOf(pCfg.extraversion) }
+                    var agreeableness by remember { mutableStateOf(pCfg.agreeableness) }
+                    var neuroticism by remember { mutableStateOf(pCfg.neuroticism) }
+                    var humorLevel by remember { mutableStateOf(pCfg.humorLevel) }
+                    var empathyLevel by remember { mutableStateOf(pCfg.empathyLevel) }
+
+                    PersonaSlider(label = localizedText("开放性", "Openness"), value = openness, range = 1..10, onChange = { openness = it; BrainMemoryManager.updateConfig(BrainMemoryManager.getConfig().copy(openness = it)) })
+                    PersonaSlider(label = localizedText("尽责性", "Conscientiousness"), value = conscientiousness, range = 1..10, onChange = { conscientiousness = it; BrainMemoryManager.updateConfig(BrainMemoryManager.getConfig().copy(conscientiousness = it)) })
+                    PersonaSlider(label = localizedText("外向性", "Extraversion"), value = extraversion, range = 1..10, onChange = { extraversion = it; BrainMemoryManager.updateConfig(BrainMemoryManager.getConfig().copy(extraversion = it)) })
+                    PersonaSlider(label = localizedText("宜人性", "Agreeableness"), value = agreeableness, range = 1..10, onChange = { agreeableness = it; BrainMemoryManager.updateConfig(BrainMemoryManager.getConfig().copy(agreeableness = it)) })
+                    PersonaSlider(label = localizedText("神经质", "Neuroticism"), value = neuroticism, range = 1..10, onChange = { neuroticism = it; BrainMemoryManager.updateConfig(BrainMemoryManager.getConfig().copy(neuroticism = it)) })
+                    PersonaSlider(label = localizedText("幽默感", "Humor"), value = humorLevel, range = 1..10, onChange = { humorLevel = it; BrainMemoryManager.updateConfig(BrainMemoryManager.getConfig().copy(humorLevel = it)) })
+                    PersonaSlider(label = localizedText("共情力", "Empathy"), value = empathyLevel, range = 1..10, onChange = { empathyLevel = it; BrainMemoryManager.updateConfig(BrainMemoryManager.getConfig().copy(empathyLevel = it)) })
                 }
             }
 
@@ -1361,15 +1349,34 @@ fun DataManagementScreen(
         )
     }
 
-    // 重置确认弹窗
+    // 重置确认弹窗（需输入"确认重置"）
     if (showResetConfirm) {
+        var confirmInput by remember { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { showResetConfirm = false },
-            title = { Text(localizedText("⚠️ 确认重置？", "⚠️ Confirm reset?"), fontWeight = FontWeight.Bold) },
-            text = { Text(localizedText("此操作将永久删除所有数据，包括：\\n\\n• 所有服务商配置\\n• 所有 AI 模型列表\\n• 所有聊天记录和对话\\n• 所有 Token 用量统计\\n\\n此操作不可撤销！", "This will permanently delete all data, including:\\n\\n• All provider configurations\\n• All AI model lists\\n• All chats and conversations\\n• All token usage statistics\\n\\nThis action cannot be undone!")) },
+            title = { Text(localizedText("⚠️ 危险操作确认", "⚠️ Dangerous operation confirmation"), fontWeight = FontWeight.Bold, color = Error) },
+            text = {
+                Column {
+                    Text(localizedText("此操作将永久删除所有数据，包括：\\n• 所有服务商配置\\n• 所有 AI 模型列表\\n• 所有聊天记录和对话\\n• 所有 Token 用量统计\\n\\n此操作不可撤销！", "This will permanently delete all data, including:\\n• All provider configurations\\n• All AI model lists\\n• All chats and conversations\\n• All token usage statistics\\n\\nThis action cannot be undone!"), style = MaterialTheme.typography.bodyMedium)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(localizedText("请输入「确认重置」以继续：", "Please type \"Confirm reset\" to continue:"), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = confirmInput,
+                        onValueChange = { confirmInput = it },
+                        label = { Text(localizedText("确认重置", "Confirm reset")) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
             confirmButton = {
-                Button(onClick = { viewModel.resetAllData(); showResetConfirm = false }, colors = ButtonDefaults.buttonColors(containerColor = Error)) {
-                    Text(localizedText("确认重置", "Confirm reset"), color = MaterialTheme.colorScheme.onError)
+                Button(
+                    onClick = { viewModel.resetAllData(); showResetConfirm = false },
+                    enabled = confirmInput == localizedText("确认重置", "Confirm reset"),
+                    colors = ButtonDefaults.buttonColors(containerColor = Error)
+                ) {
+                    Text(localizedText("永久删除", "Delete permanently"), color = MaterialTheme.colorScheme.onError)
                 }
             },
             dismissButton = { TextButton(onClick = { showResetConfirm = false }) { Text(localizedText("取消", "Cancel")) } }
