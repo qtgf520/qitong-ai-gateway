@@ -24,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
@@ -1351,28 +1352,36 @@ fun ModelsScreen(viewModel: GatewayViewModel) {
     val editModelDialogModel by viewModel.showEditModelDialog.collectAsState()
 
     var searchQuery by remember { mutableStateOf("") }
+    var filterToolCall by remember { mutableStateOf(false) }
+    var filterVision by remember { mutableStateOf(false) }
 
-    // 搜索过滤
-val filteredModels = remember(models, searchQuery, languageTick) {
-    val fromDb = if (searchQuery.isBlank()) models
-    else models.filter {
-        it.displayName.contains(searchQuery, ignoreCase = true) ||
-        it.modelId.contains(searchQuery, ignoreCase = true) ||
-        it.customAlias.contains(searchQuery, ignoreCase = true)
+    // 搜索 + 标签筛选
+    val filteredModels = remember(models, searchQuery, languageTick, filterToolCall, filterVision) {
+        var fromDb = if (searchQuery.isBlank()) models
+        else models.filter {
+            it.displayName.contains(searchQuery, ignoreCase = true) ||
+            it.modelId.contains(searchQuery, ignoreCase = true) ||
+            it.customAlias.contains(searchQuery, ignoreCase = true)
+        }
+        if (filterToolCall) fromDb = fromDb.filter { com.qtwl.gateway.ui.viewmodel.ModelCapabilityManager.getCapabilities(it.modelId).first }
+        if (filterVision) fromDb = fromDb.filter { com.qtwl.gateway.ui.viewmodel.ModelCapabilityManager.getCapabilities(it.modelId).second }
+        listOfNotNull(
+            AiModel(id = -1, modelId = "qtai-sj", displayName = localizedText("🔄 自动化切换", "🔄 Auto switch"), providerId = 0, isEnabled = true)
+        ) + fromDb
     }
-    // ★★ qtai-sj 虚拟模型始终显示在列表最前面 ★★
-    listOfNotNull(
-        AiModel(id = -1, modelId = "qtai-sj", displayName = localizedText("🔄 自动化切换", "🔄 Auto switch"), providerId = 0, isEnabled = true)
-    ) + fromDb
-}
 
-    // 按服务商分组
-    val modelsByProvider = remember(filteredModels, providers, languageTick) {
-    val providerMap = providers.associateBy { it.id }
-    filteredModels.groupBy { model ->
-        providerMap[model.providerId]?.name ?: if (model.modelId == "qtai-sj") localizedText("🔄 自动化切换", "🔄 Auto switch") else localizedText("未知服务商(ID:", "Unknown provider (ID:") + model.providerId + ")"
+    // 按 modelId 分组（同名模型归为一组）
+    val groupedModels = remember(filteredModels, providers, languageTick) {
+        val providerMap = providers.associateBy { it.id }
+        val byModelId = filteredModels.groupBy { it.modelId }
+        byModelId.entries.sortedBy { it.key }.map { (modelId, modelList) ->
+            val providerNames = modelList.map { model ->
+                providerMap[model.providerId]?.name ?: "Unknown"
+            }.distinct()
+            val displayName = modelList.firstOrNull()?.displayName ?: modelId
+            Triple(modelId, displayName, modelList to providerNames)
+        }
     }
-}
 
     if (models.isEmpty()) {
         Box(
@@ -1410,16 +1419,43 @@ val filteredModels = remember(models, searchQuery, languageTick) {
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        // 搜索框
+        // 搜索框 + 标签筛选
         item {
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                label = { Text("🔍 ${tr("search_model")}") },
-                placeholder = { Text(tr("search_hint")) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    label = { Text("🔍 ${tr("search_model")}") },
+                    placeholder = { Text(tr("search_hint")) },
+                    singleLine = true,
+                    trailingIcon = {
+                        if (filterToolCall || filterVision || searchQuery.isNotBlank()) {
+                            IconButton(onClick = {
+                                searchQuery = ""
+                                filterToolCall = false
+                                filterVision = false
+                            }) {
+                                Icon(Icons.Default.Clear, contentDescription = "Clear")
+                            }
+                        }
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+                FilterChip(
+                    selected = filterToolCall,
+                    onClick = { filterToolCall = !filterToolCall },
+                    label = { Text("🔧") }
+                )
+                FilterChip(
+                    selected = filterVision,
+                    onClick = { filterVision = !filterVision },
+                    label = { Text("👁️") }
+                )
+            }
         }
         // 同步结果提示
             syncResult?.let { result ->
@@ -1472,21 +1508,42 @@ val filteredModels = remember(models, searchQuery, languageTick) {
                     }
                 }
             }
-            // 按服务商分组显示模型
-            modelsByProvider.forEach { (providerName, modelList) ->
-                item {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "📌 $providerName",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(vertical = 4.dp)
-                    )
-                }
-
-                items(modelList, key = { it.id }) { model ->
-                    ModelCard(model = model, viewModel = viewModel)
+            // 按 modelId 分组显示（同名模型归为一组）
+            groupedModels.forEach { (modelId, displayName, modelListWithProviders) ->
+                val (modelList, providerNames) = modelListWithProviders
+                item(key = "group_$modelId") {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        )
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "📦 $displayName",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Text(
+                                    text = "×${modelList.size}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Text(
+                                text = providerNames.joinToString(", "),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            modelList.forEach { model ->
+                                ModelCard(model = model, viewModel = viewModel)
+                            }
+                        }
+                    }
                 }
             }
 

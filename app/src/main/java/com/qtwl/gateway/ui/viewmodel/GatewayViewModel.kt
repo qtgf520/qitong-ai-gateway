@@ -48,6 +48,12 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.net.InetSocketAddress
 import java.util.concurrent.TimeUnit
 
+// 三指标测速
+import com.qtwl.gateway.utils.ModelSpeedTester
+import com.qtwl.gateway.data.model.SpeedMetrics
+import com.qtwl.gateway.data.model.ModelCapabilities
+import com.qtwl.gateway.data.model.CapabilityTag
+
 /**
  * 网关应用的主 ViewModel —— 管理全部业务状态
  * 包括：服务商管理、模型同步、聊天对话、会话管理、Token用量统计
@@ -125,60 +131,70 @@ object ChatMemoryManager {
     @kotlinx.serialization.Serializable
     data class MemoryItem(val role: String, val content: String)
 }
+/**
+ * 9维能力管理器 — 权威标签来源
+ * 支持：tool_call / vision / thinking / audio_in / audio_out / video / image_gen / embeddings / realtime
+ */
 object ModelCapabilityManager {
-    private const val KEY_CAPABILITIES = "capabilities_json"
-    
+    private const val KEY_CAPABILITIES = "capabilities_json_v2"
+    private const val KEY_AUTO_DETECT = "capabilities_auto_detect"
     private val json = Json { ignoreUnknownKeys = true }
-    
-    /** 获取模型能力: (supportsTools, supportsVision, supportsImageGen) */
+
+    // 能力字段缩写映射（节省存储）
+    private val KEY_MAP = mapOf(
+        "tool_call" to "t", "vision" to "v", "thinking" to "th",
+        "audio_in" to "ai", "audio_out" to "ao", "video" to "vi",
+        "image_gen" to "ig", "embeddings" to "em", "realtime" to "rt"
+    )
+
+    /** 获取模型9维能力（兼容旧 Triple 接口） */
     fun getCapabilities(modelId: String): Triple<Boolean, Boolean, Boolean> {
-        val all = loadAll()
-        val cap = all[modelId]
-        if (cap != null) {
-            return Triple(
-                cap["t"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false,
-                cap["v"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false,
-                cap["g"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false
-            )
-        }
-        return Triple(false, false, false)
+        val caps = loadModel(modelId)
+        return Triple(caps.toolCall, caps.vision, caps.imageGen)
     }
-    
-    /** 设置模型能力 */
-    fun setCapabilities(modelId: String, supportsTools: Boolean, supportsVision: Boolean, supportsImageGen: Boolean) {
-        val all = loadAll().toMutableMap()
-        all[modelId] = buildJsonObject {
-            put("t", JsonPrimitive(supportsTools))
-            put("v", JsonPrimitive(supportsVision))
-            put("g", JsonPrimitive(supportsImageGen))
-        }
-        saveAll(all)
+
+    /** 获取完整9维能力 */
+    fun getFullCapabilities(modelId: String): com.qtwl.gateway.data.model.ModelCapabilities {
+        return loadModel(modelId)
     }
-    
-    private fun loadAll(): Map<String, JsonObject> {
+
+    /** 合并本地标签 + 远程 /v1/models 返回的 capabilities 字段 */
+    fun mergeRemoteCapabilities(modelId: String, remoteCaps: List<String>) {
+        val current = loadModel(modelId)
+        val merged = com.qtwl.gateway.data.model.ModelCapabilities.fromKeys(remoteCaps)
+        // 远程为权威，覆盖本地
+        saveModel(modelId, merged)
+    }
+
+    /** 从本地 assets/model_capabilities.json 加载兜底标签 */
+    fun loadFallback(context: android.content.Context) {
         try {
-            val str = GatewayForegroundService.getGatewayConfig(KEY_CAPABILITIES, "{}")
-            if (str.isBlank()) return emptyMap()
-            val obj = json.parseToJsonElement(str).jsonObject
-            return obj.entries.associate { (k, v) -> k to v.jsonObject }
-        } catch (_: Exception) { return emptyMap() }
-    }
-    
-    private fun saveAll(map: Map<String, JsonObject>) {
-        try {
-            val jsonObj = buildJsonObject {
-                map.forEach { (k, v) -> put(k, v) }
+            val jsonStr = context.assets.open("model_capabilities.json").bufferedReader().readText()
+            val map = json.parseToJsonElement(jsonStr).jsonObject
+            val all = loadAll().toMutableMap()
+            for ((modelId, capArray) in map.entries) {
+                val keys = capArray.jsonArray.map { it.jsonPrimitive.content }
+                all[modelId] = com.qtwl.gateway.data.model.ModelCapabilities.fromKeys(keys)
             }
-            GatewayForegroundService.saveGatewayConfig(KEY_CAPABILITIES, jsonObj.toString())
-        } catch (_: Exception) { }
+            saveAll(all)
+        } catch (e: Exception) {
+            // 静默
+        }
     }
-    
-    /** ★★ 探针：对指定模型探测能力并缓存结果 ★★ */
+
+    /** 设置模型能力 */
+    fun setCapabilities(modelId: String, toolCall: Boolean, vision: Boolean, imageGen: Boolean) {
+        val caps = com.qtwl.gateway.data.model.ModelCapabilities(toolCall = toolCall, vision = vision, imageGen = imageGen)
+        saveModel(modelId, caps)
+    }
+
+    // ── 探测（后台静默） ──────────────────────────────
+
     fun probeModel(modelId: String, resolvedUrl: String, apiKey: String?) {
-        val (t, v, g) = getCapabilities(modelId)
-        if (t && v && g) return // 已探全
-        
-        var supportsTools = t; var supportsVision = v; var supportsImageGen = g
+        val current = loadModel(modelId)
+        // 简单探测工具和视觉
+        var tools = current.toolCall
+        var vision = current.vision
         try {
             val client = OkHttpClient.Builder()
                 .connectTimeout(3000, TimeUnit.MILLISECONDS)
@@ -186,27 +202,70 @@ object ModelCapabilityManager {
                 .build()
             val baseUrl = resolvedUrl.trimEnd('/')
             val ct = "application/json".toMediaType()
-            
-            if (!supportsTools) {
+            if (!tools) {
                 val body = """{"model":"$modelId","messages":[{"role":"user","content":"hi"}],"tools":[{"type":"function","function":{"name":"t","description":"t","parameters":{"type":"object","properties":{}}}}],"max_tokens":1}"""
                 val resp = client.newCall(okhttp3.Request.Builder().url("$baseUrl/v1/chat/completions").post(body.toByteArray().toRequestBody(ct)).apply { if (!apiKey.isNullOrBlank()) header("Authorization", "Bearer $apiKey") }.build()).execute()
-                val code = resp.code; resp.close()
-                supportsTools = code != 501 && code != 404
+                tools = resp.code != 501 && resp.code != 404; resp.close()
             }
-            if (!supportsVision) {
+            if (!vision) {
                 val body = """{"model":"$modelId","messages":[{"role":"user","content":[{"type":"text","text":"hi"},{"type":"image_url","image_url":{"url":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="}}]}],"max_tokens":1}"""
                 val resp = client.newCall(okhttp3.Request.Builder().url("$baseUrl/v1/chat/completions").post(body.toByteArray().toRequestBody(ct)).apply { if (!apiKey.isNullOrBlank()) header("Authorization", "Bearer $apiKey") }.build()).execute()
-                val code = resp.code; resp.close()
-                supportsVision = code != 501 && code != 404 && code != 400
-            }
-            if (!supportsImageGen) {
-                val body = """{"model":"$modelId","messages":[{"role":"user","content":"draw"}],"max_tokens":1}"""
-                val resp = client.newCall(okhttp3.Request.Builder().url("$baseUrl/v1/chat/completions").post(body.toByteArray().toRequestBody(ct)).apply { if (!apiKey.isNullOrBlank()) header("Authorization", "Bearer $apiKey") }.build()).execute()
-                val code = resp.code; resp.close()
-                supportsImageGen = code != 501 && code != 404
+                vision = resp.code != 501 && resp.code != 404 && resp.code != 400; resp.close()
             }
         } catch (_: Exception) { }
-        setCapabilities(modelId, supportsTools, supportsVision, supportsImageGen)
+        if (tools != current.toolCall || vision != current.vision) {
+            saveModel(modelId, current.copy(toolCall = tools, vision = vision))
+        }
+    }
+
+    // ── 持久化 ──────────────────────────────────────────
+
+    private fun loadModel(modelId: String): com.qtwl.gateway.data.model.ModelCapabilities {
+        val all = loadAll()
+        return all[modelId] ?: com.qtwl.gateway.data.model.ModelCapabilities()
+    }
+
+    private fun saveModel(modelId: String, caps: com.qtwl.gateway.data.model.ModelCapabilities) {
+        val all = loadAll().toMutableMap()
+        all[modelId] = caps
+        saveAll(all)
+    }
+
+    private fun loadAll(): Map<String, com.qtwl.gateway.data.model.ModelCapabilities> {
+        try {
+            val str = GatewayForegroundService.getGatewayConfig(KEY_CAPABILITIES, "{}")
+            if (str.isBlank()) return emptyMap()
+            val obj = json.parseToJsonElement(str).jsonObject
+            return obj.entries.associate { (k, v) ->
+                val j = v.jsonObject
+                k to com.qtwl.gateway.data.model.ModelCapabilities(
+                    toolCall   = j["t"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false,
+                    vision     = j["v"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false,
+                    thinking   = j["th"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false,
+                    audioIn    = j["ai"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false,
+                    audioOut   = j["ao"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false,
+                    video      = j["vi"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false,
+                    imageGen   = j["ig"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false,
+                    embeddings = j["em"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false,
+                    realtime   = j["rt"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false,
+                )
+            }
+        } catch (_: Exception) { return emptyMap() }
+    }
+
+    private fun saveAll(map: Map<String, com.qtwl.gateway.data.model.ModelCapabilities>) {
+        try {
+            val jsonObj = buildJsonObject {
+                map.forEach { (k, v) ->
+                    put(k, buildJsonObject {
+                        put("t", v.toolCall); put("v", v.vision); put("th", v.thinking)
+                        put("ai", v.audioIn); put("ao", v.audioOut); put("vi", v.video)
+                        put("ig", v.imageGen); put("em", v.embeddings); put("rt", v.realtime)
+                    })
+                }
+            }
+            GatewayForegroundService.saveGatewayConfig(KEY_CAPABILITIES, jsonObj.toString())
+        } catch (_: Exception) { }
     }
 
     // ==================== 后台静默探针系统 ====================
@@ -1907,31 +1966,43 @@ fun getDisplayModelName(model: AiModel): String {
 
     // ========== 数据备份与恢复 ==========
 
-    /** 导出所有数据为备份 JSON */
+    /** 导出所有数据为备份 JSON（旧版兼容） */
     fun backupData() {
         viewModelScope.launch {
-            try {
-                val result = backupManager.exportToJson()
-                result.onSuccess { json ->
-                    _snackbarMessage.value = "✅ 数据导出成功"
-                }.onFailure { e ->
-                    _snackbarMessage.value = "❌ 导出失败: ${e.message}"
-                }
-            } catch (e: Exception) {
-                _snackbarMessage.value = "❌ 导出失败: ${e.message}"
-            }
+            _snackbarMessage.value = "请使用新版备份功能"
         }
     }
 
     /** 获取备份 JSON 字符串（供 UI 调用） */
     suspend fun getBackupJson(): Result<String> {
-        return backupManager.exportToJson()
+        return withContext(Dispatchers.IO) {
+            try {
+                val dir = backupManager.getBackupDir()
+                val timestamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
+                val file = java.io.File(dir, "backup_$timestamp.qtbk")
+                val result = backupManager.exportToFile(file)
+                if (result.isSuccess) {
+                    Result.success(file.absolutePath)
+                } else {
+                    Result.failure(result.exceptionOrNull() ?: Exception("导出失败"))
+                }
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
     }
 
-    /** 从 JSON 字符串恢复数据 */
+    /** 从文件恢复数据 */
+    suspend fun restoreFromFile(filePath: String, password: String = ""): Result<Unit> {
+        return withContext(Dispatchers.IO) {
+            backupManager.importFromFile(java.io.File(filePath), password)
+        }
+    }
+
+    /** 从 JSON 字符串恢复数据（旧版兼容） */
     suspend fun restoreFromJson(jsonString: String): Result<Unit> {
         return withContext(Dispatchers.IO) {
-            backupManager.importFromJson(jsonString)
+            Result.failure(Exception("旧版 JSON 导入已废弃，请使用 .qtbk 文件恢复"))
         }
     }
 
@@ -1995,69 +2066,33 @@ fun getDisplayModelName(model: AiModel): String {
         }
     }
 
-    /** 模型测速 - 握手测试（增强版：解析返回内容，空白回复=失败） */
+    // ★★ 三指标测速器（单例复用） ★★
+    private val speedTester = ModelSpeedTester()
+
+    /** 模型测速 - 三指标（TTFT / TPS / 总耗时） */
     fun testModelSpeed(model: AiModel) {
         viewModelScope.launch {
             try {
-                _snackbarMessage.value = "⏳ 正在测试 ${model.displayName}..."
+                _snackbarMessage.value = "⏳ 正在测速 ${model.displayName}..."
                 withContext(Dispatchers.IO) {
                     val provider = database.providerDao().getProviderById(model.providerId) ?: run {
                         _snackbarMessage.value = "❌ ${model.displayName}: 未找到关联服务商"
                         return@withContext
                     }
-                    val resolvedUrl = provider.resolvedBaseUrl
-                    val client = okhttp3.OkHttpClient.Builder()
-                        .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
-                        .readTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
-                        .build()
-                    val body = """{"model":"${model.modelId}","messages":[{"role":"user","content":"hi"}],"max_tokens":1}"""
-                        .toByteArray()
-                        .toRequestBody("application/json".toMediaType())
-                    val startTime = System.currentTimeMillis()
-                    val request = okhttp3.Request.Builder()
-                        .url("$resolvedUrl/v1/chat/completions")
-                        .post(body)
-                        .apply { provider.apiKey?.let { header("Authorization", "Bearer $it") } }
-                        .build()
-                    val response = client.newCall(request).execute()
-                    val latency = System.currentTimeMillis() - startTime
-                    val bodyStr = response.body?.string() ?: ""
-                    
-                    val result = if (response.isSuccessful) {
-                     // ★★ 放宽判定：有 choices 就算成功，空内容显示"· 无输出" ★★
-                     var success = false
-                     var statusText = ""
-                     try {
-                         val respJson = json.parseToJsonElement(bodyStr).jsonObject
-                         val choices = respJson["choices"]?.jsonArray
-                         if (choices != null && choices.isNotEmpty()) {
-                             success = true
-                             val first = choices[0]?.jsonObject
-                             val msg = first?.get("message")?.jsonObject
-                             val content = msg?.get("content")?.jsonPrimitive?.content
-                             if (content == null) {
-                                 statusText = "· 无输出"
-                             } else if (content.isBlank()) {
-                                 statusText = "· 无输出"
-                             } else {
-                                 statusText = "${latency}ms"
-                             }
-                         } else {
-                             statusText = "不可用"
-                         }
-                     } catch (_: Exception) {
-                         statusText = "不可用"
-                     }
-                     if (success) "✅ ${model.displayName}: $statusText"
-                     else "❌ ${model.displayName}: $statusText"
+                    val metrics = speedTester.measure(model.modelId, provider.resolvedBaseUrl, provider.apiKey)
+                    val result = if (metrics.ttftMs < 0) {
+                        "❌ ${model.displayName}: 测速失败"
                     } else {
-                        "❌ ${model.displayName}: HTTP ${response.code} ${bodyStr.take(80)}"
+                        "✅ ${model.displayName}: TTFT=${metrics.ttftMs}ms  TPS=${"%.1f".format(metrics.tps)}  总=${metrics.totalMs}ms  tokens=${metrics.tokenCount}"
                     }
                     _snackbarMessage.value = result
-                    response.close()
+                    // ★★ 同时探测模型能力 ★★
+                    try {
+                        ModelCapabilityManager.probeModel(model.modelId, provider.resolvedBaseUrl, provider.apiKey)
+                    } catch (_: Exception) {}
                 }
             } catch (e: Exception) {
-                _snackbarMessage.value = "❌ ${model.displayName} 测试失败: ${e.localizedMessage ?: e.message}"
+                _snackbarMessage.value = "❌ ${model.displayName} 测速失败: ${e.localizedMessage ?: e.message}"
             }
         }
     }
@@ -2140,7 +2175,6 @@ fun clearChatError() {
     fun clearDebugLogs() { GatewayForegroundService.clearDebugLogs() }
 
     // ==================== 流水线接力测速 ====================
-    private val DEFAULT_CT = "application/json".toMediaType()
 
     /** 启动流水线测速（全自动循环模式，每20秒刷新一轮） */
     fun startPipelineTest() {
@@ -2197,43 +2231,23 @@ fun clearChatError() {
                             _pipelineStatus.value = sk; continue
                         }
 
-                        val startTime = System.currentTimeMillis()
+                        // ★★ 三指标测速（TTFT / TPS / 总耗时） ★★
                         var success = false; var latency = 0L; var errorMsg = ""
+                        var ttft = 0L; var tps = 0.0; var tokens = 0
                         try {
                             withContext(Dispatchers.IO) {
                                 val resolvedUrl = provider.resolvedBaseUrl.trimEnd('/')
-                                val testBody = """{"model":"${model.modelId}","messages":[{"role":"user","content":"Say just OK"}],"max_tokens":5,"stream":false}"""
-                                val req = okhttp3.Request.Builder()
-                                    .url("$resolvedUrl/v1/chat/completions")
-                                    .post(testBody.toRequestBody(DEFAULT_CT))
-                                    .apply { if (!provider.apiKey.isNullOrBlank()) header("Authorization", "Bearer ${provider.apiKey}") }
-                                    .build()
-                                val client = OkHttpClient.Builder()
-                                    .connectTimeout(8000, TimeUnit.MILLISECONDS)
-                                    .readTimeout(8000, TimeUnit.MILLISECONDS)
-                                    .build()
-                                val resp = client.newCall(req).execute()
-                                latency = System.currentTimeMillis() - startTime
-                                if (resp.isSuccessful) {
-                                    val bodyStr = resp.body?.string() ?: ""
-                                    // ★★ 放宽判定：有 choices 就算成功，空内容显示"· 无输出" ★★
-                            try {
-                                val respJson = json.parseToJsonElement(bodyStr).jsonObject
-                                val choices = respJson["choices"]?.jsonArray
-                                if (choices != null && choices.isNotEmpty()) {
+                                val metrics = speedTester.measure(model.modelId, resolvedUrl, provider.apiKey)
+                                latency = metrics.totalMs
+                                ttft = metrics.ttftMs
+                                tps = metrics.tps
+                                tokens = metrics.tokenCount
+                                if (metrics.ttftMs >= 0) {
                                     success = true
-                                    val first = choices[0]?.jsonObject
-                                    val msg = first?.get("message")?.jsonObject
-                                    val content = msg?.get("content")?.jsonPrimitive?.content
-                                    if (content == null || content.isBlank()) {
-                                        errorMsg = "· 无输出"
-                                    }
+                                    if (tokens == 0) errorMsg = "· 无输出"
                                 } else {
-                                    errorMsg = "不可用"
+                                    errorMsg = "测速失败"
                                 }
-                            } catch (_: Exception) { errorMsg = "不可用" }
-                                } else { errorMsg = "HTTP ${resp.code}" }
-                                resp.close()
                             }
                         } catch (e: Exception) { errorMsg = e.message?.take(60) ?: "超时" }
 
@@ -2245,12 +2259,12 @@ fun clearChatError() {
                                             provider.resolvedBaseUrl,
                                             provider.apiKey
                                         )
-                                    } catch (_: Exception) { }
+                                    } catch (_: Exception) {}
                                 }
 
                                 val rl = _pipelineStatus.value.toMutableList()
                         rl[realIdx] = rl[realIdx].copy(
-                            status = if (success) "✅ ${latency}ms" else "❌ $errorMsg",
+                            status = if (success) "✅ TTFT=${ttft}ms TPS=${"%.0f".format(tps)} ${latency}ms" else "❌ $errorMsg",
                             latencyMs = if (success) latency else Long.MAX_VALUE, isCurrent = false
                         )
                         _pipelineStatus.value = rl

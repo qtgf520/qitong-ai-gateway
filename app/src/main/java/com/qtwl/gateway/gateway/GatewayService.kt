@@ -98,6 +98,41 @@ class GatewayService(private val database: AppDatabase) {
                     call.respondText("", ContentType.Application.Json, HttpStatusCode.OK)
                 }
 
+                // ★★★ 搜索接口（SearXNG 集成）★★★
+                get("/v1/search") {
+                    corsResponse(call)
+                    try {
+                        val query = call.request.queryParameters["q"] ?: ""
+                        val maxResults = call.request.queryParameters["max"]?.toIntOrNull() ?: 8
+                        if (query.isBlank()) {
+                            call.respondText(openAIError(HttpStatusCode.BadRequest, "Query parameter 'q' is required", "invalid_request_error").second, ContentType.Application.Json, HttpStatusCode.BadRequest)
+                            return@get
+                        }
+                        val searxngUrl = GatewayForegroundService.getGatewayConfig("searxng_url", "")
+                        if (searxngUrl.isBlank()) {
+                            call.respondText(openAIError(HttpStatusCode.BadRequest, "SearXNG not configured. Set URL in settings.", "invalid_request_error").second, ContentType.Application.Json, HttpStatusCode.BadRequest)
+                            return@get
+                        }
+                        val client = com.qtwl.gateway.search.SearxngClient(searxngUrl)
+                        val results = client.search(query, maxResults = maxResults)
+                        val response = buildJsonObject {
+                            put("object", JsonPrimitive("list"))
+                            put("data", JsonArray(results.map { r ->
+                                buildJsonObject {
+                                    put("title", JsonPrimitive(r.title))
+                                    put("url", JsonPrimitive(r.url))
+                                    put("snippet", JsonPrimitive(r.snippet))
+                                    put("engine", JsonPrimitive(r.engine))
+                                    put("score", JsonPrimitive(r.score))
+                                }
+                            }))
+                        }
+                        call.respondText(response.toString(), ContentType.Application.Json.withCharset(Charsets.UTF_8))
+                    } catch (e: Exception) {
+                        call.respondText(openAIError(HttpStatusCode.InternalServerError, "Search failed: ${e.message}", "server_error").second, ContentType.Application.Json, HttpStatusCode.InternalServerError)
+                    }
+                }
+
                 // 健康检查（不需要验证）
                 get("/health") {
                     val running = GatewayForegroundService.isServiceRunning
