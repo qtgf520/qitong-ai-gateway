@@ -679,7 +679,12 @@ class GatewayService(private val database: AppDatabase) {
                         call.respondText(contentType = ContentType.Application.Json, status = s, text = b)
                         return@post
                     }
-                    proxyRequest(call, database)
+                    try {
+                        proxyRequest(call, database)
+                    } catch (e: Exception) {
+                        val (s, b) = openAIError(HttpStatusCode.InternalServerError, "Internal error: ${e.message}", "server_error")
+                        try { call.respondText(contentType = ContentType.Application.Json, status = s, text = b) } catch (_: Exception) {}
+                    }
                 }
                 get("/v1/{path...}") {
                     if (!validateApiKey(call)) {
@@ -687,7 +692,12 @@ class GatewayService(private val database: AppDatabase) {
                         call.respondText(contentType = ContentType.Application.Json, status = s, text = b)
                         return@get
                     }
-                    proxyRequest(call, database)
+                    try {
+                        proxyRequest(call, database)
+                    } catch (e: Exception) {
+                        val (s, b) = openAIError(HttpStatusCode.InternalServerError, "Internal error: ${e.message}", "server_error")
+                        try { call.respondText(contentType = ContentType.Application.Json, status = s, text = b) } catch (_: Exception) {}
+                    }
                 }
                 // 访问日志（需要API密钥验证）
                 get("/v1/logs") {
@@ -1674,6 +1684,7 @@ if (brainContent.isNotBlank()) {
             if (finalTarget != null) {
                 val provider = database.providerDao().getProviderById(finalTarget.providerId)
                 if (provider != null && provider.isEnabled) {
+<<<<<<< HEAD
                     // ★★ 通知栏同步模型名 ★★
                     GatewayForegroundService.activeNodeName = finalTarget.modelId
                     // ★★ 设置 modelId/providerId 属性，确保 token 统计能正确记录 ★★
@@ -1690,6 +1701,17 @@ if (brainContent.isNotBlank()) {
                     } else sanitizedBody
                     // 用正则只替换第一个model字段（避免全局替换损坏JSON）
                     val modifiedBody = bodyWithPersona.replaceFirst(Regex("\"model\"\\s*:\\s*\"[^\"]+\""), "\"model\":\"${finalTarget.modelId}\"")
+=======
+                    // ★★ 通知栏同步模型名（仅当变化时更新，避免通知栏闪烁）★★
+                    if (GatewayForegroundService.activeNodeName != finalTarget.modelId) {
+                        GatewayForegroundService.activeNodeName = finalTarget.modelId
+                    }
+                    // ★★ 设置 modelId/providerId 属性，确保 token 统计能正确记录 ★★
+                    call.attributes.put(MODEL_ID_KEY, finalTarget.modelId)
+                    call.attributes.put(PROVIDER_ID_KEY, finalTarget.providerId)
+                    // ★★ 透传：修正参数 + 替换model字段（不注入人格，透传就是透传）★★
+                    val modifiedBody = sanitizeRequestBody(requestBodyStr).replaceFirst(Regex("\"model\"\\s*:\\s*\"[^\"]+\""), "\"model\":\"${finalTarget.modelId}\"")
+>>>>>>> c8003e9 (v3.18.1 正式发布 - 修复网关500+通知栏闪烁+模型双排布局)
                     val modifiedBytes = modifiedBody.toByteArray()
                     val useProxy = finalTarget.useProxy
                     
@@ -1745,7 +1767,10 @@ if (brainContent.isNotBlank()) {
                 if (visionModel != null && modelId != visionModel.modelId) {
                     // 记录切换日志，继续用原始modelId发起请求（用户选的）
                     // 但在转发时会自动替换model字段
-                    GatewayForegroundService.activeNodeName = visionModel.modelId
+                    // ★★ 通知栏同步模型名（仅当变化时更新，避免通知栏闪烁）★★
+                    if (GatewayForegroundService.activeNodeName != visionModel.modelId) {
+                        GatewayForegroundService.activeNodeName = visionModel.modelId
+                    }
                     GatewayForegroundService.addDebugLog("👁️ 图片检测→自动切视觉: $modelId → ${visionModel.modelId}")
                     visionModel.modelId
                 } else modelId
@@ -1850,7 +1875,10 @@ val attemptModels: List<AiModel> = if (allEnabled.isNotEmpty()) {
                 try {
                     call.attributes.put(MODEL_ID_KEY, primaryModel.modelId)
                     call.attributes.put(PROVIDER_ID_KEY, primaryModel.providerId)
-                    GatewayForegroundService.activeNodeName = primaryModel.modelId
+                    // ★★ 通知栏同步模型名（仅当变化时更新，避免通知栏闪烁）★★
+                    if (GatewayForegroundService.activeNodeName != primaryModel.modelId) {
+                        GatewayForegroundService.activeNodeName = primaryModel.modelId
+                    }
                     GatewayScheduler.recordModelUsage(primaryModel.modelId)
                     val useProxy = primaryModel.useProxy
 
@@ -1903,7 +1931,10 @@ val attemptModels: List<AiModel> = if (allEnabled.isNotEmpty()) {
                 try {
                     call.attributes.put(MODEL_ID_KEY, matchedModel.modelId)
                     call.attributes.put(PROVIDER_ID_KEY, matchedModel.providerId)
-                    GatewayForegroundService.activeNodeName = matchedModel.modelId
+                    // ★★ 通知栏同步模型名（仅当变化时更新，避免通知栏闪烁）★★
+                    if (GatewayForegroundService.activeNodeName != matchedModel.modelId) {
+                        GatewayForegroundService.activeNodeName = matchedModel.modelId
+                    }
                     GatewayScheduler.recordModelUsage(matchedModel.modelId)
                     val useProxy = matchedModel.useProxy
 

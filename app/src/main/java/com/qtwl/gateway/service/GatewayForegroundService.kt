@@ -108,6 +108,9 @@ class GatewayForegroundService : Service() {
         return START_STICKY
     }
 
+    private var lastNotificationTitle: String = ""
+    private var lastNotificationText: String = ""
+
     private fun updateNotification() {
         val pendingIntent = PendingIntent.getActivity(this, 0,
             Intent(this, MainActivity::class.java),
@@ -120,7 +123,6 @@ class GatewayForegroundService : Service() {
         var proxyText = localizedText("代理: 未开启", "Proxy: disabled")
         if (proxyListJson.isNotBlank()) {
             try {
-                // 直接解析 JSON 数组
                 val arr = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
                     .decodeFromString<kotlinx.serialization.json.JsonArray>(proxyListJson)
                 for (elem in arr) {
@@ -146,7 +148,7 @@ class GatewayForegroundService : Service() {
         val hasTraffic = upBytes > 0 || downBytes > 0
         val now = System.currentTimeMillis()
         val idleSeconds = if (lastActivityTime > 0) (now - lastActivityTime) / 1000 else -1
-        val isActive = idleSeconds >= 0 && idleSeconds < 30 // 30秒内无流量视为空闲
+        val isActive = idleSeconds >= 0 && idleSeconds < 30
         val nodeName = activeNodeName
 
         // 更新最后活跃时间（只在有流量时更新）
@@ -161,11 +163,8 @@ class GatewayForegroundService : Service() {
 
         val text = buildString {
             append(localizedText("端口 ", "Port ")).append(port)
-            // ★★ 当前会话流量（可重置）★★
             append(localizedText("\n📊 当前会话 ", "\n📊 Current session ")).append("↑${formatBytes(upBytes)} ↓${formatBytes(downBytes)}")
-            // ★★ 总统计（持久化）★★
             append(localizedText("\n📈 总统计 ", "\n📈 All-time totals ")).append("↑${formatBytes(totalUp)} ↓${formatBytes(totalDown)}")
-            // ★★ 始终显示模型名（不只在传输中）
             if (nodeName.isNotBlank()) {
                 append("\n🧠 $nodeName")
             }
@@ -177,6 +176,13 @@ class GatewayForegroundService : Service() {
             append("\n$proxyText")
         }
 
+        val title = (if (wakeEnabled) localizedText("🟢 綦桐网关(保活中)", "🟢 QiTong Gateway (keep-alive)") else localizedText("綦桐网关", "QiTong Gateway")) + if (nodeName.isNotBlank()) " · $nodeName" else ""
+
+        // ★★ 内容没变化不重建通知（避免通知栏闪烁）★★
+        if (title == lastNotificationTitle && text == lastNotificationText) return
+        lastNotificationTitle = title
+        lastNotificationText = text
+
         // 唤醒/取消唤醒按钮
         val toggleWakeIntent = Intent(this, GatewayForegroundService::class.java).apply {
             putExtra(EXTRA_TOGGLE_WAKE, true)
@@ -184,7 +190,6 @@ class GatewayForegroundService : Service() {
         val toggleWakePI = PendingIntent.getService(this, 2, toggleWakeIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 
-        val title = (if (wakeEnabled) localizedText("🟢 綦桐网关(保活中)", "🟢 QiTong Gateway (keep-alive)") else localizedText("綦桐网关", "QiTong Gateway")) + if (nodeName.isNotBlank()) " · $nodeName" else ""
         val notification = NotificationCompat.Builder(this, GatewayApplication.CHANNEL_ID)
             .setContentTitle(title)
             .setContentText(text)
