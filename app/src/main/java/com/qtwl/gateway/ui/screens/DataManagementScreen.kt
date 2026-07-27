@@ -1,5 +1,7 @@
 package com.qtwl.gateway.ui.screens
 
+import com.qtwl.gateway.data.model.routeKey
+
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.ContentValues
@@ -1073,9 +1075,9 @@ Text(localizedText("💡 备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加
                         listOf<com.qtwl.gateway.data.model.AiModel>()
                     }
                 }
-                val snapshotSortedIds = remember { com.qtwl.gateway.gateway.GatewayScheduler.pipelineSortedModelIds.toList() }
+                val snapshotSortedIds = remember { com.qtwl.gateway.gateway.GatewayScheduler.pipelineSortedModelKeys.toList() }
                 val sortedModels = remember {
-                    snapshotModels.sortedByDescending { snapshotSortedIds.indexOf(it.modelId) }.reversed()
+                    snapshotModels.sortedByDescending { snapshotSortedIds.indexOf(it.routeKey) }.reversed()
                 }
                 val currentParticipants = remember { mutableStateListOf<String>().apply { addAll(GroupChatManager.getParticipantModels()) } }
                 AlertDialog(
@@ -1129,9 +1131,9 @@ Text(localizedText("💡 备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加
                         listOf<com.qtwl.gateway.data.model.AiModel>()
                     }
                 }
-                val snapshotSortedIds = remember { com.qtwl.gateway.gateway.GatewayScheduler.pipelineSortedModelIds.toList() }
+                val snapshotSortedIds = remember { com.qtwl.gateway.gateway.GatewayScheduler.pipelineSortedModelKeys.toList() }
                 val sortedModels = remember {
-                    snapshotModels.sortedByDescending { snapshotSortedIds.indexOf(it.modelId) }.reversed()
+                    snapshotModels.sortedByDescending { snapshotSortedIds.indexOf(it.routeKey) }.reversed()
                 }
                 var selectedSummarizer by remember { mutableStateOf(GroupChatManager.getSummarizerModel()) }
                 AlertDialog(

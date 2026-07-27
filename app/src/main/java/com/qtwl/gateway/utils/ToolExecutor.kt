@@ -1,6 +1,7 @@
 package com.qtwl.gateway.utils
 
 import com.qtwl.gateway.gateway.GatewayScheduler
+import com.qtwl.gateway.data.model.ModelRouteKey
 import com.qtwl.gateway.service.GatewayForegroundService
 import java.net.URL
 import java.net.HttpURLConnection
@@ -45,7 +46,7 @@ object ToolExecutor {
             // ========== 1xxxxx 测速 ==========
             "100001" -> {
                 if (param.isNotBlank()) {
-                    val modelId = GatewayScheduler.pipelineSortedModelIds.firstOrNull { it.contains(param, ignoreCase = true) }
+                    val modelId = findUniqueRankedKey(param)
                     if (modelId != null) {
                         val result = "✅ 正在对 $modelId 进行单次测速"
                         GatewayForegroundService.addDebugLog("📊 大脑测速: $modelId")
@@ -70,14 +71,15 @@ object ToolExecutor {
             "200001" -> {
                 if (param.isNotBlank()) {
                     val idx = param.toIntOrNull()
-                    if (idx != null && idx > 0 && idx <= GatewayScheduler.pipelineSortedModelIds.size) {
-                        val modelId = GatewayScheduler.pipelineSortedModelIds[idx - 1]
-                        GatewayForegroundService.saveForcedModel(modelId)
+                    if (idx != null && idx > 0 && idx <= GatewayScheduler.pipelineSortedModelKeys.size) {
+                        val modelKey = GatewayScheduler.pipelineSortedModelKeys[idx - 1]
+                        val modelId = ModelRouteKey.modelIdOf(modelKey)
+                        GatewayForegroundService.saveForcedModel(modelKey)
                         GatewayForegroundService.activeNodeName = modelId
-                        GatewayForegroundService.addDebugLog("🔄 大脑切换 → 排行第${idx}: $modelId")
-                        "✅ 已切换到排行第${idx}的模型: $modelId"
+                        GatewayForegroundService.addDebugLog("🎯 强制切换 → #$idx · ${ModelRouteKey.display(modelKey)}")
+                        "✅ 已切换到 #$idx · ${ModelRouteKey.display(modelKey)}"
                     } else {
-                        "⚠️ 编号超出范围（1-${GatewayScheduler.pipelineSortedModelIds.size}）"
+                        "⚠️ 编号超出范围（1-${GatewayScheduler.pipelineSortedModelKeys.size}）"
                     }
                 } else {
                     "⚠️ 请指定排行编号，例如：切换到第1个"
@@ -86,12 +88,12 @@ object ToolExecutor {
             "200002" -> {
                 if (param.isNotBlank()) {
                     // 模糊匹配模型ID
-                    val matched = GatewayScheduler.pipelineSortedModelIds.firstOrNull { it.contains(param, ignoreCase = true) }
+                    val matched = findUniqueRankedKey(param)
                     if (matched != null) {
                         GatewayForegroundService.saveForcedModel(matched)
-                        GatewayForegroundService.activeNodeName = matched
-                        GatewayForegroundService.addDebugLog("🔄 大脑切换 → 匹配: $param → $matched")
-                        "✅ 已切换到模型: $matched"
+                        GatewayForegroundService.activeNodeName = ModelRouteKey.modelIdOf(matched)
+                        GatewayForegroundService.addDebugLog("🎯 强制切换 → ${ModelRouteKey.display(matched)}")
+                        "✅ 已切换到: ${ModelRouteKey.display(matched)}"
                     } else {
                         "⚠️ 未找到匹配\"$param\"的模型，可用排行查看"
                     }
@@ -192,9 +194,9 @@ object ToolExecutor {
                 "📊 网关状态：${if (running) "运行中" else "已停止"} | 端口: $port | 故障转移: ${if (failover) "开" else "关"} | qtai-sj: ${if (qtaiSj) "开" else "关"}"
             }
             "600002" -> {
-                if (GatewayScheduler.pipelineSortedModelIds.isNotEmpty()) {
-                    val list = GatewayScheduler.pipelineSortedModelIds.mapIndexed { i, id -> "  ${i+1}. $id" }.joinToString("\n")
-                    "📈 测速排行（共${GatewayScheduler.pipelineSortedModelIds.size}个）：\n$list"
+                if (GatewayScheduler.pipelineSortedModelKeys.isNotEmpty()) {
+                    val list = GatewayScheduler.pipelineSortedModelKeys.mapIndexed { i, key -> "  #${i + 1} · ${ModelRouteKey.display(key)}" }.joinToString("\n")
+                    "📈 测速排行（共${GatewayScheduler.pipelineSortedModelKeys.size}个）：\n$list"
                 } else {
                     // ★ 没有测速数据时，返回缓存中的模型列表
                     val cachedStatus = com.qtwl.gateway.service.GatewayForegroundService.getGatewayConfig("pipeline_cache", "")
@@ -208,9 +210,9 @@ object ToolExecutor {
             "600003" -> {
                 val forced = GatewayForegroundService.getForcedModel()
                 if (forced.isNotBlank()) {
-                    "🧠 当前在使用: $forced"
-                } else if (GatewayScheduler.pipelineSortedModelIds.isNotEmpty()) {
-                    "🧠 当前在使用: ${GatewayScheduler.pipelineSortedModelIds.first()}"
+                    "🧠 当前在使用: ${ModelRouteKey.display(forced)}"
+                } else if (GatewayScheduler.pipelineSortedModelKeys.isNotEmpty()) {
+                    "🧠 当前在使用: ${ModelRouteKey.display(GatewayScheduler.pipelineSortedModelKeys.first())}"
                 } else {
                     "⚠️ 暂无模型数据"
                 }
@@ -412,8 +414,8 @@ object ToolExecutor {
         val numMatch = numRegex.find(text.trim())
         if (numMatch != null) {
             val num = numMatch.groupValues[1].toIntOrNull()
-            if (num != null && num > 0 && num <= GatewayScheduler.pipelineSortedModelIds.size) {
-                actions.add(ToolAction.ForceModel(GatewayScheduler.pipelineSortedModelIds[num - 1]))
+            if (num != null && num > 0 && num <= GatewayScheduler.pipelineSortedModelKeys.size) {
+                actions.add(ToolAction.ForceModel(GatewayScheduler.pipelineSortedModelKeys[num - 1]))
                 return actions
             }
         }
@@ -435,9 +437,9 @@ object ToolExecutor {
             is ToolAction.StartSingleTest -> "⚠️ 请指定模型名称，例如：测试Claude模型"
             is ToolAction.ForceModel -> {
                 GatewayForegroundService.saveForcedModel(action.modelId)
-                GatewayForegroundService.activeNodeName = action.modelId
-                GatewayForegroundService.addDebugLog("🔄 AI切换模型 → ${action.modelId}")
-                "✅ 已强制指定模型为: ${action.modelId}"
+                GatewayForegroundService.activeNodeName = ModelRouteKey.modelIdOf(action.modelId)
+                GatewayForegroundService.addDebugLog("🎯 AI强制切换 → ${ModelRouteKey.display(action.modelId)}")
+                "✅ 已强制切换到: ${ModelRouteKey.display(action.modelId)}"
             }
             is ToolAction.SwitchPrevModel -> {
                 val switched = switchModel(-1)
@@ -522,9 +524,9 @@ object ToolExecutor {
                 "📊 网关状态：${if (running) "运行中" else "已停止"} | 端口: $port | 故障转移: ${if (failover) "开" else "关"} | qtai-sj: ${if (qtaiSj) "开" else "关"}"
             }
             is ToolAction.QueryRanking -> {
-                if (GatewayScheduler.pipelineSortedModelIds.isNotEmpty()) {
-                    val list = GatewayScheduler.pipelineSortedModelIds.mapIndexed { i, id -> "  ${i+1}. $id" }.joinToString("\n")
-                    "📈 测速排行（共${GatewayScheduler.pipelineSortedModelIds.size}个）：\n$list"
+                if (GatewayScheduler.pipelineSortedModelKeys.isNotEmpty()) {
+                    val list = GatewayScheduler.pipelineSortedModelKeys.mapIndexed { i, key -> "  #${i + 1} · ${ModelRouteKey.display(key)}" }.joinToString("\n")
+                    "📈 测速排行（共${GatewayScheduler.pipelineSortedModelKeys.size}个）：\n$list"
                 } else {
                     val cachedStatus = com.qtwl.gateway.service.GatewayForegroundService.getGatewayConfig("pipeline_cache", "")
                     if (cachedStatus.isNotBlank()) {
@@ -536,8 +538,8 @@ object ToolExecutor {
             }
             is ToolAction.QueryCurrentModel -> {
                 val forced = GatewayForegroundService.getForcedModel()
-                if (forced.isNotBlank()) "🧠 当前在使用: $forced"
-                else if (GatewayScheduler.pipelineSortedModelIds.isNotEmpty()) "🧠 当前在使用: ${GatewayScheduler.pipelineSortedModelIds.first()}"
+                if (forced.isNotBlank()) "🧠 当前在使用: ${ModelRouteKey.display(forced)}"
+                else if (GatewayScheduler.pipelineSortedModelKeys.isNotEmpty()) "🧠 当前在使用: ${ModelRouteKey.display(GatewayScheduler.pipelineSortedModelKeys.first())}"
                 else "⚠️ 暂无模型数据"
             }
             is ToolAction.QueryTokenUsage -> {
@@ -567,12 +569,24 @@ object ToolExecutor {
     // ==================== 私有工具 ====================
 
     private fun switchModel(direction: Int): String {
-        if (GatewayScheduler.pipelineSortedModelIds.isEmpty()) return ""
+        if (GatewayScheduler.pipelineSortedModelKeys.isEmpty()) return ""
         val currentIdx = GatewayForegroundService.getGatewayConfig("current_model_idx", "0").toIntOrNull() ?: 0
-        val nextIdx = (currentIdx + direction + GatewayScheduler.pipelineSortedModelIds.size) % GatewayScheduler.pipelineSortedModelIds.size
+        val nextIdx = (currentIdx + direction + GatewayScheduler.pipelineSortedModelKeys.size) % GatewayScheduler.pipelineSortedModelKeys.size
         GatewayForegroundService.saveGatewayConfig("current_model_idx", nextIdx.toString())
-        GatewayForegroundService.saveForcedModel(GatewayScheduler.pipelineSortedModelIds[nextIdx])
-        return GatewayScheduler.pipelineSortedModelIds[nextIdx]
+        val modelKey = GatewayScheduler.pipelineSortedModelKeys[nextIdx]
+        GatewayForegroundService.saveForcedModel(modelKey)
+        return ModelRouteKey.modelIdOf(modelKey)
+    }
+
+    private fun findUniqueRankedKey(query: String): String? {
+        val normalized = query.trim()
+        if (normalized.isBlank()) return null
+        val matches = GatewayScheduler.pipelineSortedModelKeys.filter { key ->
+            key.contains(normalized, ignoreCase = true) ||
+                ModelRouteKey.modelIdOf(key).contains(normalized, ignoreCase = true) ||
+                ModelRouteKey.display(key).contains(normalized, ignoreCase = true)
+        }
+        return matches.singleOrNull()
     }
 
     private fun formatBytes(bytes: Long): String = when {

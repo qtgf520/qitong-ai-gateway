@@ -8,6 +8,9 @@ import android.content.Context
 import com.qtwl.gateway.GatewayApplication
 import com.qtwl.gateway.data.db.AppDatabase
 import com.qtwl.gateway.data.model.AiModel
+import com.qtwl.gateway.data.model.ModelRouteKey
+import com.qtwl.gateway.data.model.findByRouteKey
+import com.qtwl.gateway.data.model.routeKey
 import com.qtwl.gateway.data.model.ChatMessage
 import com.qtwl.gateway.data.model.Conversation
 import com.qtwl.gateway.data.model.Provider
@@ -69,7 +72,10 @@ data class PipelineTestItem(
     val status: String,
     val latencyMs: Long = 0,
     val isCurrent: Boolean = false
-)
+) {
+    val selectionKey: String
+        get() = ModelRouteKey.encode(providerId, modelId)
+}
 
 private val _pipelineStatus = MutableStateFlow<List<PipelineTestItem>>(emptyList())
 val pipelineStatus: StateFlow<List<PipelineTestItem>> = _pipelineStatus.asStateFlow()
@@ -665,30 +671,39 @@ companion object {
                 val enabledList = withContext(Dispatchers.IO) {
                     database.aiModelDao().getEnabledModelsList().filter { it.isEnabled }
                 }
-                val enabledIds = enabledList.map { it.modelId }.toSet()
-                // 保留缓存中仍在本地启用的 + 本地有但缓存没有的新模型（标记为"等待中"）
-                val merged = cached.filter { it.modelId in enabledIds }.toMutableList()
-                val cachedIds = merged.map { it.modelId }.toSet()
-                for (model in enabledList) {
-                    if (model.modelId !in cachedIds) {
-                        merged.add(PipelineTestItem(
-                            modelId = model.modelId,
-                            modelName = model.displayName,
-                            status = "⏳ 等待中",
-                            latencyMs = 0,
-                            isCurrent = false
-                        ))
-                    }
+                val enabledByKey = enabledList.associateBy { it.routeKey }
+                val cachedByKey = linkedMapOf<String, PipelineTestItem>()
+
+                // Legacy cache entries without a provider are migrated only if unique.
+                for (item in cached) {
+                    val model = if (item.providerId > 0L) {
+                        enabledByKey[item.selectionKey]
+                    } else {
+                        enabledList.filter { it.modelId == item.modelId }.singleOrNull()
+                    } ?: continue
+                    cachedByKey[model.routeKey] = item.copy(
+                        modelName = model.customAlias.ifBlank { model.displayName },
+                        providerId = model.providerId,
+                    )
+                }
+
+                val merged = enabledList.map { model ->
+                    cachedByKey[model.routeKey] ?: PipelineTestItem(
+                        modelId = model.modelId,
+                        modelName = model.customAlias.ifBlank { model.displayName },
+                        providerId = model.providerId,
+                        status = "⏳ 等待中",
+                        latencyMs = 0,
+                        isCurrent = false
+                    )
                 }
                 _pipelineStatus.value = merged
-                // ★ 更新缓存到 PipelineSortedModelIds，确保查排行不用等测完 ★
-                val sortedIds = merged.filter { it.status.startsWith("✅") || it.status.startsWith("❌") }.sortedBy { it.latencyMs }.map { it.modelId }
-                if (sortedIds.isNotEmpty()) {
-                    com.qtwl.gateway.gateway.GatewayScheduler.pipelineSortedModelIds = sortedIds
-                } else {
-                    // 缓存中还没测完的，就用所有模型（按顺序）
-                    com.qtwl.gateway.gateway.GatewayScheduler.pipelineSortedModelIds = merged.map { it.modelId }
-                }
+                val rankedKeys = merged
+                    .filter { it.status.startsWith("✅") || it.status.startsWith("❌") }
+                    .sortedBy { it.latencyMs }
+                    .map { it.selectionKey }
+                com.qtwl.gateway.gateway.GatewayScheduler.pipelineSortedModelKeys =
+                    rankedKeys.ifEmpty { merged.map { it.selectionKey } }
                 savePipelineCache(merged)
             }
         }
@@ -1645,16 +1660,16 @@ fun getDisplayModelName(model: AiModel): String {
             val effectiveModelId = if (forcedModelId == "qtai-sj") GatewayForegroundService.activeNodeName else forcedModelId
             if (effectiveModelId.isNotBlank()) {
                 val bestModels = database.aiModelDao().getEnabledModelsList()
-                val targetModel = bestModels.find { it.modelId == effectiveModelId }
+                val targetModel = bestModels.findByRouteKey(effectiveModelId)
                 if (targetModel != null) {
                     database.providerDao().getProviderById(targetModel.providerId)
                 } else null
             } else {
-                val sortedIds = com.qtwl.gateway.gateway.GatewayScheduler.pipelineSortedModelIds
+                val sortedIds = com.qtwl.gateway.gateway.GatewayScheduler.pipelineSortedModelKeys
                 if (sortedIds.isNotEmpty()) {
                     val bestId = sortedIds.first()
                     val bestModels = database.aiModelDao().getEnabledModelsList()
-                    val bestModel = bestModels.find { it.modelId == bestId }
+                    val bestModel = bestModels.findByRouteKey(bestId)
                     if (bestModel != null) {
                         database.providerDao().getProviderById(bestModel.providerId)
                     } else null
@@ -1673,14 +1688,14 @@ fun getDisplayModelName(model: AiModel): String {
                     val actualModelId = if (model.modelId == "qtai-sj") {
             val forcedModelId = GatewayForegroundService.getForcedModel()
             val effectiveModelId = if (forcedModelId == "qtai-sj") GatewayForegroundService.activeNodeName else forcedModelId
-            if (effectiveModelId.isNotBlank()) effectiveModelId
+            if (effectiveModelId.isNotBlank()) ModelRouteKey.modelIdOf(effectiveModelId)
             else {
                 val convModelId = _currentConversation.value?.modelId
                 if (!convModelId.isNullOrBlank() && convModelId != "qtai-sj") {
                     convModelId
                 } else {
-                    val sortedIds = com.qtwl.gateway.gateway.GatewayScheduler.pipelineSortedModelIds
-                    if (sortedIds.isNotEmpty()) sortedIds.first() else model.modelId
+                    val sortedIds = com.qtwl.gateway.gateway.GatewayScheduler.pipelineSortedModelKeys
+                    if (sortedIds.isNotEmpty()) ModelRouteKey.modelIdOf(sortedIds.first()) else model.modelId
                 }
             }
         } else model.modelId
@@ -1820,12 +1835,12 @@ fun getDisplayModelName(model: AiModel): String {
             // ★★ 规则5：失败自动兜底—用测速最优模型重试一次
             val currentModel = _selectedModel.value
             if (currentModel != null) {
-                val sortedIds = com.qtwl.gateway.gateway.GatewayScheduler.pipelineSortedModelIds
-                if (sortedIds.isNotEmpty() && (currentModel.modelId != sortedIds.first())) {
+                val sortedIds = com.qtwl.gateway.gateway.GatewayScheduler.pipelineSortedModelKeys
+                if (sortedIds.isNotEmpty() && (currentModel.routeKey != sortedIds.first())) {
                     val bestModelId = sortedIds.first()
                     // 通过 enabledModels 列表查找最优模型
                     val enabledList = database.aiModelDao().getEnabledModelsList()
-                    val bestModel = enabledList.find { it.modelId == bestModelId }
+                    val bestModel = enabledList.findByRouteKey(bestModelId)
                     if (bestModel != null) {
                         _chatError.value = "↻ ${currentModel.displayName} 失败，自动切换到 ${bestModel.displayName} 重试..."
                         _selectedModel.value = bestModel
@@ -2239,28 +2254,28 @@ fun clearChatError() {
 
                     // 保留旧测速结果，新模型加入等待中
                     val oldStatus = _pipelineStatus.value
-                    val oldMap = oldStatus.associateBy { it.modelId }
+                    val oldMap = oldStatus.associateBy { it.selectionKey }
                     _pipelineStatus.value = enabledList.map { model ->
-                        val old = oldMap[model.modelId]
-                        if (old != null) old
-                        else PipelineTestItem(
-                            modelId = model.modelId,
-                            modelName = if (model.customAlias.isNotBlank()) model.customAlias else model.displayName,
+                        oldMap[model.routeKey]?.copy(
+                            modelName = model.customAlias.ifBlank { model.displayName },
                             providerId = model.providerId,
-                            status = "等待中"
+                            ) ?: PipelineTestItem(
+                            modelId = model.modelId,
+                            modelName = model.customAlias.ifBlank { model.displayName },
+                            providerId = model.providerId,
+                                status = "等待中"
                         )
                     }
 
-                    // 第1轮按默认顺序，之后按速度排行
                     val sortedList = if (firstRound) enabledList
                     else {
-                        val speedMap = _pipelineStatus.value.associate { it.modelId to it.latencyMs }
-                        enabledList.sortedBy { speedMap[it.modelId] ?: Long.MAX_VALUE }
+                        val speedMap = _pipelineStatus.value.associate { it.selectionKey to it.latencyMs }
+                        enabledList.sortedBy { speedMap[it.routeKey] ?: Long.MAX_VALUE }
                     }
 
                     for (model in sortedList) {
                         if (!_pipelineRunning.value) break
-                        val realIdx = _pipelineStatus.value.indexOfFirst { it.modelId == model.modelId }
+                        val realIdx = _pipelineStatus.value.indexOfFirst { it.selectionKey == model.routeKey }
                         if (realIdx < 0) continue
                         if (!_pipelineRunning.value) break
                         // ★★ 更新进度 ★★
@@ -2321,7 +2336,7 @@ fun clearChatError() {
 
                     val sorted = _pipelineStatus.value.sortedBy { it.latencyMs }
                     _pipelineStatus.value = sorted
-                    com.qtwl.gateway.gateway.GatewayScheduler.pipelineSortedModelIds = sorted.map { it.modelId }
+                    com.qtwl.gateway.gateway.GatewayScheduler.pipelineSortedModelKeys = sorted.map { it.selectionKey }
                     // ★ 保存测速结果缓存
                     savePipelineCache(sorted)
                     firstRound = false
@@ -2346,15 +2361,15 @@ fun clearChatError() {
 
     /** ★★ 刷新 qtai-sj 虚拟模型状态（基于测速排行）★★ */
     private fun refreshQtaiSjStatus() {
-        val sorted = com.qtwl.gateway.gateway.GatewayScheduler.pipelineSortedModelIds
+        val sorted = com.qtwl.gateway.gateway.GatewayScheduler.pipelineSortedModelKeys
         if (sorted.isNotEmpty()) {
             val bestId = sorted.first()
-            val bestModel = enabledModels.value.find { it.modelId == bestId }
+            val bestModel = enabledModels.value.findByRouteKey(bestId)
             val bestMetrics = com.qtwl.gateway.gateway.GatewayScheduler.healthCache[bestId]
             _qtaiSjStatus.value = QtaiSjStatus(
                 available = true,
-                bestModelId = bestId,
-                bestModelName = bestModel?.displayName ?: bestId,
+                bestModelId = bestModel?.modelId ?: ModelRouteKey.modelIdOf(bestId),
+                bestModelName = bestModel?.displayName ?: ModelRouteKey.display(bestId),
                 bestTtft = bestMetrics?.latencyMs ?: 0,
                 lastUpdated = System.currentTimeMillis(),
                 isTesting = false,
@@ -2405,21 +2420,18 @@ fun clearChatError() {
     private val _forcedModelKey = MutableStateFlow(GatewayForegroundService.getForcedModel())
     val forcedModelKey: StateFlow<String> = _forcedModelKey.asStateFlow()
 
-    fun forceModel(modelId: String, providerId: Long = 0L) {
-        val modelKey = if (providerId != 0L) "$providerId::$modelId" else modelId
-        val currentForced = _forcedModelKey.value
-        if (currentForced == modelKey) {
-            // 点击同一个模型 → 取消强制，回到自动排行
+    fun forceModel(modelId: String, providerId: Long, rankingId: Int? = null) {
+        val modelKey = ModelRouteKey.encode(providerId, modelId)
+        if (_forcedModelKey.value == modelKey) {
             _forcedModelKey.value = ""
             GatewayForegroundService.saveForcedModel("")
             _snackbarMessage.value = "↩️ 已取消强制切换，回到自动排行模式"
         } else {
-            // 强制切换到该模型
             _forcedModelKey.value = modelKey
             GatewayForegroundService.saveForcedModel(modelKey)
-            // 从排行榜找模型名称
-            val modelName = _pipelineStatus.value.find { it.modelId == modelId }?.modelName ?: modelId
-            _snackbarMessage.value = "🎯 已强制切换到: $modelName"
+            val item = _pipelineStatus.value.find { it.selectionKey == modelKey }
+            val rankPrefix = rankingId?.let { "#$it · " }.orEmpty()
+            _snackbarMessage.value = "🎯 已选择: ${rankPrefix}P$providerId · ${item?.modelName ?: modelId}"
         }
     }
 

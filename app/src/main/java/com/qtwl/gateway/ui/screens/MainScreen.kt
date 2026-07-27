@@ -49,6 +49,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.qtwl.gateway.data.model.AiModel
+import com.qtwl.gateway.data.model.ModelRouteKey
+import com.qtwl.gateway.data.model.routeKey
 import com.qtwl.gateway.data.model.Provider
 import com.qtwl.gateway.ui.theme.Error
 import com.qtwl.gateway.ui.theme.Offline
@@ -170,6 +172,8 @@ fun MainScreen(
 @Composable
 fun HomeScreen(viewModel: GatewayViewModel) {
     val serviceRunning by viewModel.serviceRunning.collectAsState()
+    val providers by viewModel.providers.collectAsState()
+    val providerMap = remember(providers) { providers.associateBy { it.id } }
 
     Column(
         modifier = Modifier
@@ -521,24 +525,32 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                 }
 
                 // ★★ 首页显示当前AI助手切换的模型 ★★
-                val currentModelName = remember {
-                    val forced = GatewayForegroundService.getForcedModel()
-                    if (forced.isNotBlank()) forced
-                    else if (GatewayScheduler.pipelineSortedModelIds.isNotEmpty()) GatewayScheduler.pipelineSortedModelIds.first()
-                    else ""
+                val currentRankedItem = if (forcedModelKey.isNotBlank()) {
+                    doneItems.find { it.selectionKey == forcedModelKey }
+                } else {
+                    doneItems.firstOrNull()
                 }
-                if (currentModelName.isNotBlank()) {
+                if (currentRankedItem != null) {
+                    val currentRank = doneItems.indexOfFirst { it.selectionKey == currentRankedItem.selectionKey } + 1
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(localizedText("🧠 AI助手当前模型", "🧠 Current AI assistant model"), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(currentModelName, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        Text(
+                            localizedText("🤖 当前AI助手模型", "🤖 Current AI assistant model"),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            "#$currentRank · P${currentRankedItem.providerId} · ${currentRankedItem.modelName}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
                     }
                 }
-                
-                // ★★ 框2：正在测速的模型 ★★
+
                 val currentItem = pStatus.find { it.isCurrent && !it.status.startsWith("✅") && !it.status.startsWith("❌") }
                 if (currentItem != null || pRunning) {
                     Spacer(modifier = Modifier.height(4.dp))
@@ -555,7 +567,7 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = currentItem?.modelName ?: localizedText("准备中...", "Preparing..."),
+                                text = currentItem?.let { "P${it.providerId} · ${it.modelName}" } ?: localizedText("准备中...", "Preparing..."),
                                 style = MaterialTheme.typography.bodySmall,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary
@@ -585,7 +597,11 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = localizedText("🎯 强制模式: ", "🎯 Forced mode: ") + (doneItems.find { "${it.providerId}::${it.modelId}" == forcedModelKey || it.modelId == forcedModelKey }?.modelName ?: forcedModelKey),
+                                text = localizedText("🎯 强制模式: ", "🎯 Forced mode: ") +
+                                    (doneItems.find { it.selectionKey == forcedModelKey }?.let { item ->
+                                        val rank = doneItems.indexOfFirst { it.selectionKey == item.selectionKey } + 1
+                                        "#$rank · P${item.providerId} · ${item.modelName}"
+                                    } ?: ModelRouteKey.display(forcedModelKey)),
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary
@@ -599,12 +615,16 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                         modifier = Modifier.fillMaxWidth().heightIn(max = 200.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        itemsIndexed(doneItems) { index, item ->
-                            val itemKey = "${item.providerId}::${item.modelId}"
-                            val isSelected = itemKey == forcedModelKey
+                        itemsIndexed(
+                            items = doneItems,
+                            key = { _, item -> item.selectionKey }
+                        ) { index, item ->
+                            val isSelected = item.selectionKey == forcedModelKey
+                            val providerName = providerMap[item.providerId]?.name
+                                ?: localizedText("未知服务商", "Unknown provider")
                             Card(
                                 modifier = Modifier.fillMaxWidth()
-                                    .clickable { viewModel.forceModel(item.modelId, item.providerId) }
+                                    .clickable { viewModel.forceModel(item.modelId, item.providerId, index + 1) }
                                     .then(
                                         if (isSelected) Modifier.background(
                                             Warning.copy(alpha = 0.12f), MaterialTheme.shapes.small
@@ -619,7 +639,7 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                                     // 第一行：排名 + 模型名 + 选中标记
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Text(
-                                            text = "#${index + 1} ",
+                                            text = "#${index + 1} · P${item.providerId} · ",
                                             style = MaterialTheme.typography.bodySmall,
                                             fontWeight = FontWeight.Bold,
                                             color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
@@ -640,7 +660,15 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                                         val statusText = item.status
                                         val isError = statusText.startsWith("❌")
                                         val isSuccess = statusText.startsWith("✅")
-                                        Spacer(modifier = Modifier.width(16.dp))
+                                        Text(
+                                            text = "$providerName · ${item.modelId}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.widthIn(max = 150.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
                                         if (isSuccess) {
                                             // 提取 TTFT/TPS 数字
                                             val ttftMatch = Regex("TTFT=(\\d+)ms").find(statusText)
@@ -1469,18 +1497,21 @@ fun ModelsScreen(viewModel: GatewayViewModel) {
     }
 
     // 按服务商分组（按服务商 orderIndex 排序）
-    val groupedModels: List<Triple<String, String, Pair<List<AiModel>, List<String>>>> = remember(filteredModels, providers, languageTick) {
-        val providerMap = providers.associateBy { it.id }
+    val groupedModels: List<Pair<String, List<AiModel>>> = remember(filteredModels, providers, languageTick) {
+        val providersById = providers.associateBy { it.id }
         val providerOrder = providers.sortedBy { it.orderIndex }.map { it.id }
-        filteredModels.groupBy { model ->
-            providerMap[model.providerId]?.name ?: if (model.modelId == "qtai-sj") "🔄 Auto switch" else "Unknown"
-        }.entries.sortedBy { entry ->
-            val firstModel = entry.value.firstOrNull()
-            val pid = firstModel?.providerId ?: 0L
-            providerOrder.indexOf(pid).let { if (it < 0) Int.MAX_VALUE else it }
-        }.map { (providerName, modelList) ->
-            Triple(providerName, providerName, modelList to emptyList())
-        }
+        filteredModels
+            .groupBy { it.providerId }
+            .entries
+            .sortedBy { (providerId, _) ->
+                providerOrder.indexOf(providerId).let { if (it < 0) Int.MAX_VALUE else it }
+            }
+            .map { (providerId, modelList) ->
+                val providerName = providersById[providerId]?.name
+                    ?: if (providerId == 0L) localizedText("自动切换", "Auto switch")
+                    else localizedText("未知服务商", "Unknown provider")
+                "P$providerId · $providerName" to modelList
+            }
     }
 
     if (models.isEmpty()) {
@@ -1609,12 +1640,11 @@ fun ModelsScreen(viewModel: GatewayViewModel) {
                 }
             }
 // 按服务商分组显示模型
-            groupedModels.forEach { (providerName, _, modelListWithProviders) ->
-                val (modelList, _) = modelListWithProviders
+            groupedModels.forEach { (providerLabel, modelList) ->
                 item {
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "📌 $providerName",
+                        text = "📌 $providerLabel",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary,
