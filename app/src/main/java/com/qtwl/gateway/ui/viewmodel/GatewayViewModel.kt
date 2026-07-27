@@ -1233,11 +1233,7 @@ companion object {
     }
 
     /** 移动服务商排序（上下） */
-<<<<<<< HEAD
-    fun moveProvider(provider: Provider, direction: Int) {
-=======
     fun moveProvider(provider: com.qtwl.gateway.data.model.Provider, direction: Int) {
->>>>>>> c8003e9 (v3.18.1 正式发布 - 修复网关500+通知栏闪烁+模型双排布局)
         viewModelScope.launch {
             try {
                 val allProviders = database.providerDao().getAllProvidersOnce().sortedBy { it.orderIndex }
@@ -2142,11 +2138,7 @@ fun getDisplayModelName(model: AiModel): String {
     }
 
     /** 删除模型 */
-<<<<<<< HEAD
-    fun deleteModel(model: AiModel) {
-=======
     fun deleteModel(model: com.qtwl.gateway.data.model.AiModel) {
->>>>>>> c8003e9 (v3.18.1 正式发布 - 修复网关500+通知栏闪烁+模型双排布局)
         viewModelScope.launch {
             try {
                 database.aiModelDao().delete(model)

@@ -13,12 +13,8 @@ android {
         applicationId = "com.qtwl.gateway"
         minSdk = 24
         targetSdk = 35
-<<<<<<< HEAD
-        versionCode = 155
-=======
-        versionCode = 161
->>>>>>> c8003e9 (v3.18.1 正式发布 - 修复网关500+通知栏闪烁+模型双排布局)
-    versionName = "3.18.1"
+        versionCode = 162
+        versionName = "3.18.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true

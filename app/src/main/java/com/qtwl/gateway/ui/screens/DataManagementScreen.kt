@@ -239,38 +239,6 @@ fun DataManagementScreen(
             }
             Spacer(modifier = Modifier.height(8.dp))
 
-            // ★ 隐藏多任务开关
-            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.VisibilityOff, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text(localizedText("👻 隐藏多任务", "👻 Hide from recents"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(localizedText("开启后APP不在多任务列表中显示", "When enabled, the app won't appear in the recent tasks list"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    var hideFromRecents by remember { mutableStateOf(
-                        GatewayForegroundService.getGatewayConfig("hide_from_recents", "false").toBoolean()
-                    ) }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(localizedText("隐藏多任务", "Hide from recents"), modifier = Modifier.weight(1f))
-                        Switch(
-                            checked = hideFromRecents,
-                            onCheckedChange = { enabled ->
-                                hideFromRecents = enabled
-                                GatewayForegroundService.saveGatewayConfig("hide_from_recents", enabled.toString())
-                                try {
-                                    val am = context.getSystemService(android.content.Context.ACTIVITY_SERVICE) as android.app.ActivityManager
-                                    am.appTasks.firstOrNull()?.setExcludeFromRecents(enabled)
-                                } catch (_: Exception) {}
-                            }
-                        )
-                    }
-                }
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-
             // 导出备份
             Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                 Column(modifier = Modifier.padding(16.dp)) {

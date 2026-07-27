@@ -1684,24 +1684,6 @@ if (brainContent.isNotBlank()) {
             if (finalTarget != null) {
                 val provider = database.providerDao().getProviderById(finalTarget.providerId)
                 if (provider != null && provider.isEnabled) {
-<<<<<<< HEAD
-                    // ★★ 通知栏同步模型名 ★★
-                    GatewayForegroundService.activeNodeName = finalTarget.modelId
-                    // ★★ 设置 modelId/providerId 属性，确保 token 统计能正确记录 ★★
-                    call.attributes.put(MODEL_ID_KEY, finalTarget.modelId)
-                    call.attributes.put(PROVIDER_ID_KEY, finalTarget.providerId)
-                    // ★★ 透传：修正参数 + 替换model字段 + 可选人格注入 ★★
-                    val sanitizedBody = sanitizeRequestBody(requestBodyStr)
-                    val bodyWithPersona = if (BrainMemoryManager.getConfig().enabled) {
-                        val personaText = BrainMemoryManager.buildPersonaPrompt()
-                        if (personaText.isNotBlank()) {
-                            val systemJson = "{\"role\":\"system\",\"content\":${proxyJson.encodeToString(JsonPrimitive(personaText))}}"
-                            sanitizedBody.replaceFirst(Regex("\"messages\"\\s*:\\s*\\["), "\"messages\":[$systemJson,")
-                        } else sanitizedBody
-                    } else sanitizedBody
-                    // 用正则只替换第一个model字段（避免全局替换损坏JSON）
-                    val modifiedBody = bodyWithPersona.replaceFirst(Regex("\"model\"\\s*:\\s*\"[^\"]+\""), "\"model\":\"${finalTarget.modelId}\"")
-=======
                     // ★★ 通知栏同步模型名（仅当变化时更新，避免通知栏闪烁）★★
                     if (GatewayForegroundService.activeNodeName != finalTarget.modelId) {
                         GatewayForegroundService.activeNodeName = finalTarget.modelId
@@ -1711,7 +1693,6 @@ if (brainContent.isNotBlank()) {
                     call.attributes.put(PROVIDER_ID_KEY, finalTarget.providerId)
                     // ★★ 透传：修正参数 + 替换model字段（不注入人格，透传就是透传）★★
                     val modifiedBody = sanitizeRequestBody(requestBodyStr).replaceFirst(Regex("\"model\"\\s*:\\s*\"[^\"]+\""), "\"model\":\"${finalTarget.modelId}\"")
->>>>>>> c8003e9 (v3.18.1 正式发布 - 修复网关500+通知栏闪烁+模型双排布局)
                     val modifiedBytes = modifiedBody.toByteArray()
                     val useProxy = finalTarget.useProxy
                     
