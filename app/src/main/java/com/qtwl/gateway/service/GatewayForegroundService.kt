@@ -110,6 +110,7 @@ class GatewayForegroundService : Service() {
 
     private var lastNotificationTitle: String = ""
     private var lastNotificationText: String = ""
+    private var notificationInitialized = false
 
     private fun updateNotification() {
         val pendingIntent = PendingIntent.getActivity(this, 0,
@@ -201,7 +202,16 @@ class GatewayForegroundService : Service() {
                 if (wakeEnabled) localizedText("取消唤醒", "Disable keep-alive") else localizedText("唤醒保活", "Enable keep-alive"), toggleWakePI)
             .build()
 
-        try { startForeground(NOTIFICATION_ID, notification) } catch (_: Exception) {}
+        // ★★ 首次用 startForeground 初始化，后续用 notify 更新避免闪烁 ★★
+        if (!notificationInitialized) {
+            try { startForeground(NOTIFICATION_ID, notification) } catch (_: Exception) {}
+            notificationInitialized = true
+        } else {
+            try {
+                val nm = getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+                nm.notify(NOTIFICATION_ID, notification)
+            } catch (_: Exception) {}
+        }
     }
 
     private fun formatBytes(bytes: Long): String = when {
