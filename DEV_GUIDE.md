@@ -143,12 +143,13 @@ dumpsys package com.qtwl.gateway | grep -E 'versionName|versionCode'
 ```
 备份根目录：/sdcard/Download/Operit/backup/qtkfbf/
 格式：backup_yyyyMMdd_HHmmss.qtbk 或 auto_backup_yyyyMMdd_HHmmss.qtbk
-保留：最近5天内的备份（自动清理超5天的旧备份）
+保留：删除超过5天的旧备份，当前备份保留不动
 ```
 
 - `getBackupDir()` 返回上述目录
-- 定时备份自动清理超过5天的备份文件
+- 定时备份自动清理超过5天的备份文件（只删旧的，保留当前）
 - 手动备份也存放在同一目录，方便统一管理
+- ⚠️ 重要：只删除5天前的旧备份，当前这次备份不删
 
 ---
 
