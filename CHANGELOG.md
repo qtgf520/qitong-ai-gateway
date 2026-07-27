@@ -2,7 +2,21 @@
 
 > 包名：com.qtwl.gateway
 > 签名证书：qitong.jks (别名: qitong)
-> 最后更新：2026-07-26
+> 最后更新：2026-07-27
+
+---
+
+## 🔄 v3.18.2（正式发布）
+
+### 🐛 修复
+- **管理页重复了两个「隐藏多任务」** — 删除了Git冲突合并导致的重复卡片，仅保留自启管理卡片内的开关
+- **同名模型在不同服务商下无法区分** — 聊天选模型时显示 `modelId · 服务商名`，一眼区分
+- **Git冲突残留导致编译失败** — 清理了 `build.gradle.kts`、`GatewayService.kt`、`MainScreen.kt`、`MainActivity.kt`、`GatewayViewModel.kt` 共5个文件的冲突标记
+- **通知栏闪烁** — `updateNotification()` 内容无变化时跳过重建
+- **ViewModel编译错误** — `liveSessions` 的 `set(value)` 语法修正
+
+### ✨ 新增
+- **聊天选模型显示服务商名** — 同名模型一眼区分，不会选错
 
 ---
 
