@@ -36,8 +36,8 @@ class AutoBackupWorker(
             val result = manager.exportToFile(file)
             if (result.isSuccess) {
                 Log.i(TAG, "定时备份成功: ${file.absolutePath}")
-                // 清理旧备份（保留最近7份）
-                manager.cleanupOldBackups(7)
+                // 清理旧备份（保留5天内的）
+                manager.cleanupOldBackups(5)
                 Result.success()
             } else {
                 Log.e(TAG, "定时备份失败: ${result.exceptionOrNull()?.message}")

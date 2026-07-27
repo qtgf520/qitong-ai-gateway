@@ -183,10 +183,10 @@ class BackupManager(private val database: AppDatabase) {
     }
 
     /**
-     * 获取备份文件目录
+     * 获取备份文件目录（/sdcard/Download/Operit/backup/qtkfbf/）
      */
     fun getBackupDir(): File {
-        val dir = File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "QiTongGateway")
+        val dir = File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "Operit/backup/qtkfbf")
         dir.mkdirs()
         return dir
     }
@@ -220,10 +220,10 @@ class BackupManager(private val database: AppDatabase) {
 
     fun deleteBackup(file: File) = file.delete()
 
-    fun cleanupOldBackups(retainCount: Int) {
+    fun cleanupOldBackups(retainDays: Int = 5) {
         val history = getBackupHistory()
-        if (history.size <= retainCount) return
-        history.drop(retainCount).forEach { File(it.filePath).delete() }
+        val cutoff = System.currentTimeMillis() - (retainDays * 24L * 60 * 60 * 1000)
+        history.filter { it.createdAt < cutoff }.forEach { File(it.filePath).delete() }
     }
 
     // ── 工具方法 ──

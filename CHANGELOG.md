@@ -12,6 +12,11 @@
 - **通知栏模型名闪烁彻底修复** — `startForeground()` 改为首次初始化用，后续用 `NotificationManager.notify()` 轻量更新，不再重建通知
 - **通知栏流量刷新不闪** — 内容无变化时直接跳过，不触发任何通知操作
 
+### 🛠️ 优化
+- **DEV_GUIDE.md 全面升级 v16** — 新增铁律0（开发前必读指南）、铁律8（工具编辑替代Vim）、版本号示例更新到3.18.x、新增备份目录规则、验证清单补充通知栏不闪烁+备份恢复验证、Release上传名带版本号
+- **备份目录迁移** — 从 `/sdcard/Download/QiTongGateway/` 迁移到 `/sdcard/Download/Operit/backup/qtkfbf/`，`getBackupDir()` 统一返回新路径
+- **备份保留策略优化** — 从保留最近7份改为保留最近5天，`cleanupOldBackups(5)` 按时间戳清理超5天的旧备份
+
 ---
 
 ## 🔄 v3.18.2（正式发布）
