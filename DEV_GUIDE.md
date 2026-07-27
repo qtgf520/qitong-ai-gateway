@@ -19,6 +19,7 @@
 9. **🚫 禁止卸载APP** — 签名不对重新签名，禁止卸载（保持用户数据）
 10. **📲 安装使用 Shizuku 权限** — 无 root 权限时用 Shizuku 授权安装
 11. **🔒 发布不泄漏本地凭证** — 签名证书(`*.jks`/`*.keystore`)、密码(`storePassword`/`keyPassword`)、构建产物(`*.idsig`/`*.apk`/`*.aab`) 禁止提交Git。`.gitignore` 已含规则，`git add` 前先 `git status` 检查有无敏感文件
+12. **📄 每次发布前同步更新README.md和CHANGELOG.md** — 版本号、更新日志、功能描述必须与当前版本一致，改完再提交Git
 
 ---
 
@@ -168,13 +169,14 @@ dumpsys package com.qtwl.gateway | grep -E 'versionName|versionCode'
 ```
 ① 改版本号 → 3.x.x（去掉 -N）
 ② 改代码（对照备份法）
-③ ./gradlew assembleDebug
-④ 复制APK到sdcard（带版本号）
-⑤ 安装到设备
-⑥ 验证功能
-⑦ 更新CHANGELOG.md
-⑧ 清理备份文件（删.bak）
-⑨ 推Git + 标签 + GitHub Release（APK上传）
+③ 更新README.md（版本号+更新日志）
+④ 更新CHANGELOG.md（追加新版本日志）
+⑤ ./gradlew assembleDebug
+⑥ 复制APK到sdcard（带版本号）
+⑦ 安装到设备
+⑧ 验证功能
+⑨ 清理备份文件（删.bak）
+⑩ 推Git + 标签 + GitHub Release（APK上传）
 ```
 
 ---
@@ -242,14 +244,16 @@ ls -t *.qtbk 2>/dev/null | tail -n +2 | while read f; do rm -f "$f"; done
 
 ---
 
-> **文档版本:** v16 — 2026-07-27
+> **文档版本:** v17 — 2026-07-27
 > **适用于:** 綦桐AI网关 v3.18.x+
 > **核心改动:**
 > - 铁律0：新增"每次开发前先读本文件"
 > - 铁律8：Vim/Neovim → 优先使用工具编辑
+> - 铁律12：新增"每次发布前同步更新README.md和CHANGELOG.md"
 > - 备份目录：移动到 `/sdcard/Download/Operit/backup/qtkfbf/`
 > - 备份保留：按天数（5天）而非按份数
 > - 版本号示例：更新到最新版本号
 > - 新增第6节"备份目录规则"
 > - 新增验证清单：通知栏不闪烁、备份恢复验证
 > - Release上传名：带版本号
+> - 正式发布流程：③更新README.md ④更新CHANGELOG.md

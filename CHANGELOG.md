@@ -14,6 +14,8 @@
 
 ### 🛠️ 优化
 - **DEV_GUIDE.md 全面升级 v16** — 新增铁律0（开发前必读指南）、铁律8（工具编辑替代Vim）、版本号示例更新到3.18.x、新增备份目录规则、验证清单补充通知栏不闪烁+备份恢复验证、Release上传名带版本号
+- **DEV_GUIDE.md 升级 v17** — 新增铁律12：每次发布前同步更新README.md和CHANGELOG.md；正式发布流程③更新README.md ④更新CHANGELOG.md
+- **README.md 更新** — 版本号更新到v3.18.3，版本历史表新增v3.18.3和v3.18.2
 - **备份目录迁移** — 从 `/sdcard/Download/QiTongGateway/` 迁移到 `/sdcard/Download/Operit/backup/qtkfbf/`，`getBackupDir()` 统一返回新路径
 - **备份保留策略优化** — 从保留最近7份改为保留最近5天，`cleanupOldBackups(5)` 按时间戳清理超5天的旧备份
 

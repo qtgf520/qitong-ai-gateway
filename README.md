@@ -1,7 +1,7 @@
 # 綦桐AI网关 | QiTong AI Gateway
 
 > **包名 / Package：** `com.qtwl.gateway`  
-> **最新版本 / Latest：** v3.18.1 (versionCode=153)  
+> **最新版本 / Latest：** v3.18.3 (versionCode=163)  
 > **开源协议 / License：** Apache 2.0  
 > **语言 / Languages：** 🌐 15 languages (CN/EN/JP/KR/FR/DE/ES/RU/PT/VN/TH/AR/HI/ID)
 > **官方QQ群 / QQ Group：** [1007488535](https://qm.qq.com/q/1007488535) 💬
@@ -170,7 +170,9 @@ See [CHANGELOG.md](CHANGELOG.md) for full changelog.
 
 | Version | Key Features |
 |:--------|:-------------|
-| **v3.18.0** | 🐛 **首页测速遮挡修复 + 定时备份不生效修复 + qtai-sj 测速异常修复 + qtai-sj 状态卡片** — 双行布局/非SSE兼容/30s超时/约束放宽/KEEP策略/测试按钮 |
+| **v3.18.3** | 🐛 **通知栏闪烁彻底修复** — startForeground改notify + 备份目录迁移到qtkfbf + 备份保留5天 + DEV_GUIDE.md v16升级 |
+| **v3.18.2** | 🐛 **修复双隐藏多任务+同名模型显示服务商+Git冲突清理+ViewModel编译错误** — 通知栏防闪烁+聊天选模型显示服务商名 |
+| **v3.18.1** | 🐛 **首页测速遮挡修复 + 定时备份不生效修复 + qtai-sj 测速异常修复 + qtai-sj 状态卡片** — 双行布局/非SSE兼容/30s超时/约束放宽/KEEP策略/测试按钮 |
 | **v3.17.2** | ✨ **统计页清空流量按钮** + 统计页模型修复 + 版本号统一 |
 | **v3.17.1** | 🎯 **三层技能路由器** + 搜索技能 + 人格系统大五维度滑块 + 备份完善 + 重置确认 |
 | **v3.16.0** | ⚡ **三指标测速** + 9维能力标签 + 同名模型分组 + SearXNG搜索 + 备份GZIP+SHA256+AES |
