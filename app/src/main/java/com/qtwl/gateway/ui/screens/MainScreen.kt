@@ -447,6 +447,44 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                     }
                 }
 
+                // ★★ 自动测速间隔设置（滑块，5分钟~4小时）★★
+                var intervalMinutes by remember { mutableStateOf(GatewayForegroundService.getPipelineInterval()) }
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = localizedText("⏱ 测速间隔", "⏱ Speed interval"),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.width(80.dp)
+                    )
+                    Slider(
+                        value = intervalMinutes.toFloat(),
+                        onValueChange = { newVal ->
+                            val rounded = newVal.toInt().coerceIn(5, 240)
+                            intervalMinutes = rounded
+                        },
+                        onValueChangeFinished = {
+                            GatewayForegroundService.savePipelineInterval(intervalMinutes)
+                        },
+                        valueRange = 5f..240f,
+                        steps = 46, // 5,10,15,20...240 = 47个点, steps=46
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        text = when {
+                            intervalMinutes < 60 -> localizedText("${intervalMinutes}分钟", "${intervalMinutes}min")
+                            intervalMinutes % 60 == 0 -> localizedText("${intervalMinutes / 60}小时", "${intervalMinutes / 60}h")
+                            else -> localizedText("${intervalMinutes / 60}小时${intervalMinutes % 60}分", "${intervalMinutes / 60}h${intervalMinutes % 60}m")
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.width(70.dp)
+                    )
+                }
+
                 // ★★ 指示灯 + 框1 + 框2 ★★
                 val doneItems = pStatus.filter {
                     it.status.startsWith("✅") || it.status.startsWith("❌")
@@ -563,7 +601,7 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                     ) {
                         itemsIndexed(doneItems) { index, item ->
                             val itemKey = "${item.providerId}::${item.modelId}"
-                            val isSelected = itemKey == forcedModelKey || item.modelId == forcedModelKey
+                            val isSelected = itemKey == forcedModelKey
                             Card(
                                 modifier = Modifier.fillMaxWidth()
                                     .clickable { viewModel.forceModel(item.modelId, item.providerId) }

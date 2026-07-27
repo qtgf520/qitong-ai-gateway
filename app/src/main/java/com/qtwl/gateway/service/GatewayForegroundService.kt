@@ -78,6 +78,16 @@ class GatewayForegroundService : Service() {
             }
         }
 
+        // ★★ 处理退出按钮 ★★
+        if (intent?.hasExtra("stop_service") == true) {
+            gatewayService.stop()
+            isServiceRunning = false
+            saveGatewayRunningState(false)
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
         updateNotification()
 
         // ★★ 同步设置服务状态，确保ViewModel初始化时能读到正确值 ★★
@@ -166,18 +176,16 @@ class GatewayForegroundService : Service() {
             append(localizedText("端口 ", "Port ")).append(port)
             append(localizedText("\n📊 当前会话 ", "\n📊 Current session ")).append("↑${formatBytes(upBytes)} ↓${formatBytes(downBytes)}")
             append(localizedText("\n📈 总统计 ", "\n📈 All-time totals ")).append("↑${formatBytes(totalUp)} ↓${formatBytes(totalDown)}")
-            if (nodeName.isNotBlank()) {
-                append("\n🧠 $nodeName")
-            }
-            if (hasTraffic && isActive) {
-                append(localizedText("\n🟢 传输中", "\n🟢 Transferring"))
-            } else if (hasTraffic && !isActive) {
-                append(localizedText("\n⚪ 空闲", "\n⚪ Idle"))
-            }
             append("\n$proxyText")
         }
 
-        val title = (if (wakeEnabled) localizedText("🟢 綦桐网关(保活中)", "🟢 QiTong Gateway (keep-alive)") else localizedText("綦桐网关", "QiTong Gateway")) + if (nodeName.isNotBlank()) " · $nodeName" else ""
+        val title = buildString {
+            append(if (wakeEnabled) localizedText("綦桐网关保活", "QiTong Gateway (keep-alive)") else localizedText("綦桐网关", "QiTong Gateway"))
+            if (nodeName.isNotBlank()) {
+                val light = if (hasTraffic && isActive) " 🟢" else if (hasTraffic) " ⚪" else ""
+                append(" ·$light $nodeName")
+            }
+        }
 
         // ★★ 内容没变化不重建通知（避免通知栏闪烁）★★
         if (title == lastNotificationTitle && text == lastNotificationText) return
@@ -191,6 +199,13 @@ class GatewayForegroundService : Service() {
         val toggleWakePI = PendingIntent.getService(this, 2, toggleWakeIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 
+        // ★★ 退出按钮 Intent：停止网关 + 前台服务 ★★
+        val stopIntent = Intent(this, GatewayForegroundService::class.java).apply {
+            putExtra("stop_service", true)
+        }
+        val stopPI = PendingIntent.getService(this, 3, stopIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+
         val notification = NotificationCompat.Builder(this, GatewayApplication.CHANNEL_ID)
             .setContentTitle(title)
             .setContentText(text)
@@ -200,6 +215,9 @@ class GatewayForegroundService : Service() {
             .setOngoing(true)
             .addAction(android.R.drawable.ic_menu_sort_by_size,
                 if (wakeEnabled) localizedText("取消唤醒", "Disable keep-alive") else localizedText("唤醒保活", "Enable keep-alive"), toggleWakePI)
+            // ★★ 退出按钮（停止网关+前台服务）★★
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel,
+                localizedText("退出", "Exit"), stopPI)
             .build()
 
         // ★★ 首次用 startForeground 初始化，后续用 notify 更新避免闪烁 ★★
@@ -307,6 +325,7 @@ class GatewayForegroundService : Service() {
         private const val KEY_GATEWAY_RUNNING = "gateway_was_running" // ★★ 自启状态记录 ★★
         private const val KEY_CONTINUOUS_CHAT = "continuous_chat" // ★★ 连续对话模式 ★★
         private const val DISABLED_SKILLS = "disabled_skills" // ★★ 禁用的技能编码列表 ★★
+        private const val KEY_PIPELINE_INTERVAL = "pipeline_interval_minutes" // ★★ 自动测速间隔（分钟）★★
         private const val DEFAULT_PORT = 8889
         private const val DEFAULT_PROXY_PORT = 7890
 
@@ -424,6 +443,12 @@ val totalDownloadBytes = java.util.concurrent.atomic.AtomicLong(0L)   // ★ APP
         return raw.split(",").map { it.trim() }.filter { it.isNotBlank() }.toSet()
     }
     fun isSkillEnabled(code: String): Boolean = code !in getDisabledSkills()
+
+    /** ★★ 自动测速间隔（分钟），默认30分钟，范围5~240 ★★ */
+    fun savePipelineInterval(minutes: Int) {
+        GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).edit().putInt(KEY_PIPELINE_INTERVAL, minutes.coerceIn(5, 240)).apply()
+    }
+    fun getPipelineInterval(): Int = GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).getInt(KEY_PIPELINE_INTERVAL, 30).coerceIn(5, 240)
     
     fun saveForcedModel(modelId: String) {
         // ★ 保存上一个真实模型（用于qtai-sj选中时知道用户选过什么模型）

@@ -1,3 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- Android 11 and older backup rules. Android 12+ uses data_extraction_rules.xml. -->
-<full-backup-content />

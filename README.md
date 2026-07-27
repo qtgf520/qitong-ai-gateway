@@ -1,7 +1,7 @@
 # 綦桐AI网关 | QiTong AI Gateway
 
 > **包名 / Package：** `com.qtwl.gateway`  
-> **最新版本 / Latest：** v3.18.3 (versionCode=163)  
+> **最新版本 / Latest：** v3.18.4 (versionCode=165)  
 > **开源协议 / License：** Apache 2.0  
 > **语言 / Languages：** 🌐 15 languages (CN/EN/JP/KR/FR/DE/ES/RU/PT/VN/TH/AR/HI/ID)
 > **官方QQ群 / QQ Group：** [1007488535](https://qm.qq.com/q/1007488535) 💬
@@ -170,6 +170,7 @@ See [CHANGELOG.md](CHANGELOG.md) for full changelog.
 
 | Version | Key Features |
 |:--------|:-------------|
+| **v3.18.4** | ✨ **通知栏正文精简 + 自动测速间隔可调 + 稳定优化** — 去掉正文模型名行、可配置5分钟~4小时测速间隔、跑完一圈停等设定时间再跑 |
 | **v3.18.3** | 🐛 **通知栏闪烁彻底修复** — startForeground改notify + 备份目录迁移到qtkfbf + 备份保留5天 + DEV_GUIDE.md v16升级 |
 | **v3.18.2** | 🐛 **修复双隐藏多任务+同名模型显示服务商+Git冲突清理+ViewModel编译错误** — 通知栏防闪烁+聊天选模型显示服务商名 |
 | **v3.18.1** | 🐛 **首页测速遮挡修复 + 定时备份不生效修复 + qtai-sj 测速异常修复 + qtai-sj 状态卡片** — 双行布局/非SSE兼容/30s超时/约束放宽/KEEP策略/测试按钮 |

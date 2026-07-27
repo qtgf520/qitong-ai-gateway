@@ -1764,10 +1764,8 @@ if (brainContent.isNotBlank()) {
             val finalRawBytes = finalRequestBodyStr.toByteArray()
             val autoFailover = GatewayForegroundService.getAutoFailover()
 
-            if (autoFailover) {
-                GatewayScheduler.refreshHealthCache(database)
-            }
-val allEnabled = database.aiModelDao().getEnabledModelsList().filter { it.isEnabled }
+            // 已移除 refreshHealthCache — 每次请求都触发健康检查会导致模型一直在跑
+            val allEnabled = database.aiModelDao().getEnabledModelsList().filter { it.isEnabled }
 val attemptModels: List<AiModel> = if (allEnabled.isNotEmpty()) {
                     // ★★ 自动化切换 (qtai-sj) ★★
                     if (modelId == "qtai-sj") {

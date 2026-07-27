@@ -693,16 +693,11 @@ companion object {
             }
         }
         // ★★ 初始化时检查自动故障转移是否已开启，若是则自动启动接力测速 ★★
-        if (GatewayForegroundService.getAutoFailover()) {
-            startPipelineTest()
-        }
+        // 已移除自动启动测速 — 用户需要测速时手动点击"开始测速"按钮
+        // 保留cache加载，让排行榜显示已有的缓存数据
         // ★★ 启动后台静默探针（30分钟循环，静默检测模型能力）★★
         ModelCapabilityManager.startSilentProbe(database, viewModelScope)
-        // ★★ 根据持久化的测速开关状态决定是否启动测速 ★★
-        val pipelineEnabled = GatewayForegroundService.getGatewayConfig("pipeline_test_enabled", "true").toBoolean()
-        if (pipelineEnabled && !_pipelineRunning.value) {
-            startPipelineTest()
-        }
+        // ★★ 测速开关 — 不自启测速，让用户手动点击"开始测速"按钮 ★★
     }
 
     // ========== 服务生命周期控制 ==========
@@ -2330,7 +2325,12 @@ fun clearChatError() {
                     // ★ 保存测速结果缓存
                     savePipelineCache(sorted)
                     firstRound = false
-                    if (_pipelineRunning.value) delay(30000)
+                    if (_pipelineRunning.value) {
+                        // ★★ 从配置读取自动测速间隔（分钟），默认30分钟 ★★
+                        val intervalMinutes = GatewayForegroundService.getPipelineInterval()
+                        val intervalMs = intervalMinutes * 60 * 1000L
+                        kotlinx.coroutines.delay(intervalMs)
+                    }
                 }
             } catch (_: Exception) { }
             _pipelineRunning.value = false
