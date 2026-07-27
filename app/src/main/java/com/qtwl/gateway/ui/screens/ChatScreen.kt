@@ -1,5 +1,7 @@
 package com.qtwl.gateway.ui.screens
 
+import com.qtwl.gateway.data.model.routeKey
+
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -521,7 +523,7 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                     } else {
                         // ★ 按测速排行排序（跑得快的排前面，未测速的排最后）
                         val sortedModels = enabledModels.sortedBy { model ->
-                            val idx = com.qtwl.gateway.gateway.GatewayScheduler.pipelineSortedModelIds.indexOf(model.modelId)
+                            val idx = com.qtwl.gateway.gateway.GatewayScheduler.pipelineSortedModelKeys.indexOf(model.routeKey)
                             if (idx < 0) Int.MAX_VALUE else idx
                         }
                         items(sortedModels, key = { it.id }) { model ->
@@ -535,7 +537,7 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(viewModel.getDisplayModelName(model), style = MaterialTheme.typography.bodyLarge,
                                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
-                                        Text(model.modelId, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Text("P${model.providerId} · ${model.modelId}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                 }
                             }
