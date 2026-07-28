@@ -13,8 +13,8 @@ android {
         applicationId = "com.qtwl.gateway"
         minSdk = 24
         targetSdk = 35
-        versionCode = 166
-        versionName = "3.18.5"
+        versionCode = 167
+        versionName = "3.18.6"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
@@ -53,6 +53,9 @@ android {
                 "proguard-rules.pro"
             )
             signingConfigs.findByName("release")?.let { signingConfig = it }
+        }
+        debug {
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
     compileOptions {

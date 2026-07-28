@@ -87,6 +87,10 @@ val pipelineProgress: StateFlow<Float> = _pipelineProgress.asStateFlow()
 private val _pipelineRunning = MutableStateFlow(false)
 val pipelineRunning: StateFlow<Boolean> = _pipelineRunning.asStateFlow()
 
+/** ★★ 测速倒计时（秒），0表示不在倒计时 ★★ */
+private val _pipelineCountdown = MutableStateFlow(0)
+val pipelineCountdown: StateFlow<Int> = _pipelineCountdown.asStateFlow()
+
 /** ★★ qtai-sj 虚拟模型独立状态 ★★ */
 data class QtaiSjStatus(
     val available: Boolean = false,
@@ -2340,21 +2344,29 @@ fun clearChatError() {
                     // ★ 保存测速结果缓存
                     savePipelineCache(sorted)
                     firstRound = false
-                    if (_pipelineRunning.value) {
-                        // ★★ 从配置读取自动测速间隔（分钟），默认30分钟 ★★
-                        val intervalMinutes = GatewayForegroundService.getPipelineInterval()
-                        val intervalMs = intervalMinutes * 60 * 1000L
-                        kotlinx.coroutines.delay(intervalMs)
+                    // ★★ 测速完成一轮 → 关闭运行状态，开启倒计时 ★★
+                    _pipelineRunning.value = false
+                    val intervalMinutes = GatewayForegroundService.getPipelineInterval()
+                    _pipelineCountdown.value = intervalMinutes * 60
+                    // ★★ 倒计时循环，每秒更新一次，归零自动重启测速 ★★
+                    while (_pipelineCountdown.value > 0) {
+                        kotlinx.coroutines.delay(1000)
+                        if (!_pipelineRunning.value) { _pipelineCountdown.value = 0; break }
+                        _pipelineCountdown.value--
                     }
+                    _pipelineCountdown.value = 0
+                    _pipelineRunning.value = true
                 }
             } catch (_: Exception) { }
             _pipelineRunning.value = false
+            _pipelineCountdown.value = 0
             refreshQtaiSjStatus()
         }
     }
 
     fun stopPipelineTest() {
         _pipelineRunning.value = false
+        _pipelineCountdown.value = 0
         pipelineJob?.cancel()
         refreshQtaiSjStatus()
     }

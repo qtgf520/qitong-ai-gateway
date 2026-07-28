@@ -60,6 +60,7 @@ import com.qtwl.gateway.ui.viewmodel.GatewayViewModel
 import com.qtwl.gateway.ui.viewmodel.pipelineStatus
 import com.qtwl.gateway.ui.viewmodel.pipelineRunning
 import com.qtwl.gateway.ui.viewmodel.pipelineProgress
+import com.qtwl.gateway.ui.viewmodel.pipelineCountdown
 import com.qtwl.gateway.service.LiveSession
 import com.qtwl.gateway.service.GatewayForegroundService
 import com.qtwl.gateway.gateway.GatewayScheduler
@@ -392,6 +393,7 @@ fun HomeScreen(viewModel: GatewayViewModel) {
         val pStatus by pipelineStatus.collectAsState()
         val pRunning by pipelineRunning.collectAsState()
         val pProgress by pipelineProgress.collectAsState()
+        val pCountdown by pipelineCountdown.collectAsState()
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
@@ -486,6 +488,19 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.width(70.dp)
+                    )
+                }
+
+                // ★★ 测速倒计时显示 ★★
+                if (pCountdown > 0 && !pRunning) {
+                    val mins = pCountdown / 60
+                    val secs = pCountdown % 60
+                    Text(
+                        text = "⏱ ${localizedText("下一轮测速", "Next speed test in")}: ${"%02d:%02d".format(mins, secs)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(vertical = 2.dp)
                     )
                 }
 
@@ -655,20 +670,19 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                                             modifier = Modifier.weight(1f)
                                         )
                                     }
-                                    // 第二行：测速指标 + 状态
+                                    // 第二行：服务商名 · modelId
+                                    Text(
+                                        text = "$providerName · ${item.modelId}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    // 第三行：测速指标 + 状态
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         val statusText = item.status
                                         val isError = statusText.startsWith("❌")
                                         val isSuccess = statusText.startsWith("✅")
-                                        Text(
-                                            text = "$providerName · ${item.modelId}",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                            modifier = Modifier.widthIn(max = 150.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
                                         if (isSuccess) {
                                             // 提取 TTFT/TPS 数字
                                             val ttftMatch = Regex("TTFT=(\\d+)ms").find(statusText)
