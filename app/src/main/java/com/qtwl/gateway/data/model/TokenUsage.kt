@@ -42,5 +42,7 @@ data class TokenUsage(
     @ColumnInfo(name = "download_bytes")
     val downloadBytes: Long = 0,
     @ColumnInfo(name = "timestamp")
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    @ColumnInfo(name = "api_key_label")
+    val apiKeyLabel: String = ""  // 使用的API密钥标签（空=本地/无密钥）
 )

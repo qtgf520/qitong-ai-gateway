@@ -1,6 +1,7 @@
 package com.qtwl.gateway.gateway
 
 import com.qtwl.gateway.gateway.GatewayScheduler
+import com.qtwl.gateway.gateway.RoutingRuleManager
 
 import com.qtwl.gateway.data.db.AppDatabase
 import com.qtwl.gateway.data.model.AiModel
@@ -13,6 +14,7 @@ import com.qtwl.gateway.data.model.TokenUsage
 import com.qtwl.gateway.network.UpstreamClient
 import com.qtwl.gateway.service.GatewayForegroundService
 import com.qtwl.gateway.service.KeyManager
+import com.qtwl.gateway.service.ApiKeyEntry
 import com.qtwl.gateway.service.LiveSession
 import com.qtwl.gateway.service.ThinkingConfigManager
 import com.qtwl.gateway.service.GroupChatManager
@@ -749,6 +751,10 @@ private fun validateApiKey(call: ApplicationCall): Boolean {
     val apiKey = authHeader.removePrefix("Bearer ").trim()
     // 验证密钥是否存在且启用
     val entry = KeyManager.validateKey(apiKey)
+    if (entry != null) {
+        // ★ 将密钥信息存入call属性，用于后续用量统计
+        call.attributes.put(API_KEY_ENTRY_KEY, entry)
+    }
     return entry != null
 }
 
@@ -924,9 +930,15 @@ private fun makeChatCompletionResponse(modelId: String, content: String, stream:
 // Attribute keys 用于在 call 中传递 modelId / providerId
 private val MODEL_ID_KEY = AttributeKey<String>("proxyModelId")
 private val PROVIDER_ID_KEY = AttributeKey<Long>("proxyProviderId")
+private val API_KEY_ENTRY_KEY = AttributeKey<ApiKeyEntry>("apiKeyEntry")
+private val ROUTING_MODIFIED_BODY_KEY = AttributeKey<String>("routingModifiedBody")
 
 private val ApplicationCall.proxyModelId: String? get() = attributes.getOrNull(MODEL_ID_KEY)
 private val ApplicationCall.proxyProviderId: Long? get() = attributes.getOrNull(PROVIDER_ID_KEY)
+private val ApplicationCall.apiKeyEntry: ApiKeyEntry? get() = attributes.getOrNull(API_KEY_ENTRY_KEY)
+
+/** ★ 获取API密钥标签（用于用量统计） */
+private val ApplicationCall.apiKeyLabel: String get() = apiKeyEntry?.label ?: ""
 
 /** ★ 会话记忆：源IP → 最后成功使用的模型ID */
 private val sessionModelCache = mutableMapOf<String, String>()
@@ -1131,6 +1143,70 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
     if (isChat) {
         val sessionKey = getSessionKey(call)
         updateSessionActivity(sessionKey)
+    }
+
+    // ★★★ 自定义路由规则引擎：匹配规则并执行动作 ★★★
+    if (isChat && requestBodyStr.isNotBlank()) {
+        try {
+            val routingJson = proxyJson.parseToJsonElement(requestBodyStr).jsonObject
+            val requestModelId = routingJson["model"]?.jsonPrimitive?.content ?: ""
+            val authHeader = call.request.headers["Authorization"] ?: ""
+            val requestApiKey = authHeader.removePrefix("Bearer ").trim()
+            // 获取请求模型对应的服务商ID
+            val requestProviderId = if (requestModelId.isNotBlank()) {
+                database.aiModelDao().getEnabledModelsList().find { it.modelId == requestModelId }?.providerId ?: 0L
+            } else 0L
+            val matchedRule = RoutingRuleManager.matchRule(
+                database = database,
+                path = effectivePath,
+                modelId = requestModelId,
+                apiKey = requestApiKey,
+                providerId = requestProviderId
+            )
+            if (matchedRule != null) {
+                GatewayForegroundService.addDebugLog("🔀 路由规则匹配: ${matchedRule.name} [${matchedRule.action}]")
+                when (matchedRule.action) {
+                    "block" -> {
+                        val blockMsg = matchedRule.blockMessage.ifBlank { "Request blocked by routing rule: ${matchedRule.name}" }
+                        val blockResp = buildJsonObject {
+                            put("error", buildJsonObject {
+                                put("message", JsonPrimitive(blockMsg))
+                                put("type", JsonPrimitive("routing_rule_blocked"))
+                                put("rule", JsonPrimitive(matchedRule.name))
+                            })
+                        }
+                        call.respondText(
+                            contentType = ContentType.Application.Json.withCharset(Charsets.UTF_8),
+                            status = HttpStatusCode.Forbidden,
+                            text = blockResp.toString()
+                        )
+                        logAccess(call, requestModelId, 403, System.currentTimeMillis() - startMs)
+                        return
+                    }
+                    "route" -> {
+                        if (matchedRule.targetModelKey.isNotBlank()) {
+                            // 解析目标模型 routeKey
+                            val targetModelKey = matchedRule.targetModelKey
+                            val targetModel = database.aiModelDao().getEnabledModelsList().findByRouteKey(targetModelKey)
+                            if (targetModel != null) {
+                                // 替换请求体中的model字段
+                                val modifiedBody = requestBodyStr.replace(
+                                    Regex(""""model"\s*:\s*"[^"]*""""),
+                                    "\"model\":\"${targetModel.modelId}\""
+                                )
+                                // 更新rawBytes和requestBodyStr
+                                val modifiedBytes = modifiedBody.toByteArray(Charsets.UTF_8)
+                                GatewayForegroundService.addDebugLog("🔀 路由规则: $requestModelId → ${targetModel.modelId} (规则: ${matchedRule.name})")
+                                // 使用修改后的请求体继续处理
+                                // 注意：这里需要修改requestBodyStr变量，但它是val，所以需要用其他方式
+                                // 方案：将修改后的body存入call属性，后续从属性读取
+                                call.attributes.put(ROUTING_MODIFIED_BODY_KEY, modifiedBody)
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (_: Exception) { }
     }
 
     // ★★ 工具指令检测：在转发前先解析并执行操作指令 ★★
@@ -2099,7 +2175,8 @@ private suspend fun pipeNormalResponse(
                         if (totalTokens > 0) {
                             database.tokenUsageDao().insert(TokenUsage(
                                 providerId = call.proxyProviderId!!, modelId = call.proxyModelId!!,
-                                promptTokens = promptTokens, completionTokens = completionTokens, totalTokens = totalTokens
+                                promptTokens = promptTokens, completionTokens = completionTokens, totalTokens = totalTokens,
+                                apiKeyLabel = call.apiKeyLabel
                             ))
                         }
                     }
@@ -2262,7 +2339,7 @@ private suspend fun pipeStreamResponse(
                             val pt = Regex(""""prompt_tokens"\s*:\s*(\d+)""").find(usageStr)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0
                             val ctok = Regex(""""completion_tokens"\s*:\s*(\d+)""").find(usageStr)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0
                             val tt = Regex(""""total_tokens"\s*:\s*(\d+)""").find(usageStr)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0
-                            if (tt > 0) database.tokenUsageDao().insert(TokenUsage(providerId = providerId, modelId = modelId, promptTokens = pt, completionTokens = ctok, totalTokens = tt))
+                            if (tt > 0) database.tokenUsageDao().insert(TokenUsage(providerId = providerId, modelId = modelId, promptTokens = pt, completionTokens = ctok, totalTokens = tt, apiKeyLabel = call.apiKeyLabel))
                         }
                     } catch (_: Exception) { }
                 }

@@ -13,6 +13,7 @@ import com.qtwl.gateway.data.model.Conversation
 import com.qtwl.gateway.data.model.Provider
 import com.qtwl.gateway.data.model.TokenUsage
 import com.qtwl.gateway.data.model.SpeedHistory
+import com.qtwl.gateway.data.model.RoutingRule
 
     @Database(
 entities = [
@@ -21,9 +22,10 @@ entities = [
     Conversation::class,
     ChatMessage::class,
     TokenUsage::class,
-    SpeedHistory::class
+    SpeedHistory::class,
+    RoutingRule::class
 ],
-version = 8,
+version = 10,
 exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -33,6 +35,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun chatMessageDao(): ChatMessageDao
     abstract fun tokenUsageDao(): TokenUsageDao
     abstract fun speedHistoryDao(): SpeedHistoryDao
+    abstract fun routingRuleDao(): RoutingRuleDao
 
     companion object {
         @Volatile
@@ -49,7 +52,11 @@ abstract class AppDatabase : RoomDatabase() {
                 .addMigrations(MIGRATION_3_TO_4)
                 .addMigrations(MIGRATION_5_TO_6)
                 .addMigrations(MIGRATION_6_TO_7)
-                .addMigrations(MIGRATION_7_TO_8)
+.addMigrations(MIGRATION_7_TO_8)
+                .addMigrations(MIGRATION_8_TO_9)
+                .addMigrations(MIGRATION_9_TO_10)
+                .fallbackToDestructiveMigration()
+//
 //                .addMigrations(MIGRATION_4_TO_5)// 已被 MIGRATION_5_TO_6 覆盖
                     .build()
                 INSTANCE = instance
@@ -104,6 +111,42 @@ abstract class AppDatabase : RoomDatabase() {
                 """)
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_speed_history_model_key ON speed_history(model_key)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_speed_history_measured_at ON speed_history(measured_at)")
+            }
+        }
+
+        private val MIGRATION_8_TO_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                try {
+                    db.execSQL("ALTER TABLE token_usage ADD COLUMN api_key_label TEXT NOT NULL DEFAULT ''")
+                } catch (_: Exception) {
+                    // 列可能已存在（上次迁移失败残留）
+                }
+                try {
+                    db.execSQL("CREATE INDEX IF NOT EXISTS index_token_usage_api_key_label ON token_usage(api_key_label)")
+                } catch (_: Exception) { }
+            }
+        }
+
+        private val MIGRATION_9_TO_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS routing_rule (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        name TEXT NOT NULL,
+                        enabled INTEGER NOT NULL DEFAULT 1,
+                        priority INTEGER NOT NULL DEFAULT 0,
+                        path_pattern TEXT NOT NULL DEFAULT '',
+                        model_pattern TEXT NOT NULL DEFAULT '',
+                        api_key_pattern TEXT NOT NULL DEFAULT '',
+                        provider_id INTEGER,
+                        target_model_key TEXT NOT NULL DEFAULT '',
+                        action TEXT NOT NULL DEFAULT 'route',
+                        block_message TEXT NOT NULL DEFAULT '',
+                        created_at INTEGER NOT NULL
+                    )
+                """)
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_routing_rule_priority ON routing_rule(priority)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_routing_rule_enabled ON routing_rule(enabled)")
             }
         }
     }

@@ -15,6 +15,7 @@ import com.qtwl.gateway.data.model.ChatMessage
 import com.qtwl.gateway.data.model.Conversation
 import com.qtwl.gateway.data.model.Provider
 import com.qtwl.gateway.data.model.TokenUsage
+import com.qtwl.gateway.data.model.ApiKeyUsageRow
 import com.qtwl.gateway.data.db.BackupManager
 import com.qtwl.gateway.network.Socks5SocketFactory
 import com.qtwl.gateway.network.UpstreamClient
@@ -501,6 +502,61 @@ fun cancelSend() {
 val allTokenUsage: StateFlow<List<TokenUsage>> = database.tokenUsageDao()
     .getAllUsage()
     .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // ==================== 按API密钥统计用量 ====================
+    private val _apiKeyUsageRows = MutableStateFlow<List<ApiKeyUsageRow>>(emptyList())
+    val apiKeyUsageRows: StateFlow<List<ApiKeyUsageRow>> = _apiKeyUsageRows.asStateFlow()
+    fun loadApiKeyUsage() {
+        viewModelScope.launch(Dispatchers.IO) {
+            _apiKeyUsageRows.value = database.tokenUsageDao().getUsageByApiKey()
+        }
+    }
+
+    // ==================== 自定义路由规则 ====================
+    /** 加载所有路由规则 */
+    suspend fun getAllRoutingRules(): List<com.qtwl.gateway.data.model.RoutingRule> =
+        database.routingRuleDao().getAllRules().first()
+
+    /** 保存路由规则 */
+    fun saveRoutingRule(rule: com.qtwl.gateway.data.model.RoutingRule) {
+        viewModelScope.launch(Dispatchers.IO) {
+            database.routingRuleDao().insert(rule)
+            com.qtwl.gateway.gateway.RoutingRuleManager.invalidateCache()
+        }
+    }
+
+    /** 更新路由规则 */
+    fun updateRoutingRule(rule: com.qtwl.gateway.data.model.RoutingRule) {
+        viewModelScope.launch(Dispatchers.IO) {
+            database.routingRuleDao().update(rule)
+            com.qtwl.gateway.gateway.RoutingRuleManager.invalidateCache()
+        }
+    }
+
+    /** 删除路由规则 */
+    fun deleteRoutingRule(rule: com.qtwl.gateway.data.model.RoutingRule) {
+        viewModelScope.launch(Dispatchers.IO) {
+            database.routingRuleDao().delete(rule)
+            com.qtwl.gateway.gateway.RoutingRuleManager.invalidateCache()
+        }
+    }
+
+    /** 切换规则启用状态 */
+    fun setRoutingRuleEnabled(id: Long, enabled: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            database.routingRuleDao().setEnabled(id, enabled)
+            com.qtwl.gateway.gateway.RoutingRuleManager.invalidateCache()
+        }
+    }
+
+    /** 清空所有路由规则 */
+    fun clearAllRoutingRules() {
+        viewModelScope.launch(Dispatchers.IO) {
+            database.routingRuleDao().clearAll()
+            com.qtwl.gateway.gateway.RoutingRuleManager.invalidateCache()
+        }
+    }
+
 
 private val _totalPromptTokens = MutableStateFlow(0L)
 val totalPromptTokens: StateFlow<Long> = _totalPromptTokens.asStateFlow()

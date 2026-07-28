@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import com.qtwl.gateway.data.model.TokenUsage
+import com.qtwl.gateway.data.model.ApiKeyUsageRow
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -59,4 +60,16 @@ interface TokenUsageDao {
 
     @Query("SELECT * FROM token_usage ORDER BY timestamp DESC")
     suspend fun getAllUsageOnce(): List<TokenUsage>
+
+    @Query("SELECT api_key_label AS apiKeyLabel, SUM(total_tokens) as total, SUM(prompt_tokens) as prompt, SUM(completion_tokens) as completion, SUM(upload_bytes) as upload, SUM(download_bytes) as download, COUNT(*) as calls FROM token_usage GROUP BY api_key_label ORDER BY total DESC")
+    suspend fun getUsageByApiKey(): List<ApiKeyUsageRow>
+
+    @Query("SELECT SUM(total_tokens) FROM token_usage WHERE api_key_label = :label")
+    suspend fun getTotalTokensByApiKey(label: String): Long
+
+    @Query("SELECT COUNT(*) FROM token_usage WHERE api_key_label = :label")
+    suspend fun getCallCountByApiKey(label: String): Int
+
+    @Query("DELETE FROM token_usage WHERE api_key_label = :label")
+    suspend fun deleteByApiKey(label: String)
 }

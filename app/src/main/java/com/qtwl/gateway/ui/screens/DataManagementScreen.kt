@@ -1,6 +1,7 @@
 package com.qtwl.gateway.ui.screens
 
 import com.qtwl.gateway.data.model.routeKey
+import com.qtwl.gateway.data.model.RoutingRule
 
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -143,6 +144,7 @@ fun DataManagementScreen(
 
     var showResetConfirm by remember { mutableStateOf(false) }
     var showAddServiceDialog by remember { mutableStateOf(false) }
+    var showRoutingRules by remember { mutableStateOf(false) }
     var showDebugLogs by remember { mutableStateOf(false) }
     var showKeyManagement by remember { mutableStateOf(false) }
     var showSkillManagement by remember { mutableStateOf(false) }
@@ -498,6 +500,37 @@ Text(localizedText("💡 备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加
                             },
                             confirmButton = { TextButton(onClick = { showBackupList = false }) { Text(localizedText("关闭", "Close")) } }
                         )
+                    }
+                }
+            }
+
+            // 路由规则管理
+            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Route, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(localizedText("🔀 路由规则", "🔀 Routing rules"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(localizedText("自定义请求转发规则，根据路径、模型名、API密钥等条件路由到指定模型或拒绝请求", "Custom routing rules to forward/block requests based on path, model name, API key, etc."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { showRoutingRules = true }, modifier = Modifier.weight(1f)) {
+                            Icon(Icons.Default.Rule, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(localizedText("管理规则", "Manage rules"))
+                        }
+                        OutlinedButton(onClick = {
+                            scope.launch {
+                                val rules = withContext(Dispatchers.IO) { viewModel.getAllRoutingRules() }
+                                snackbarHostState.showSnackbar(localizedText("已加载 ", "Loaded ") + rules.size + localizedText(" 条规则", " rules"))
+                            }
+                        }, modifier = Modifier.weight(1f)) {
+                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(localizedText("刷新", "Refresh"))
+                        }
                     }
                 }
             }
@@ -1377,6 +1410,11 @@ Text(localizedText("💡 备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加
         }
     }
 
+    // 路由规则管理弹窗
+    if (showRoutingRules) {
+        RoutingRulesDialog(viewModel = viewModel, onDismiss = { showRoutingRules = false })
+    }
+
     // 代理管理弹窗（AboutScreen 连点触发）
     val showProxyDialog by viewModel.showProxyConfigDialog.collectAsState()
     if (showProxyDialog) {
@@ -2028,6 +2066,402 @@ fun AboutScreen(viewModel: GatewayViewModel = viewModel(factory = GatewayViewMod
         }
     }
 }
+
+// ============================================================
+// 路由规则管理弹窗
+// ============================================================
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun RoutingRulesDialog(viewModel: GatewayViewModel, onDismiss: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    var rules by remember { mutableStateOf<List<com.qtwl.gateway.data.model.RoutingRule>>(emptyList()) }
+    var showAddDialog by remember { mutableStateOf(false) }
+    var editingRule by remember { mutableStateOf<com.qtwl.gateway.data.model.RoutingRule?>(null) }
+    var showDeleteConfirm by remember { mutableStateOf<Long?>(null) }
+    var isLoading by remember { mutableStateOf(true) }
+
+    LaunchedEffect(Unit) {
+        rules = withContext(Dispatchers.IO) { viewModel.getAllRoutingRules() }
+        isLoading = false
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(localizedText("🔀 路由规则管理", "🔀 Routing rules"), fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                if (isLoading) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                }
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth().heightIn(max = 500.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // 规则列表
+                if (!isLoading && rules.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
+                        Text(
+                            localizedText("暂无路由规则\n点击下方按钮添加", "No routing rules\nTap button below to add"),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        items(rules) { rule ->
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (rule.enabled) MaterialTheme.colorScheme.surface
+                                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                )
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // 启用开关
+                                    Switch(
+                                        checked = rule.enabled,
+                                        onCheckedChange = { enabled ->
+                                            scope.launch {
+                                                viewModel.setRoutingRuleEnabled(rule.id, enabled)
+                                                rules = withContext(Dispatchers.IO) { viewModel.getAllRoutingRules() }
+                                            }
+                                        },
+                                        modifier = Modifier.size(40.dp, 24.dp)
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    // 规则信息
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            rule.name,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Medium,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        val matchDesc = buildList {
+                                            if (rule.pathPattern.isNotBlank()) add("路径:${rule.pathPattern}")
+                                            if (rule.modelPattern.isNotBlank()) add("模型:${rule.modelPattern}")
+                                            if (rule.apiKeyPattern.isNotBlank()) add("密钥:${rule.apiKeyPattern.take(8)}...")
+                                            if (rule.providerId != null) add("服务商:${rule.providerId}")
+                                        }.joinToString(" | ").ifEmpty { localizedText("无条件匹配", "Match all") }
+                                        Text(
+                                            matchDesc,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        val actionDesc = when (rule.action) {
+                                            "block" -> localizedText("🚫 拒绝请求", "🚫 Block")
+                                            "route" -> localizedText("➡️ 路由到 ${rule.targetModelKey}", "➡️ Route to ${rule.targetModelKey}")
+                                            else -> rule.action
+                                        }
+                                        Text(
+                                            actionDesc,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = if (rule.action == "block") Error else Online
+                                        )
+                                    }
+                                    // 编辑按钮
+                                    IconButton(onClick = { editingRule = rule; showAddDialog = true }, modifier = Modifier.size(32.dp)) {
+                                        Icon(Icons.Default.Edit, contentDescription = localizedText("编辑", "Edit"), modifier = Modifier.size(16.dp))
+                                    }
+                                    // 删除按钮
+                                    IconButton(onClick = { showDeleteConfirm = rule.id }, modifier = Modifier.size(32.dp)) {
+                                        Icon(Icons.Default.Delete, contentDescription = localizedText("删除", "Delete"), modifier = Modifier.size(16.dp), tint = Error)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(4.dp))
+                // 添加按钮
+                Button(
+                    onClick = { editingRule = null; showAddDialog = true },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text(localizedText("添加规则", "Add rule"))
+                }
+                // 清空按钮
+                if (rules.isNotEmpty()) {
+                    OutlinedButton(
+                        onClick = {
+                            scope.launch {
+                                viewModel.clearAllRoutingRules()
+                                rules = emptyList()
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Error)
+                    ) {
+                        Text(localizedText("清空所有规则", "Clear all rules"))
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(localizedText("关闭", "Close")) }
+        }
+    )
+
+    // 添加/编辑规则弹窗
+    if (showAddDialog) {
+        AddEditRoutingRuleDialog(
+            viewModel = viewModel,
+            existingRule = editingRule,
+            onDismiss = { showAddDialog = false },
+            onConfirm = {
+                scope.launch {
+                    rules = withContext(Dispatchers.IO) { viewModel.getAllRoutingRules() }
+                    showAddDialog = false
+                }
+            }
+        )
+    }
+
+    // 删除确认弹窗
+    showDeleteConfirm?.let { ruleId ->
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = null },
+            title = { Text(localizedText("确认删除", "Confirm delete"), fontWeight = FontWeight.Bold) },
+            text = { Text(localizedText("确定要删除这条路由规则吗？", "Are you sure you want to delete this routing rule?")) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        scope.launch {
+                            val rule = rules.find { it.id == ruleId }
+                            if (rule != null) {
+                                viewModel.deleteRoutingRule(rule)
+                                rules = withContext(Dispatchers.IO) { viewModel.getAllRoutingRules() }
+                            }
+                            showDeleteConfirm = null
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Error)
+                ) { Text(localizedText("删除", "Delete")) }
+            },
+            dismissButton = { TextButton(onClick = { showDeleteConfirm = null }) { Text(localizedText("取消", "Cancel")) } }
+        )
+    }
+}
+
+// ============================================================
+// 添加/编辑路由规则弹窗
+// ============================================================
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AddEditRoutingRuleDialog(
+    viewModel: GatewayViewModel,
+    existingRule: com.qtwl.gateway.data.model.RoutingRule?,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    val scope = rememberCoroutineScope()
+    val isEdit = existingRule != null
+    var name by remember { mutableStateOf(existingRule?.name ?: "") }
+    var enabled by remember { mutableStateOf(existingRule?.enabled ?: true) }
+    var priority by remember { mutableStateOf(existingRule?.priority?.toString() ?: "0") }
+    var pathPattern by remember { mutableStateOf(existingRule?.pathPattern ?: "") }
+    var modelPattern by remember { mutableStateOf(existingRule?.modelPattern ?: "") }
+    var apiKeyPattern by remember { mutableStateOf(existingRule?.apiKeyPattern ?: "") }
+    var providerIdText by remember { mutableStateOf(existingRule?.providerId?.toString() ?: "") }
+    var targetModelKey by remember { mutableStateOf(existingRule?.targetModelKey ?: "") }
+    var action by remember { mutableStateOf(existingRule?.action ?: "route") }
+    var blockMessage by remember { mutableStateOf(existingRule?.blockMessage ?: "") }
+    var showModelDropdown by remember { mutableStateOf(false) }
+
+    val providers by viewModel.providers.collectAsState()
+    val models by viewModel.models.collectAsState()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                if (isEdit) localizedText("编辑路由规则", "Edit routing rule")
+                else localizedText("添加路由规则", "Add routing rule"),
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // 规则名称
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text(localizedText("规则名称*", "Rule name*")) },
+                    placeholder = { Text(localizedText("如: GPT请求走视觉模型", "e.g. GPT requests to vision model")) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                // 优先级
+                OutlinedTextField(
+                    value = priority,
+                    onValueChange = { priority = it.filter { c -> c.isDigit() || c == '-' } },
+                    label = { Text(localizedText("优先级 (数字越小越优先)", "Priority (lower = higher)")) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                HorizontalDivider()
+                Text(localizedText("匹配条件（AND 关系，空=不匹配）", "Match conditions (AND logic, blank=ignore)"),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold)
+
+                // 路径匹配
+                OutlinedTextField(
+                    value = pathPattern,
+                    onValueChange = { pathPattern = it },
+                    label = { Text(localizedText("路径匹配", "Path pattern")) },
+                    placeholder = { Text("/v1/chat/completions") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                // 模型名匹配
+                OutlinedTextField(
+                    value = modelPattern,
+                    onValueChange = { modelPattern = it },
+                    label = { Text(localizedText("模型名匹配 (*通配符)", "Model pattern (* wildcard)")) },
+                    placeholder = { Text("gpt-* 或 *vision*") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                // API密钥前缀
+                OutlinedTextField(
+                    value = apiKeyPattern,
+                    onValueChange = { apiKeyPattern = it },
+                    label = { Text(localizedText("API密钥前缀", "API key prefix")) },
+                    placeholder = { Text("sk-proj-") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                // 服务商选择
+                OutlinedTextField(
+                    value = providerIdText,
+                    onValueChange = { providerIdText = it.filter { c -> c.isDigit() } },
+                    label = { Text(localizedText("服务商ID (空=不限)", "Provider ID (blank=any)")) },
+                    placeholder = { Text(localizedText("留空表示不限服务商", "Blank for any provider")) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                HorizontalDivider()
+                Text(localizedText("匹配后动作", "Action after match"),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold)
+
+                // 动作选择
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = action == "route",
+                        onClick = { action = "route" },
+                        label = { Text(localizedText("路由", "Route")) }
+                    )
+                    FilterChip(
+                        selected = action == "block",
+                        onClick = { action = "block" },
+                        label = { Text(localizedText("拒绝", "Block")) }
+                    )
+                }
+
+                if (action == "route") {
+                    OutlinedTextField(
+                        value = targetModelKey,
+                        onValueChange = { targetModelKey = it },
+                        label = { Text(localizedText("目标模型 routeKey", "Target model routeKey")) },
+                        placeholder = { Text("providerId:modelId") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    // 快捷选择已有模型
+                    if (models.isNotEmpty()) {
+                        Text(localizedText("点击模型快速填充:", "Tap model to fill:"), style = MaterialTheme.typography.labelSmall)
+                        LazyColumn(modifier = Modifier.heightIn(max = 120.dp)) {
+                            items(models) { model ->
+                                    Text(
+                                    "${model.providerId}:${model.modelId} (${model.displayName})",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    modifier = Modifier.fillMaxWidth().clickable {
+                                        targetModelKey = "${model.providerId}:${model.modelId}"
+                                    }.padding(vertical = 2.dp),
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (action == "block") {
+                    OutlinedTextField(
+                        value = blockMessage,
+                        onValueChange = { blockMessage = it },
+                        label = { Text(localizedText("拒绝提示信息", "Block message")) },
+                        placeholder = { Text(localizedText("此请求已被路由规则拒绝", "Request blocked by routing rule")) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val parsedPriority = priority.toIntOrNull() ?: 0
+                    val parsedProviderId = providerIdText.toLongOrNull()
+                    val rule = com.qtwl.gateway.data.model.RoutingRule(
+                        id = existingRule?.id ?: 0,
+                        name = name.trim(),
+                        enabled = enabled,
+                        priority = parsedPriority,
+                        pathPattern = pathPattern.trim(),
+                        modelPattern = modelPattern.trim(),
+                        apiKeyPattern = apiKeyPattern.trim(),
+                        providerId = parsedProviderId,
+                        targetModelKey = targetModelKey.trim(),
+                        action = action,
+                        blockMessage = blockMessage.trim(),
+                        createdAt = existingRule?.createdAt ?: System.currentTimeMillis()
+                    )
+                    scope.launch(Dispatchers.IO) {
+                        if (isEdit) {
+                            viewModel.updateRoutingRule(rule)
+                        } else {
+                            viewModel.saveRoutingRule(rule)
+                        }
+                        withContext(Dispatchers.Main) { onConfirm() }
+                    }
+                },
+                enabled = name.isNotBlank() && (action == "block" || targetModelKey.isNotBlank())
+            ) {
+                Text(if (isEdit) localizedText("保存", "Save") else localizedText("添加", "Add"))
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(localizedText("取消", "Cancel")) } }
+    )
+}
+
 private fun formatTraffic(bytes: Long): String = when {
     bytes < 1024 -> "${bytes}B"
     bytes < 1024 * 1024 -> "${bytes / 1024}KB"

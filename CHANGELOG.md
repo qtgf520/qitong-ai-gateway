@@ -6,6 +6,33 @@
 
 ---
 
+## 🔄 v3.18.7（正式发布）
+
+### ✨ 新增
+- **🔀 自定义路由规则引擎** — 支持路径/模型名(*通配符)/API密钥/服务商匹配，支持route转发+block拒绝
+  - 规则管理UI：添加/编辑/删除/启用/清空，支持优先级排序
+  - 路径匹配：`contains` 匹配请求路径
+  - 模型名匹配：`*` 通配符，如 `gpt-*` 匹配所有GPT模型
+  - API密钥前缀匹配：`startsWith` 匹配密钥前缀
+  - 服务商匹配：精确匹配服务商ID
+  - 动作：`route`（转发到指定模型）/ `block`（拒绝请求，返回403）
+  - GatewayService集成：proxyRequest中自动匹配规则并执行动作
+- **📊 模型延迟历史趋势图** — Canvas折线图展示TTFT/TPS/总耗时历史趋势，三指标切换，模型选择器
+- **🔑 按API密钥用量面板** — 统计页新增按API密钥分组的用量统计，显示密钥名称/调用次数/输入输出Tokens/上传下载流量
+
+### 🔧 优化
+- 数据库版本升级 v9→v10：新增 `routing_rule` 表
+- 新增 `RoutingRuleManager` 单例引擎，带30秒缓存
+- GatewayViewModel 新增路由规则CRUD方法
+- DataManagementScreen 新增路由规则管理卡片
+
+### ✅ 验证
+- 编译验证：`./gradlew assembleDebug` → `BUILD SUCCESSFUL`
+- 安装验证：`pm install -r` → `Success`（versionCode=172, versionName=3.18.7）
+- 签名：debug APK 使用 qitong.jks 签名，与 release 一致
+
+---
+
 ## 🔄 v3.18.7-1（测试发布）
 
 ### ✨ 新增

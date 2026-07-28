@@ -33,6 +33,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.clickable
 import com.qtwl.gateway.data.model.TokenUsage
 import com.qtwl.gateway.data.model.SpeedHistory
+import com.qtwl.gateway.data.model.ApiKeyUsageRow
 import com.qtwl.gateway.data.model.routeKey
 import com.qtwl.gateway.service.GatewayForegroundService
 import com.qtwl.gateway.ui.theme.Error
@@ -97,6 +98,10 @@ fun StatsScreen(viewModel: GatewayViewModel) {
         localizedText("TPS", "TPS"),
         localizedText("总耗时 (ms)", "Total (ms)")
     )
+
+    // ★★ 按API密钥分组的用量统计 ★★
+    val apiKeyUsageRows by viewModel.apiKeyUsageRows.collectAsState()
+    LaunchedEffect(Unit) { viewModel.loadApiKeyUsage() }
 
     // 按服务商/模型分组的用量汇总
     val statsByProvider = remember(allTokenUsage, providers, languageTick) {
@@ -270,6 +275,24 @@ fun StatsScreen(viewModel: GatewayViewModel) {
                 statsByProvider.forEach { (_, summary) ->
                     item {
                         ProviderStatCard(summary = summary)
+                    }
+                }
+            }
+
+            // ==================== 按API密钥统计 ====================
+            if (apiKeyUsageRows.isNotEmpty()) {
+                item {
+                    Text(
+                        text = localizedText("🔑 按API密钥统计", "🔑 By API key"),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+
+                apiKeyUsageRows.forEach { row ->
+                    item {
+                        ApiKeyStatCard(row = row)
                     }
                 }
             }
@@ -893,6 +916,85 @@ private fun UsageRecordCard(
 }
 
 // ============================================================
+// API密钥用量卡片
+// ============================================================
+@Composable
+private fun ApiKeyStatCard(row: ApiKeyUsageRow) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        )
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "🔑",
+                    fontSize = 20.sp
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = row.apiKeyLabel.ifBlank { localizedText("本地/无密钥", "Local/No key") },
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f)
+                )
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(
+                        text = "${row.calls}" + localizedText(" 次调用", " calls"),
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            StatRow(localizedText("输入 Tokens", "Input tokens"), formatTokenCount(row.prompt), Online)
+            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+            StatRow(localizedText("输出 Tokens", "Output tokens"), formatTokenCount(row.completion), MaterialTheme.colorScheme.primary)
+            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+            StatRow(localizedText("总 Tokens", "Total tokens"), formatTokenCount(row.total), Warning)
+            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = localizedText("⬆ 上传", "⬆ Upload"),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = formatBytes(row.upload),
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = localizedText("⬇ 下载", "⬇ Download"),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = formatBytes(row.download),
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    }
+}
+
 // 统计行组件
 // ============================================================
 @Composable
