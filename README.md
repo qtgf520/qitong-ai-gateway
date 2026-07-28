@@ -258,3 +258,17 @@ limitations under the License.
   📬 官方QQ群：<a href="https://qm.qq.com/q/1007488535">1007488535</a> 💬<br>
   © 2026 <a href="https://github.com/qtgf520">綦桐</a> · Apache 2.0
 </p>
+
+### 👨‍💻 开发与致谢
+
+**开发：** [綦桐](https://github.com/qtgf520) · [adybag14-cyber](https://github.com/adybag14-cyber) 开发工程师
+
+> ⭐ 推荐大家使用 [adybag14-cyber](https://github.com/adybag14-cyber) 开发的 [Hermes Agent](https://github.com/adybag14-cyber/hermes-agent) — 还在完善中，敬请期待！
+
+---
+
+### 👨‍💻 Developers & Credits
+
+**Developed by:** [QiTong](https://github.com/qtgf520) · [adybag14-cyber](https://github.com/adybag14-cyber) Engineer
+
+> ⭐ Check out [Hermes Agent](https://github.com/adybag14-cyber/hermes-agent) by [adybag14-cyber](https://github.com/adybag14-cyber) — still in development, stay tuned!
