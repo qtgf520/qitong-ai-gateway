@@ -6,6 +6,19 @@
 
 ---
 
+## 🔄 v3.18.8（正式发布）
+
+### 🐛 修复
+- **测速倒计时bug** — 倒计时循环中错误检查 `_pipelineRunning.value`（刚设为false），导致立即跳出，30秒就重启。修复后倒计时严格按滑块设定时间（5分钟=300秒）倒数，归零才重启测速
+- 滑块时间绑定：5分钟 → 300秒倒计时，10分钟 → 600秒倒计时，以此类推
+
+### ✅ 验证
+- 编译验证：`./gradlew assembleDebug` → `BUILD SUCCESSFUL`
+- 安装验证：`pm install -r` → `Success`（versionCode=173, versionName=3.18.8）
+- 签名：debug APK 使用 qitong.jks 签名，与 release 一致
+
+---
+
 ## 🔄 v3.18.7（正式发布）
 
 ### ✨ 新增

@@ -2473,11 +2473,12 @@ fun clearChatError() {
                     // ★★ 测速完成一轮 → 关闭运行状态，开启倒计时 ★★
                     _pipelineRunning.value = false
                     val intervalMinutes = GatewayForegroundService.getPipelineInterval()
-                    _pipelineCountdown.value = intervalMinutes * 60
+                    val totalSeconds = intervalMinutes * 60
+                    _pipelineCountdown.value = totalSeconds
                     // ★★ 倒计时循环，每秒更新一次，归零自动重启测速 ★★
+                    // ★ 修复：移除_pipelineRunning检查，避免立即跳出 ★
                     while (_pipelineCountdown.value > 0) {
                         kotlinx.coroutines.delay(1000)
-                        if (!_pipelineRunning.value) { _pipelineCountdown.value = 0; break }
                         _pipelineCountdown.value--
                     }
                     _pipelineCountdown.value = 0
