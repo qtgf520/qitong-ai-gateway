@@ -6,6 +6,24 @@
 
 ---
 
+## 🔄 v3.18.7-1（测试发布）
+
+### ✨ 新增
+- **📊 模型延迟历史趋势图** — 每次测速自动记录TTFT/TPS/总耗时到数据库，统计页Canvas折线图展示历史趋势
+  - 三指标切换：FilterChip 切换 TTFT / TPS / 总耗时
+  - 模型选择器：点击"所有模型"按钮可切换查看单个模型的历史趋势，或显示所有模型最新记录
+  - 统计摘要：最新值 / 平均值 / 数据点数
+  - 自动记录：流水线测速和单模型测速均自动写入数据库，保留7天数据
+  - 自动清理：每次写入时自动清理7天前的旧记录
+- **数据库版本升级 v7→v8** — 新增 `speed_history` 表（id, model_key, model_name, provider_id, ttft_ms, tps, total_ms, success, measured_at）
+
+### ✅ 验证
+- 编译验证：`./gradlew assembleDebug` → `BUILD SUCCESSFUL`
+- 安装验证：`pm install -r` → `Success`（versionCode=169, versionName=3.18.7-1）
+- 签名：debug APK 使用 qitong.jks 签名，与 release 一致
+
+---
+
 ## 🔄 v3.18.6（正式发布）
 
 ### ✨ 新增

@@ -12,6 +12,7 @@ import com.qtwl.gateway.data.model.ChatMessage
 import com.qtwl.gateway.data.model.Conversation
 import com.qtwl.gateway.data.model.Provider
 import com.qtwl.gateway.data.model.TokenUsage
+import com.qtwl.gateway.data.model.SpeedHistory
 
     @Database(
 entities = [
@@ -19,9 +20,10 @@ entities = [
     AiModel::class,
     Conversation::class,
     ChatMessage::class,
-    TokenUsage::class
+    TokenUsage::class,
+    SpeedHistory::class
 ],
-version = 7,
+version = 8,
 exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -30,6 +32,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun conversationDao(): ConversationDao
     abstract fun chatMessageDao(): ChatMessageDao
     abstract fun tokenUsageDao(): TokenUsageDao
+    abstract fun speedHistoryDao(): SpeedHistoryDao
 
     companion object {
         @Volatile
@@ -46,6 +49,7 @@ abstract class AppDatabase : RoomDatabase() {
                 .addMigrations(MIGRATION_3_TO_4)
                 .addMigrations(MIGRATION_5_TO_6)
                 .addMigrations(MIGRATION_6_TO_7)
+                .addMigrations(MIGRATION_7_TO_8)
 //                .addMigrations(MIGRATION_4_TO_5)// 已被 MIGRATION_5_TO_6 覆盖
                     .build()
                 INSTANCE = instance
@@ -80,6 +84,26 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE token_usage ADD COLUMN upload_bytes INTEGER NOT NULL DEFAULT 0")
                 db.execSQL("ALTER TABLE token_usage ADD COLUMN download_bytes INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        private val MIGRATION_7_TO_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS speed_history (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        model_key TEXT NOT NULL,
+                        model_name TEXT NOT NULL,
+                        provider_id INTEGER NOT NULL,
+                        ttft_ms INTEGER NOT NULL,
+                        tps REAL NOT NULL,
+                        total_ms INTEGER NOT NULL,
+                        success INTEGER NOT NULL,
+                        measured_at INTEGER NOT NULL
+                    )
+                """)
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_speed_history_model_key ON speed_history(model_key)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_speed_history_measured_at ON speed_history(measured_at)")
             }
         }
     }

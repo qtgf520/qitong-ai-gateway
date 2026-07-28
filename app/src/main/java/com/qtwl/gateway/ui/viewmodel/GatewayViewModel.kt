@@ -21,6 +21,8 @@ import com.qtwl.gateway.network.UpstreamClient
 import com.qtwl.gateway.service.GatewayForegroundService
 import com.qtwl.gateway.service.LiveSession
 import com.qtwl.gateway.gateway.GatewayService
+import com.qtwl.gateway.data.model.SpeedHistory
+import com.qtwl.gateway.data.db.SpeedHistoryDao
 import com.qtwl.gateway.utils.localizeGeneratedName
 import kotlinx.coroutines.async
 import kotlinx.coroutines.Dispatchers
@@ -522,6 +524,65 @@ fun refreshTokenStats() {
         } catch (_: Exception) { }
     }
 }
+
+    // ==================== 测速历史趋势图 ====================
+    /** 测速历史 DAO */
+    val speedHistoryDao: SpeedHistoryDao = database.speedHistoryDao()
+
+    /** 当前选中的模型 key（用于趋势图） */
+    private val _selectedHistoryModelKey = MutableStateFlow<String?>(null)
+    val selectedHistoryModelKey: StateFlow<String?> = _selectedHistoryModelKey.asStateFlow()
+
+    /** 当前选中模型的测速历史 */
+    private val _selectedModelHistory = MutableStateFlow<List<SpeedHistory>>(emptyList())
+    val selectedModelHistory: StateFlow<List<SpeedHistory>> = _selectedModelHistory.asStateFlow()
+
+    /** 记录一条测速历史 */
+    fun recordSpeedHistory(modelKey: String, modelName: String, providerId: Long, metrics: SpeedMetrics) {
+        viewModelScope.launch {
+            try {
+                val success = metrics.ttftMs > 0
+                val history = SpeedHistory(
+                    modelKey = modelKey,
+                    modelName = modelName,
+                    providerId = providerId,
+                    ttftMs = if (success) metrics.ttftMs else -1,
+                    tps = if (success) metrics.tps else 0.0,
+                    totalMs = if (success) metrics.totalMs else -1,
+                    success = success,
+                    measuredAt = metrics.measuredAt
+                )
+                withContext(Dispatchers.IO) {
+                    database.speedHistoryDao().insert(history)
+                    // 自动清理超过7天的旧记录
+                    val weekAgo = System.currentTimeMillis() - 7 * 24 * 60 * 60 * 1000L
+                    database.speedHistoryDao().deleteOlderThan(weekAgo)
+                }
+                // 如果当前已选中该模型，刷新历史
+                if (_selectedHistoryModelKey.value == modelKey) {
+                    loadModelHistory(modelKey)
+                }
+            } catch (_: Exception) { }
+        }
+    }
+
+    /** 加载指定模型的测速历史 */
+    fun loadModelHistory(modelKey: String) {
+        _selectedHistoryModelKey.value = modelKey
+        viewModelScope.launch {
+            try {
+                val history = withContext(Dispatchers.IO) {
+                    database.speedHistoryDao().getHistoryByModelOnce(modelKey)
+                }
+                _selectedModelHistory.value = history
+            } catch (_: Exception) { }
+        }
+    }
+
+    /** 获取所有模型的最新测速 */
+    val latestSpeedHistory: StateFlow<List<SpeedHistory>> = database.speedHistoryDao()
+        .getLatestEachModel()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // ==================== 备份管理器 ====================
     private val backupManager = BackupManager(database)
@@ -2140,6 +2201,8 @@ fun getDisplayModelName(model: AiModel): String {
                         "✅ ${model.displayName}: TTFT=${metrics.ttftMs}ms  TPS=${"%.1f".format(metrics.tps)}  总=${metrics.totalMs}ms  tokens=${metrics.tokenCount}"
                     }
                     _snackbarMessage.value = result
+                    // ★★ 记录测速历史 ★★
+                    recordSpeedHistory(model.routeKey, model.customAlias.ifBlank { model.displayName }, model.providerId, metrics)
                     // ★★ 同时探测模型能力 ★★
                     try {
                         ModelCapabilityManager.probeModel(model.modelId, provider.resolvedBaseUrl, provider.apiKey)
@@ -2318,6 +2381,13 @@ fun clearChatError() {
                                 }
                             }
                         } catch (e: Exception) { errorMsg = e.message?.take(60) ?: "超时" }
+
+                        // ★★ 记录测速历史到数据库（用于趋势图）★★
+                        if (ttft != 0L || tps != 0.0) {
+                            val modelName = model.customAlias.ifBlank { model.displayName }
+                            recordSpeedHistory(model.routeKey, modelName, model.providerId,
+                                SpeedMetrics(ttftMs = ttft, tps = tps, totalMs = latency, tokenCount = tokens, measuredAt = System.currentTimeMillis()))
+                        }
 
                         // ★★ 用完返回再发探针检测模型能力（异步，不影响排序）★★
                                 if (success) {

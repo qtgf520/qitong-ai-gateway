@@ -23,7 +23,17 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.clickable
 import com.qtwl.gateway.data.model.TokenUsage
+import com.qtwl.gateway.data.model.SpeedHistory
+import com.qtwl.gateway.data.model.routeKey
 import com.qtwl.gateway.service.GatewayForegroundService
 import com.qtwl.gateway.ui.theme.Error
 import com.qtwl.gateway.ui.theme.Online
@@ -72,6 +82,21 @@ fun StatsScreen(viewModel: GatewayViewModel) {
             viewModel.clearSnackbar()
         }
     }
+
+    // ★★ 测速历史趋势图 ★★
+    val latestSpeedHistory by viewModel.latestSpeedHistory.collectAsState()
+    val selectedModelHistory by viewModel.selectedModelHistory.collectAsState()
+    val selectedHistoryModelKey by viewModel.selectedHistoryModelKey.collectAsState()
+    // 模型选择器状态
+    var showModelSelector by remember { mutableStateOf(false) }
+    val enabledModels by viewModel.enabledModels.collectAsState()
+    // 图表类型切换：0=TTFT, 1=TPS, 2=总耗时
+    var chartMetricIndex by remember { mutableIntStateOf(0) }
+    val chartMetrics = listOf(
+        localizedText("TTFT (ms)", "TTFT (ms)"),
+        localizedText("TPS", "TPS"),
+        localizedText("总耗时 (ms)", "Total (ms)")
+    )
 
     // 按服务商/模型分组的用量汇总
     val statsByProvider = remember(allTokenUsage, providers, languageTick) {
@@ -157,6 +182,21 @@ fun StatsScreen(viewModel: GatewayViewModel) {
                         )
                     }
                 }
+            }
+
+            // ==================== 测速历史趋势图 ====================
+            item {
+                SpeedTrendChartCard(
+                    viewModel = viewModel,
+                    latestSpeedHistory = latestSpeedHistory,
+                    selectedModelHistory = selectedModelHistory,
+                    selectedHistoryModelKey = selectedHistoryModelKey,
+                    enabledModels = enabledModels,
+                    chartMetricIndex = chartMetricIndex,
+                    chartMetrics = chartMetrics,
+                    onChartMetricChange = { chartMetricIndex = it },
+                    onShowModelSelector = { showModelSelector = true }
+                )
             }
 
             // ==================== 网关流量卡片 ====================
@@ -390,8 +430,229 @@ fun StatsScreen(viewModel: GatewayViewModel) {
             }
         )
     }
+    // ==================== 模型选择器对话框 ====================
+    if (showModelSelector) {
+        AlertDialog(
+            onDismissRequest = { showModelSelector = false },
+            title = { Text(localizedText("选择模型查看趋势", "Select model for trend"), fontWeight = FontWeight.Bold) },
+            text = {
+                LazyColumn {
+                    items(enabledModels) { model ->
+                        Surface(
+                            modifier = Modifier.fillMaxWidth().clickable {
+                                viewModel.loadModelHistory(model.routeKey)
+                                showModelSelector = false
+                            },
+                            color = if (selectedHistoryModelKey == model.routeKey)
+                                MaterialTheme.colorScheme.primaryContainer
+                            else MaterialTheme.colorScheme.surface
+                        ) {
+                            Text(
+                                text = model.customAlias.ifBlank { model.displayName },
+                                modifier = Modifier.padding(12.dp),
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showModelSelector = false }) {
+                    Text(localizedText("取消", "Cancel"))
+                }
+            }
+        )
+    }
 }
 
+// ============================================================
+// 测速历史趋势图卡片
+// ============================================================
+@Composable
+private fun SpeedTrendChartCard(
+    viewModel: GatewayViewModel,
+    latestSpeedHistory: List<SpeedHistory>,
+    selectedModelHistory: List<SpeedHistory>,
+    selectedHistoryModelKey: String?,
+    enabledModels: List<com.qtwl.gateway.data.model.AiModel>,
+    chartMetricIndex: Int,
+    chartMetrics: List<String>,
+    onChartMetricChange: (Int) -> Unit,
+    onShowModelSelector: () -> Unit
+) {
+    val history = if (selectedHistoryModelKey != null) selectedModelHistory else latestSpeedHistory
+    val hasData = history.isNotEmpty()
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = localizedText("📈 模型延迟趋势", "📈 Model latency trend"),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f)
+                )
+                // 选择模型按钮
+                TextButton(onClick = onShowModelSelector) {
+                    val selectedName = if (selectedHistoryModelKey != null) {
+                        enabledModels.firstOrNull { it.routeKey == selectedHistoryModelKey }
+                            ?.let { it.customAlias.ifBlank { it.displayName } } ?: selectedHistoryModelKey
+                    } else {
+                        localizedText("所有模型", "All models")
+                    }
+                    Text(selectedName, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+
+            // 指标切换按钮组
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                chartMetrics.forEachIndexed { index, label ->
+                    FilterChip(
+                        selected = chartMetricIndex == index,
+                        onClick = { onChartMetricChange(index) },
+                        label = { Text(label, style = MaterialTheme.typography.labelSmall) }
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            if (hasData) {
+                // Canvas 折线图
+                val lineColor = when (chartMetricIndex) {
+                    0 -> Color(0xFFFF6B35)  // TTFT - 橙色
+                    1 -> Color(0xFF2196F3)  // TPS - 蓝色
+                    else -> Color(0xFF4CAF50) // 总耗时 - 绿色
+                }
+
+                // 获取指标值
+                val values = history.map { h ->
+                    when (chartMetricIndex) {
+                        0 -> h.ttftMs.toFloat()
+                        1 -> h.tps.toFloat()
+                        else -> h.totalMs.toFloat()
+                    }
+                }
+                val maxVal = values.maxOrNull()?.coerceAtLeast(1f) ?: 1f
+                val minVal = values.minOrNull()?.coerceAtMost(maxVal - 1f) ?: 0f
+                val range = (maxVal - minVal).coerceAtLeast(1f)
+
+                // 时间标签
+                val timeLabels = history.map { h ->
+                    val sdf = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+                    sdf.format(java.util.Date(h.measuredAt))
+                }
+
+                Card(
+                    modifier = Modifier.fillMaxWidth().height(200.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                    )
+                ) {
+                    Canvas(
+                        modifier = Modifier.fillMaxSize().padding(8.dp)
+                    ) {
+                        val w = size.width
+                        val h = size.height
+                        if (values.size < 2) {
+                            // 数据点太少，画一条水平线
+                            drawLine(
+                                color = lineColor,
+                                start = Offset(0f, h / 2),
+                                end = Offset(w, h / 2),
+                                strokeWidth = 2f
+                            )
+                            return@Canvas
+                        }
+                        val step = w / (values.size - 1).coerceAtLeast(1)
+
+                        // 绘制网格线（3条水平参考线）
+                        val gridColor = Color.Gray.copy(alpha = 0.2f)
+                        for (i in 0..3) {
+                            val y = h * i / 3
+                            drawLine(gridColor, Offset(0f, y), Offset(w, y), strokeWidth = 1f)
+                        }
+
+                        // 绘制折线路径
+                        val path = Path()
+                        values.forEachIndexed { i, v ->
+                            val x = i * step
+                            val y = h - ((v - minVal) / range) * (h - 16f) - 8f
+                            if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                        }
+
+                        drawPath(
+                            path,
+                            color = lineColor,
+                            style = Stroke(
+                                width = 2.5f,
+                                cap = StrokeCap.Round,
+                                join = StrokeJoin.Round
+                            )
+                        )
+
+                        // 绘制数据点
+                        values.forEachIndexed { i, v ->
+                            val x = i * step
+                            val y = h - ((v - minVal) / range) * (h - 16f) - 8f
+                            drawCircle(lineColor, radius = 3f, center = Offset(x, y))
+                        }
+                    }
+                }
+
+                // 统计摘要
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    val metricValues = history.map { h ->
+                        when (chartMetricIndex) {
+                            0 -> h.ttftMs.toDouble()
+                            1 -> h.tps
+                            else -> h.totalMs.toDouble()
+                        }
+                    }
+                    val avg = metricValues.average()
+                    val last = metricValues.lastOrNull() ?: 0.0
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(localizedText("最新", "Latest"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        val lastStr = if (chartMetricIndex == 1) "%.1f".format(last) else "%.0f".format(last)
+                        Text(lastStr, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = lineColor)
+                    }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(localizedText("平均", "Avg"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        val avgStr = if (chartMetricIndex == 1) "%.1f".format(avg) else "%.0f".format(avg)
+                        Text(avgStr, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                    }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(localizedText("数据点", "Points"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("${history.size}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                    }
+                }
+            } else {
+                // 空状态
+                Box(
+                    modifier = Modifier.fillMaxWidth().height(120.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = localizedText("暂无测速数据\n运行测速后自动生成趋势图", "No speed data yet\nRun speed test to generate trend chart"),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+        }
+    }
+}
 // ============================================================
 // 服务商用量汇总卡片
 // ============================================================

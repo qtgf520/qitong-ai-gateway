@@ -1,7 +1,7 @@
 # 綦桐AI网关 | QiTong AI Gateway
 
 > **包名 / Package：** `com.qtwl.gateway`  
-> **最新版本 / Latest：** v3.18.6 (versionCode=167)  
+> **最新版本 / Latest：** v3.18.7-1 (versionCode=169)  
 > **开源协议 / License：** Apache 2.0  
 > **语言 / Languages：** 🌐 15 languages (CN/EN/JP/KR/FR/DE/ES/RU/PT/VN/TH/AR/HI/ID)
 > **官方QQ群 / QQ Group：** [1007488535](https://qm.qq.com/q/1007488535) 💬
@@ -171,6 +171,7 @@ See [CHANGELOG.md](CHANGELOG.md) for full changelog.
 
 | Version | Key Features |
 |:--------|:-------------|
+| **v3.18.7-1** | 📊 **模型延迟历史趋势图** — 每次测速自动记录TTFT/TPS/总耗时到数据库，统计页Canvas折线图展示历史趋势，支持三指标切换和模型选择器 |
 | **v3.18.6** | ⏱ **定时测速倒计时+排行榜三行布局** — 测速跑完显示倒计时，排行每项独立三行展示指标 |
 | **v3.18.5** | 🔧 **服务商数据隔离修复** — 感谢 `adybag14-cyber` 修复模型排行榜按服务商作用域隔离，避免跨服务商数据混淆 |
 | **v3.18.4** | ✨ **通知栏正文精简 + 自动测速间隔可调 + 稳定优化** — 去掉正文模型名行、可配置5分钟~4小时测速间隔、跑完一圈停等设定时间再跑 |
