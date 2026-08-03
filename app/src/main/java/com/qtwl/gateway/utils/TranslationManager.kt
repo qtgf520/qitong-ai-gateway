@@ -401,21 +401,21 @@ object TranslationManager {
             AppLanguage.AR to "الرابط النهائي", AppLanguage.HI to "अंतिम URL", AppLanguage.ID to "URL akhir"
         ))
         put("url_hint", mapOf(
-            AppLanguage.ZH_CN to "提示: 输入 http://... 开头地址会自动拼接 /v1/chat/completions",
-            AppLanguage.EN to "Tip: Entering http://... base will auto-append /v1/chat/completions",
-            AppLanguage.JA to "ヒント：http://... を入力すると自動的に /v1/chat/completions が追加されます",
-            AppLanguage.KO to "팁: http://...을 입력하면 /v1/chat/completions이 자동으로 추가됩니다",
-            AppLanguage.ZH_TW to "提示：輸入 http://... 開頭地址會自動拼接 /v1/chat/completions",
-            AppLanguage.ES to "Ingrese http://... para auto-agregar /v1/chat/completions",
-            AppLanguage.FR to "Astuce: saisir http://... ajoutera automatiquement /v1/chat/completions",
-            AppLanguage.DE to "Tipp: http://... automatisch mit /v1/chat/completions ergänzen",
-            AppLanguage.RU to "Подсказка: ввод http://... автоматически добавит /v1/chat/completions",
-            AppLanguage.PT to "Diga: digitar http://... adiciona automaticamente /v1/chat/completions",
-            AppLanguage.VI to "Mẹo: nhập http://... sẽ tự động thêm /v1/chat/completions",
-            AppLanguage.TH to "เคล็ดลับ: ป้อน http://... จะเติม /v1/chat/completions อัตโนมัติ",
-            AppLanguage.AR to "أدخل http://... لإضافة /v1/chat/completions تلقائياً",
-            AppLanguage.HI to "टिप: http://... दर्ज करने से /v1/chat/completions स्वचालित रूप से जुड़ जाएगा",
-            AppLanguage.ID to "Tip: masukkan http://... untuk menambahkan /v1/chat/completions secara otomatis"
+            AppLanguage.ZH_CN to "提示: 输入完整API地址，自定义路径在下方设置",
+            AppLanguage.EN to "Tip: Enter the full API base URL, set custom path below",
+            AppLanguage.JA to "ヒント：完全なAPIアドレスを入力し、カスタムパスは下で設定",
+            AppLanguage.KO to "팁: 전체 API 주소를 입력하고, 사용자 정의 경로는 아래에서 설정",
+            AppLanguage.ZH_TW to "提示：輸入完整API地址，自定義路徑在下方設置",
+            AppLanguage.ES to "Ingrese la URL base completa de la API, la ruta personalizada abajo",
+            AppLanguage.FR to "Astuce: entrez l'URL API complète, le chemin personnalisé ci-dessous",
+            AppLanguage.DE to "Tipp: Vollständige API-URL eingeben, benutzerdefinierten Pfad unten festlegen",
+            AppLanguage.RU to "Подсказка: введите полный URL API, настраиваемый путь ниже",
+            AppLanguage.PT to "Dica: insira o URL completo da API, caminho personalizado abaixo",
+            AppLanguage.VI to "Mẹo: nhập đầy đủ URL API, đường dẫn tùy chỉnh bên dưới",
+            AppLanguage.TH to "เคล็ดลับ: ป้อน URL API เต็มรูปแบบ, กำหนดเส้นทางที่กำหนดเองด้านล่าง",
+            AppLanguage.AR to "أدخل عنوان URL الكامل لـAPI، المسار المخصص أدناه",
+            AppLanguage.HI to "टिप: पूरा API URL दर्ज करें, कस्टम पथ नीचे सेट करें",
+            AppLanguage.ID to "Tip: masukkan URL API lengkap, jalur kustom di bawah"
         ))
         put("api_url", mapOf(
             AppLanguage.ZH_CN to "API 地址", AppLanguage.EN to "API Address",

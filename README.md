@@ -9,7 +9,7 @@
 > Recommended: Uninstall old version OR clear app data → Install new version → Import backup.
 
 > **包名 / Package：** `com.qtwl.gateway`  
-> **最新版本 / Latest：** v3.18.8 (versionCode=173)  
+> **最新版本 / Latest：** v3.18.9 (versionCode=174)  
 > **开源协议 / License：** Apache 2.0  
 > **语言 / Languages：** 🌐 15 languages (CN/EN/JP/KR/FR/DE/ES/RU/PT/VN/TH/AR/HI/ID)
 > **官方QQ群 / QQ Group：** [1007488535](https://qm.qq.com/q/1007488535) 💬
@@ -179,6 +179,7 @@ See [CHANGELOG.md](CHANGELOG.md) for full changelog.
 
 | Version | Key Features |
 |:--------|:-------------|
+| **v3.18.9** | ✨ **API地址不再强制拼接 + 手动添加模型** — 取消强制拼接/v1/chat/completions，支持Ollama/Gemini/中转服务等非标准路径；模型页新增"手动添加模型"按钮，直接输入模型ID即刻可用 |
 | **v3.18.8** | 🐛 **修复测速倒计时bug** — 倒计时现在严格按滑块设定时间（5分钟=300秒）倒数，归零才重启 |
 | **v3.18.7** | 🔀 **自定义路由规则引擎** — 支持路径/模型名(*通配符)/API密钥/服务商匹配，支持route转发+block拒绝；📊 **模型延迟历史趋势图** — Canvas折线图展示；🔑 **按API密钥用量面板** — 密钥级用量统计 |
 | **v3.18.7-1** | 📊 **模型延迟历史趋势图** — 每次测速自动记录TTFT/TPS/总耗时到数据库，统计页Canvas折线图展示历史趋势，支持三指标切换和模型选择器 |

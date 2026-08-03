@@ -1606,6 +1606,31 @@ fun selectModel(model: AiModel?) {
         _showEditModelDialog.value = null
     }
 
+    /** 手动添加模型（无需同步，直接写入数据库） */
+    fun manualAddModel(providerId: Long, modelId: String, displayName: String, onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                // 检查是否已存在
+                val existing = database.aiModelDao().getModelByProviderAndId(providerId, modelId)
+                if (existing != null) {
+                    onResult(false, "模型 $modelId 已存在")
+                    return@launch
+                }
+                val model = AiModel(
+                    providerId = providerId,
+                    modelId = modelId,
+                    displayName = displayName.ifBlank { modelId },
+                    syncStatus = "Manual",
+                    isEnabled = true
+                )
+                database.aiModelDao().insert(model)
+                onResult(true, "✅ 模型 $modelId 已添加")
+            } catch (e: Exception) {
+                onResult(false, "❌ 添加失败: ${e.message}")
+            }
+        }
+    }
+
     /** 保存模型自定义别名 */
 fun saveModelAlias(model: AiModel, alias: String) {
     viewModelScope.launch {

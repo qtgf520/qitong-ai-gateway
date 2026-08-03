@@ -1197,9 +1197,10 @@ private fun AddProviderDialog(
                 )
 
                 // API 地址
-                val finalUrlDisplay = remember(form.baseUrl) {
+                val finalUrl = remember(form.baseUrl, form.chatPath) {
                     val base = form.baseUrl.trimEnd('/')
-                    if (base.startsWith("http")) "$base/v1/chat/completions" else ""
+                    val path = form.chatPath.ifBlank { "/v1/chat/completions" }
+                    if (base.startsWith("http")) "$base$path" else ""
                 }
                 OutlinedTextField(
                     value = form.baseUrl,
@@ -1214,7 +1215,7 @@ private fun AddProviderDialog(
                     label = { Text(tr("api_url")) },
                     supportingText = {
                         if (form.baseUrl.startsWith("http")) {
-                            Text("${tr("final_url")}: $finalUrlDisplay", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                            Text("${tr("final_url")}: $finalUrl", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                         } else {
                             Text(tr("url_hint"), style = MaterialTheme.typography.labelSmall)
                         }
@@ -1482,6 +1483,7 @@ private fun getLocalIpAddress(): String {
 // ============================================================
 // 模型管理页面（带搜索）
 // ============================================================
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ModelsScreen(viewModel: GatewayViewModel) {
     val languageTick = TranslationManager.currentLanguageFlow.collectAsState().value
@@ -1494,6 +1496,7 @@ fun ModelsScreen(viewModel: GatewayViewModel) {
     var searchQuery by remember { mutableStateOf("") }
     var filterToolCall by remember { mutableStateOf(false) }
     var filterVision by remember { mutableStateOf(false) }
+    var showManualAddModel by remember { mutableStateOf(false) }
 
     // 搜索 + 标签筛选
     val filteredModels = remember(models, searchQuery, languageTick, filterToolCall, filterVision) {
@@ -1632,7 +1635,7 @@ fun ModelsScreen(viewModel: GatewayViewModel) {
                 }
             }
 
-            // 批量测速按钮
+            // 批量测速按钮 + 手动添加模型按钮
             item {
                 Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     val isBatchTesting by viewModel.batchTesting.collectAsState()
@@ -1650,6 +1653,15 @@ fun ModelsScreen(viewModel: GatewayViewModel) {
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(localizedText("🔍 批量测速(自动开启)", "🔍 Batch speed test (auto-enable)"))
                         }
+                    }
+                    // ★★ 手动添加模型按钮 ★★
+                    OutlinedButton(
+                        onClick = { showManualAddModel = true },
+                        enabled = providers.isNotEmpty()
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(localizedText("✏️ 手动添加", "✏️ Add manually"))
                     }
                 }
             }
@@ -1682,6 +1694,90 @@ fun ModelsScreen(viewModel: GatewayViewModel) {
             model = model,
             viewModel = viewModel,
             onDismiss = { viewModel.hideEditModelAlias() }
+        )
+    }
+
+    // ★★ 手动添加模型对话框 ★★
+    if (showManualAddModel) {
+        var selectedProviderId by remember { mutableStateOf(providers.firstOrNull()?.id ?: 0L) }
+        var newModelId by remember { mutableStateOf("") }
+        var newModelName by remember { mutableStateOf("") }
+        var addResult by remember { mutableStateOf<String?>(null) }
+        var providerExpanded by remember { mutableStateOf(false) }
+
+        AlertDialog(
+            onDismissRequest = { showManualAddModel = false },
+            title = { Text(localizedText("✏️ 手动添加模型", "✏️ Add model manually"), fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    // 选择服务商
+                    ExposedDropdownMenuBox(expanded = providerExpanded, onExpandedChange = { providerExpanded = it }) {
+                        val selectedProvider = providers.find { it.id == selectedProviderId }
+                        OutlinedTextField(
+                            value = selectedProvider?.name ?: "",
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text(localizedText("选择服务商", "Select provider")) },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = providerExpanded) },
+                            modifier = Modifier.fillMaxWidth().menuAnchor(),
+                            singleLine = true
+                        )
+                        ExposedDropdownMenu(expanded = providerExpanded, onDismissRequest = { providerExpanded = false }) {
+                            providers.forEach { provider ->
+                                DropdownMenuItem(
+                                    text = { Text("P${provider.id} · ${provider.name}") },
+                                    onClick = { selectedProviderId = provider.id; providerExpanded = false }
+                                )
+                            }
+                        }
+                    }
+
+                    // 模型ID输入
+                    OutlinedTextField(
+                        value = newModelId,
+                        onValueChange = { newModelId = it },
+                        label = { Text(localizedText("模型ID", "Model ID")) },
+                        placeholder = { Text("gpt-4o, deepseek-chat, ...") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    // 显示名称（可选）
+                    OutlinedTextField(
+                        value = newModelName,
+                        onValueChange = { newModelName = it },
+                        label = { Text(localizedText("显示名称 (可选)", "Display name (optional)")) },
+                        placeholder = { Text(newModelId.ifBlank { localizedText("留空则使用模型ID", "Leave empty to use model ID") }) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    // 结果提示
+                    addResult?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall,
+                            color = if (it.startsWith("✅")) Online else Error)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (newModelId.isNotBlank()) {
+                            viewModel.manualAddModel(selectedProviderId, newModelId.trim(), newModelName.trim()) { success, msg ->
+                                addResult = msg
+                                if (success) {
+                                    newModelId = ""
+                                    newModelName = ""
+                                }
+                            }
+                        }
+                    },
+                    enabled = newModelId.isNotBlank()
+                ) {
+                    Text(localizedText("添加", "Add"))
+                }
+            },
+            dismissButton = { TextButton(onClick = { showManualAddModel = false }) { Text(localizedText("关闭", "Close")) } }
         )
     }
 }

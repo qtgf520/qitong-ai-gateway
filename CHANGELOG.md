@@ -2,7 +2,27 @@
 
 > 包名：com.qtwl.gateway
 > 签名证书：qitong.jks (别名: qitong)
-> 最后更新：2026-07-28
+> 最后更新：2026-08-03
+
+---
+
+## 🔄 v3.18.9（正式发布）
+
+### ✨ 新增
+- **✏️ 手动添加模型** — 模型页新增"手动添加模型"按钮，选择服务商后直接输入模型ID（如 gpt-4o）即可使用，无需等待自动同步。自动同步+手动添加互补，解决部分服务商模型列表不全的问题
+- **🔧 自定义API路径实时反映在最终URL** — Base URL输入框下方展示 `baseUrl + chatPath` 组合结果，告别硬编码
+
+### 🔧 优化
+- **API地址不再强制自动拼接 `/v1/chat/completions`** — 现在 Base URL 和 Chat API path 各自独立展示，最终URL实际反映 `baseUrl + chatPath` 组合，不再硬编码拼接
+  - Ollama 用户：Base URL 填 `http://192.168.1.100:11434`，Chat API path 填 `/api/chat` 或 `/api/generate`
+  - Gemini 用户：Base URL 填 `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent`，Chat API path 留空
+  - 中转/聚合服务：Base URL 填完整上游地址，Chat API path 留空或填自定义路径
+- **提示文本更新** — 15种语言的 url_hint 从"自动拼接 /v1/chat/completions"改为"输入完整API地址，自定义路径在下方设置"
+
+### ✅ 验证
+- 编译验证：`./gradlew assembleDebug` → `BUILD SUCCESSFUL`
+- 安装验证：`pm install -r` → `Success`（versionCode=174, versionName=3.18.9）
+- 签名：debug APK 使用 qitong.jks 签名，与 release 一致
 
 ---
 
