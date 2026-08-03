@@ -217,7 +217,7 @@ object ModelCapabilityManager {
 
     // ── 探测（后台静默） ──────────────────────────────
 
-    fun probeModel(modelId: String, resolvedUrl: String, apiKey: String?) {
+    fun probeModel(modelId: String, resolvedUrl: String, apiKey: String?, chatPath: String? = null) {
         val current = loadModel(modelId)
         // 简单探测工具和视觉
         var tools = current.toolCall
@@ -229,14 +229,15 @@ object ModelCapabilityManager {
                 .build()
             val baseUrl = resolvedUrl.trimEnd('/')
             val ct = "application/json".toMediaType()
+            val path = chatPath?.let { if (it.startsWith("/")) it else "/$it" } ?: "/v1/chat/completions"
             if (!tools) {
                 val body = """{"model":"$modelId","messages":[{"role":"user","content":"hi"}],"tools":[{"type":"function","function":{"name":"t","description":"t","parameters":{"type":"object","properties":{}}}}],"max_tokens":1}"""
-                val resp = client.newCall(okhttp3.Request.Builder().url("$baseUrl/v1/chat/completions").post(body.toByteArray().toRequestBody(ct)).apply { if (!apiKey.isNullOrBlank()) header("Authorization", "Bearer $apiKey") }.build()).execute()
+                val resp = client.newCall(okhttp3.Request.Builder().url("$baseUrl$path").post(body.toByteArray().toRequestBody(ct)).apply { if (!apiKey.isNullOrBlank()) header("Authorization", "Bearer $apiKey") }.build()).execute()
                 tools = resp.code != 501 && resp.code != 404; resp.close()
             }
             if (!vision) {
                 val body = """{"model":"$modelId","messages":[{"role":"user","content":[{"type":"text","text":"hi"},{"type":"image_url","image_url":{"url":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="}}]}],"max_tokens":1}"""
-                val resp = client.newCall(okhttp3.Request.Builder().url("$baseUrl/v1/chat/completions").post(body.toByteArray().toRequestBody(ct)).apply { if (!apiKey.isNullOrBlank()) header("Authorization", "Bearer $apiKey") }.build()).execute()
+                val resp = client.newCall(okhttp3.Request.Builder().url("$baseUrl$path").post(body.toByteArray().toRequestBody(ct)).apply { if (!apiKey.isNullOrBlank()) header("Authorization", "Bearer $apiKey") }.build()).execute()
                 vision = resp.code != 501 && resp.code != 404 && resp.code != 400; resp.close()
             }
         } catch (_: Exception) { }
@@ -319,7 +320,7 @@ object ModelCapabilityManager {
                         val (t, v, g) = getCapabilities(model.modelId)
                         if (t && v && g) continue
                         
-                        probeModel(model.modelId, provider.resolvedBaseUrl, provider.apiKey)
+                        probeModel(model.modelId, provider.resolvedBaseUrl, provider.apiKey, provider.chatPath)
                         kotlinx.coroutines.delay(500) // 每个模型间隔500ms，避免并发
                     }
                 } catch (_: Exception) { }
@@ -1763,7 +1764,7 @@ fun getDisplayModelName(model: AiModel): String {
                 try {
                     val provider = database.providerDao().getProviderById(stableModel.providerId)
                     if (provider != null) {
-                        ModelCapabilityManager.probeModel(stableModel.modelId, provider.baseUrl.trimEnd('/'), provider.apiKey)
+                        ModelCapabilityManager.probeModel(stableModel.modelId, provider.baseUrl.trimEnd('/'), provider.apiKey, provider.chatPath)
                     }
                 } catch (_: Exception) { }
             }
@@ -2275,7 +2276,7 @@ fun getDisplayModelName(model: AiModel): String {
                         _snackbarMessage.value = "❌ ${model.displayName}: 未找到关联服务商"
                         return@withContext
                     }
-                    val metrics = speedTester.measure(model.modelId, provider.resolvedBaseUrl, provider.apiKey)
+                    val metrics = speedTester.measure(model.modelId, provider.resolvedBaseUrl, provider.apiKey, provider.chatPath)
                     val result = if (metrics.ttftMs < 0) {
                         "❌ ${model.displayName}: 测速失败"
                     } else {
@@ -2286,7 +2287,7 @@ fun getDisplayModelName(model: AiModel): String {
                     recordSpeedHistory(model.routeKey, model.customAlias.ifBlank { model.displayName }, model.providerId, metrics)
                     // ★★ 同时探测模型能力 ★★
                     try {
-                        ModelCapabilityManager.probeModel(model.modelId, provider.resolvedBaseUrl, provider.apiKey)
+                        ModelCapabilityManager.probeModel(model.modelId, provider.resolvedBaseUrl, provider.apiKey, provider.chatPath)
                     } catch (_: Exception) {}
                 }
             } catch (e: Exception) {
@@ -2333,8 +2334,9 @@ fun getDisplayModelName(model: AiModel): String {
                                 .build()
                             val body = """{"model":"${model.modelId}","messages":[{"role":"user","content":"hi"}],"max_tokens":1}"""
                                 .toByteArray().toRequestBody("application/json".toMediaType())
+                            val chatPath = provider.chatPath?.let { if (it.startsWith("/")) it else "/$it" } ?: "/v1/chat/completions"
                             val request = okhttp3.Request.Builder()
-                                .url("${provider.resolvedBaseUrl}/v1/chat/completions").post(body)
+                                .url("${provider.resolvedBaseUrl}$chatPath").post(body)
                                 .apply { provider.apiKey?.let { header("Authorization", "Bearer $it") } }
                                 .build()
                             val response = client.newCall(request).execute()
@@ -2449,7 +2451,7 @@ fun clearChatError() {
                         try {
                             withContext(Dispatchers.IO) {
                                 val resolvedUrl = provider.resolvedBaseUrl.trimEnd('/')
-                                val metrics = speedTester.measure(model.modelId, resolvedUrl, provider.apiKey)
+                                val metrics = speedTester.measure(model.modelId, resolvedUrl, provider.apiKey, provider.chatPath)
                                 latency = metrics.totalMs
                                 ttft = metrics.ttftMs
                                 tps = metrics.tps
@@ -2476,7 +2478,8 @@ fun clearChatError() {
                                         ModelCapabilityManager.probeModel(
                                             model.modelId,
                                             provider.resolvedBaseUrl,
-                                            provider.apiKey
+                                            provider.apiKey,
+                                            provider.chatPath
                                         )
                                     } catch (_: Exception) {}
                                 }

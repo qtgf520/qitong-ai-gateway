@@ -20,6 +20,8 @@
 10. **📲 安装使用 Shizuku 权限** — 无 root 权限时用 Shizuku 授权安装
 11. **🔒 发布不泄漏本地凭证** — 签名证书(`*.jks`/`*.keystore`)、密码(`storePassword`/`keyPassword`)、构建产物(`*.idsig`/`*.apk`/`*.aab`) 禁止提交Git。`.gitignore` 已含规则，`git add` 前先 `git status` 检查有无敏感文件
 12. **📄 每次发布前同步更新README.md和CHANGELOG.md** — 版本号、更新日志、功能描述必须与当前版本一致，改完再提交Git
+13. **🏠 双轨Git制 — 测试版提交本地Git，正式版才推远程** — 测试版只 commit 到本地 `.git`，不 `git push`；正式版才 `git push origin` + 打标签 + Release。本地Git作为"测试版存档"，远程Git作为"正式版发布"
+14. **📦 本地Git archive 发布到目录** — 测试通过后，用 `git archive` 导出干净代码到发布目录，供产出比对
 
 ---
 
@@ -163,8 +165,10 @@ dumpsys package com.qtwl.gateway | grep -E 'versionName|versionCode'
 ④ 复制APK到sdcard（带版本号）
 ⑤ 安装到设备
 ⑥ 验证功能
+⑦ 提交本地Git（不 push 远程）
+⑧ 可选：git archive 导出到发布目录 ~/publish/
 ```
-**不发Git，不打标签，不发Release**
+**不推远程Git，不打远程标签，不发GitHub Release**
 
 ### 正式模式（我说"发布"时）
 ```
@@ -177,14 +181,33 @@ dumpsys package com.qtwl.gateway | grep -E 'versionName|versionCode'
 ⑦ 安装到设备
 ⑧ 验证功能
 ⑨ 清理备份文件（删.bak）
-⑩ 推Git + 标签 + GitHub Release（APK上传）
+⑩ 提交本地Git
+⑪ 推远程Git + 打标签 + GitHub Release（APK上传）
 ```
 
 ---
 
 ## 8. 推送 Git & 发布
 
-### 8.1 推送 Git（先检查敏感文件）
+### 8.1 本地Git（测试版用，不碰远程）
+测试版禁止推远程，但需要本地存档，方便回滚和比对。
+```bash
+cd /data/user/0/com.ai.assistance.operit/files/workspace/app621
+
+# ⚠️ 先检查有无敏感文件被跟踪
+git status
+
+# 清理备份文件
+find . -name '*.bak' -delete
+find . -name '*.before_py' -delete
+
+# 提交到本地（不 push）
+git add -A
+git commit -m 'v3.x.x-N - 更新说明'
+```
+
+### 8.2 远程Git（正式版用）
+正式版才推远程 + 打标签。
 ```bash
 cd /data/user/0/com.ai.assistance.operit/files/workspace/app621
 
@@ -206,7 +229,7 @@ git tag -f v3.x.x
 git push origin v3.x.x -f
 ```
 
-### 8.2 GitHub Release
+### 8.3 GitHub Release
 ```bash
 GIT_TOKEN=$(git remote -v | head -1 | sed 's/.*qtgf520://;s/@.*//')
 API_URL='https://api.github.com/repos/qtgf520/qitong-ai-gateway/releases'
@@ -227,6 +250,22 @@ curl -s -X POST \
   --data-binary @app/build/outputs/apk/debug/app-debug.apk
 ```
 
+### 8.4 本地Git archive 发布到目录（可选）
+测试通过后，想把当前版本导出成干净目录：
+```bash
+# 创建发布目录
+mkdir -p ~/publish/v3.x.x
+
+# 用 git archive 导出干净代码
+git archive --format=tar HEAD | tar -x -C ~/publish/v3.x.x
+
+# 或直接复制构建产物
+cp -r app/build/outputs/apk/debug/app-debug.apk ~/publish/v3.x.x/QiTongAI-v3.x.x.apk
+
+# 发布目录在 proot 中，可 cp 到 /sdcard/ 共享给 Android
+cp -r ~/publish/v3.x.x /sdcard/Download/publish/
+```
+
 ---
 
 ## 9. 清理旧文件
@@ -245,16 +284,10 @@ ls -t *.qtbk 2>/dev/null | tail -n +2 | while read f; do rm -f "$f"; done
 
 ---
 
-> **文档版本:** v17 — 2026-07-27
+> **文档版本:** v18 — 2026-08-03
 > **适用于:** 綦桐AI网关 v3.18.x+
 > **核心改动:**
-> - 铁律0：新增"每次开发前先读本文件"
-> - 铁律8：Vim/Neovim → 优先使用工具编辑
-> - 铁律12：新增"每次发布前同步更新README.md和CHANGELOG.md"
-> - 备份目录：移动到 `/sdcard/Download/Operit/backup/qtkfbf/`
-> - 备份保留：按天数（5天）而非按份数
-> - 版本号示例：更新到最新版本号
-> - 新增第6节"备份目录规则"
-> - 新增验证清单：通知栏不闪烁、备份恢复验证
-> - Release上传名：带版本号
-> - 正式发布流程：③更新README.md ④更新CHANGELOG.md
+> - 铁律13：新增"双轨Git制 — 测试版提交本地Git，正式版才推远程"
+> - 铁律14：新增"本地Git archive 发布到目录"
+> - 第7节：测试版流程新增⑦提交本地Git + ⑧可选archive导出；正式版流程拆出⑩提交本地Git和⑪推远程
+> - 第8节：拆分为8.1本地Git（测试版）、8.2远程Git（正式版）、8.3 GitHub Release、8.4 本地Git archive 发布到目录

@@ -270,7 +270,7 @@ object GatewayScheduler {
                         val resolvedUrl = provider.resolvedBaseUrl.trimEnd('/')
                         val testBody = """{"model":"${model.modelId}","messages":[{"role":"user","content":"hi"}],"max_tokens":1,"stream":false}"""
                         val request = okhttp3.Request.Builder()
-                            .url("$resolvedUrl/v1/chat/completions")
+                            .url("$resolvedUrl" + (provider.chatPath?.let { if (it.startsWith("/")) it else "/$it" } ?: "/v1/chat/completions"))
                             .post(testBody.toRequestBody(DEFAULT_CT))
                             .apply {
                                 if (!provider.apiKey.isNullOrBlank()) {

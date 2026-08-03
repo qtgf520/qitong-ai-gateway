@@ -29,9 +29,11 @@ class ModelSpeedTester(
         modelId: String,
         baseUrl: String,
         apiKey: String?,
+        chatPath: String? = null,
         prompt: String = DEFAULT_PROMPT
     ): SpeedMetrics = withContext(Dispatchers.IO) {
-        val url = baseUrl.trimEnd('/') + "/v1/chat/completions"
+        val path = chatPath?.let { if (it.startsWith("/")) it else "/$it" } ?: "/v1/chat/completions"
+        val url = baseUrl.trimEnd('/') + path
         val body = buildPayload(modelId, prompt)
         val request = Request.Builder()
             .url(url)

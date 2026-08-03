@@ -19,9 +19,19 @@
   - 中转/聚合服务：Base URL 填完整上游地址，Chat API path 留空或填自定义路径
 - **提示文本更新** — 15种语言的 url_hint 从"自动拼接 /v1/chat/completions"改为"输入完整API地址，自定义路径在下方设置"
 
+### 🐛 修复
+- **💥 后端所有硬编码 `/v1/chat/completions` 路径全面修复** — 转发层（GatewayService / GatewayScheduler / ModelSpeedTester / ModelCapabilityManager / GatewayViewModel / GroupChatManager）全部改用 `provider.chatPath`，服务商自定义 `chatPath` 功能真正可用
+  - `/v1/completions` 处理器：使用 `provider.chatPath` 拼接上游URL
+  - `/v1/messages` 处理器：使用 `provider.chatPath` 拼接上游URL
+  - 大脑（qtai-sj）模块转发：使用 `brainProvider.chatPath`
+  - 健康检查路径：使用 `provider.chatPath` 探测
+  - 测速引擎：`measure()` 新增 `chatPath` 参数，默认回退 `/v1/chat/completions`
+  - 能力探测：`probeModel()` 新增 `chatPath` 参数，探测URL使用自定义路径
+  - 批量测速：全部传入 `provider.chatPath` 替代硬编码
+
 ### ✅ 验证
 - 编译验证：`./gradlew assembleDebug` → `BUILD SUCCESSFUL`
-- 安装验证：`pm install -r` → `Success`（versionCode=174, versionName=3.18.9）
+- 安装验证：`pm install -r` → `Success`（versionCode=175, versionName=3.18.9）
 - 签名：debug APK 使用 qitong.jks 签名，与 release 一致
 
 ---

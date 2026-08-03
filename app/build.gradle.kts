@@ -13,7 +13,7 @@ android {
         applicationId = "com.qtwl.gateway"
         minSdk = 24
         targetSdk = 35
-        versionCode = 174
+        versionCode = 175
         versionName = "3.18.9"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -55,7 +55,7 @@ android {
             signingConfigs.findByName("release")?.let { signingConfig = it }
         }
         debug {
-            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
+            signingConfigs.findByName("release")?.let { signingConfig = it }
         }
     }
     compileOptions {

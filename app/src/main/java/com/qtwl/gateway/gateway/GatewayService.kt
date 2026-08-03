@@ -262,7 +262,7 @@ class GatewayService(private val database: AppDatabase) {
                         val upstreamUrl = provider.resolvedBaseUrl.trimEnd('/')
                         val upstreamBody = sanitizeRequestBody(chatBody.toString())
                         val client = UpstreamClient.getClientForModel(targetModel.useProxy)
-                        val req = okhttp3.Request.Builder().url("$upstreamUrl/v1/chat/completions")
+                        val req = okhttp3.Request.Builder().url("$upstreamUrl" + (provider.chatPath?.let { if (it.startsWith("/")) it else "/$it" } ?: "/v1/chat/completions"))
                             .post(upstreamBody.toByteArray(Charsets.UTF_8).toRequestBody(DEFAULT_CT))
                             .apply { if (!provider.apiKey.isNullOrBlank()) header("Authorization", "Bearer ${provider.apiKey}") }
                             .build()
@@ -356,7 +356,7 @@ class GatewayService(private val database: AppDatabase) {
                         val upstreamUrl = provider.resolvedBaseUrl.trimEnd('/')
                         val upstreamBody = sanitizeRequestBody(chatBody.toString())
                         val client = UpstreamClient.getClientForModel(targetModel.useProxy)
-                        val req = okhttp3.Request.Builder().url("$upstreamUrl/v1/chat/completions")
+                        val req = okhttp3.Request.Builder().url("$upstreamUrl" + (provider.chatPath?.let { if (it.startsWith("/")) it else "/$it" } ?: "/v1/chat/completions"))
                             .post(upstreamBody.toByteArray(Charsets.UTF_8).toRequestBody(DEFAULT_CT))
                             .apply { if (!provider.apiKey.isNullOrBlank()) header("Authorization", "Bearer ${provider.apiKey}") }
                             .build()
@@ -1533,7 +1533,7 @@ ${SkillRegistry.buildSkillPrompt()}
                             try {
                                 val brainClient = UpstreamClient.getDirectClient()
                                 val brainReq = okhttp3.Request.Builder()
-                                    .url("${brainProvider.resolvedBaseUrl.trimEnd('/')}/v1/chat/completions")
+                                    .url("${brainProvider.resolvedBaseUrl.trimEnd('/')}" + (brainProvider.chatPath?.let { if (it.startsWith("/")) it else "/$it" } ?: "/v1/chat/completions"))
                                     .post(brainBody.toByteArray().toRequestBody(DEFAULT_CT))
                                     .apply { if (!brainProvider.apiKey.isNullOrBlank()) header("Authorization", "Bearer ${brainProvider.apiKey}") }
                                     .build()
@@ -2081,7 +2081,11 @@ private suspend fun pipeNormalResponse(
 ) {
     try {
         val resolvedUrl = provider.resolvedBaseUrl.trimEnd('/')
-        val url = resolvedUrl + path
+        // ★★ 使用服务商自定义 chatPath（如果设置了）★★
+        val upstreamPath = if (path.contains("chat/completions") || path.contains("completions")) {
+            provider.chatPath?.let { if (it.startsWith("/")) it else "/$it" } ?: path
+        } else path
+        val url = resolvedUrl + upstreamPath
         val pipeStartTime = System.currentTimeMillis()
 
         val reqBody = rawBody.toRequestBody(DEFAULT_CT)
@@ -2231,7 +2235,11 @@ private suspend fun pipeStreamResponse(
     val pipeStartTime = System.currentTimeMillis()
     // 1. 在 IO 线程执行 HTTP 请求，获取响应流
     val resolvedUrl = provider.resolvedBaseUrl.trimEnd('/')
-    val url = resolvedUrl + path
+    // ★★ 使用服务商自定义 chatPath（如果设置了）★★
+    val upstreamPath = if (path.contains("chat/completions") || path.contains("completions")) {
+        provider.chatPath?.let { if (it.startsWith("/")) it else "/$it" } ?: path
+    } else path
+    val url = resolvedUrl + upstreamPath
     val httpClient = if (useProxy) UpstreamClient.getOkHttpClient() else UpstreamClient.getDirectClient()
 
     // 在 IO 线程发起请求，拿到 response 对象（不读 body）
