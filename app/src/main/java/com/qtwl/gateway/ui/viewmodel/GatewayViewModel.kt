@@ -750,15 +750,15 @@ companion object {
         }
 
     data class ProviderForm(
-        val name: String = "",
-        val type: String = "OpenAI Compatible",
-        val baseUrl: String = "",
-        val port: String = "",
-        val apiKey: String = "",
-        val orderIndex: Int = 0,
-        val chatPath: String = "/v1/chat/completions",  // 聊天接口路径
-        val apiPath: String = "/v1/models"               // 模型列表接口路径
-    )
+    val name: String = "",
+    val type: String = "OpenAI Compatible",
+    val baseUrl: String = "",
+    val port: String = "",
+    val apiKey: String = "",
+    val orderIndex: Int = 0,
+    val chatPath: String = "", // 聊天接口路径（留空=自动拼接/v1/chat/completions）
+    val apiPath: String = "/v1/models" // 模型列表接口路径
+)
 
     private val _providerForm = MutableStateFlow(ProviderForm())
     val providerForm: StateFlow<ProviderForm> = _providerForm.asStateFlow()
@@ -1326,7 +1326,7 @@ companion object {
                         port = form.port,
                         apiKey = form.apiKey.ifBlank { null },
                         orderIndex = form.orderIndex,
-                        chatPath = form.chatPath
+                        chatPath = form.chatPath.ifBlank { null }
                     )
                 )
                 _showAddProviderDialog.value = false
@@ -1876,11 +1876,13 @@ fun getDisplayModelName(model: AiModel): String {
                 var totalCompletionTokens = 0
 
                 val resolvedUrl = provider.resolvedBaseUrl
+                val chatPath = provider.chatPath?.let { if (it.startsWith("/")) it else "/$it" } ?: "/v1/chat/completions"
                 withContext(Dispatchers.IO) {
                     UpstreamClient.requestStream(
                         baseUrl = resolvedUrl,
                         apiKey = provider.apiKey,
                         requestBody = requestBody,
+                        path = chatPath,
                         listener = object : okhttp3.sse.EventSourceListener() {
                             override fun onEvent(
                                 eventSource: okhttp3.sse.EventSource,

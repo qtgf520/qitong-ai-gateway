@@ -1542,7 +1542,7 @@ private fun SmartAddServiceDialog(viewModel: GatewayViewModel, onDismiss: () -> 
                     OutlinedTextField(
                         value = chatPathText,
                         onValueChange = { v -> chatPathText = v; viewModel.updateFormField("chatPath", v); chatPathExpanded = true },
-                        label = { Text(localizedText("对话接口路径", "Chat API path")) },
+                        label = { Text(localizedText("对话接口路径（留空自动拼接）", "Chat API path (blank = auto-append)")) },
                         placeholder = { Text("/v1/chat/completions") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth().menuAnchor(),
@@ -1561,6 +1561,17 @@ private fun SmartAddServiceDialog(viewModel: GatewayViewModel, onDismiss: () -> 
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(localizedText("💡 输入 /c 自动补全 /v1/chat/completions，/m 补全 /v1/messages 等", "💡 Type /c to auto-complete /v1/chat/completions, /m for /v1/messages, etc."),
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                // ★★ 最终URL预览 ★★
+                val previewBase = form.baseUrl.trimEnd('/')
+                val previewPath = if (chatPathText.isBlank()) "/v1/chat/completions" else chatPathText
+                val finalPreview = if (previewBase.startsWith("http")) "$previewBase$previewPath" else ""
+                if (finalPreview.isNotBlank()) {
+                    Text(
+                        text = "${localizedText("实际请求地址", "Actual URL")}: $finalPreview",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
 
                 // ★★★ 模型列表接口路径（自动补全）★★★
                 val apiPathOptions2 = listOf("/v1/models", "/api/tags", "/v1beta/models", "/models")

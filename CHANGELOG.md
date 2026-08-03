@@ -6,6 +6,24 @@
 
 ---
 
+## 🔄 v3.18.11（正式发布）
+
+### 🐛 修复
+- **服务商页UI添加chatPath** — `AddProviderDialog`和`EditProviderDialog`新增chatPath下拉选择框（ExposedDropdownMenuBox），支持自定义API路径选择（/v1/chat/completions、/v1/messages、/v1/completions等12种预设路径），空值自动转null
+- **测速串行延迟** — `refreshHealthCache`从并发`async/awaitAll`改为串行`for`循环，每模型间加500ms延迟，避免并发测速被误判为异常
+- **内置聊天不走chatPath** — `sendMessage`调用`UpstreamClient.requestStream`时传入`provider.chatPath`，内置聊天现在也使用自定义API路径
+- **chatPath空值保存** — `saveProvider`中`chatPath = form.chatPath`改为`form.chatPath.ifBlank { null }`，空字符串存为null，数据库不存无效值
+
+### ✨ 新增
+- **管理页chatPath标签优化** — DataManagementScreen中chatPath标签改为"对话接口路径（留空自动拼接）"，添加URL预览实时显示baseUrl+chatPath组合结果
+
+### ✅ 验证
+- 编译验证：`./gradlew assembleDebug` → `BUILD SUCCESSFUL`
+- 安装验证：`pm install -r` → `Success`（versionCode=177, versionName=3.18.11）
+- 签名：debug APK 使用 qitong.jks 签名，与 release 一致
+
+---
+
 ## 🔄 v3.18.9（正式发布）
 
 ### ✨ 新增

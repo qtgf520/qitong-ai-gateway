@@ -259,62 +259,61 @@ object GatewayScheduler {
         }
         if (targetModels.isEmpty()) return
 
-        coroutineScope {
-            targetModels.map { model ->
-                async {
-                    val key = model.routeKey
-                    try {
-                        val provider = database.providerDao().getProviderById(model.providerId) ?: return@async
-                        if (!provider.isEnabled) return@async
-                        val start = System.currentTimeMillis()
-                        val resolvedUrl = provider.resolvedBaseUrl.trimEnd('/')
-                        val testBody = """{"model":"${model.modelId}","messages":[{"role":"user","content":"hi"}],"max_tokens":1,"stream":false}"""
-                        val request = okhttp3.Request.Builder()
-                            .url("$resolvedUrl" + (provider.chatPath?.let { if (it.startsWith("/")) it else "/$it" } ?: "/v1/chat/completions"))
-                            .post(testBody.toRequestBody(DEFAULT_CT))
-                            .apply {
-                                if (!provider.apiKey.isNullOrBlank()) {
-                                    header("Authorization", "Bearer ${provider.apiKey}")
-                                }
-                            }
-                            .build()
-                        val client = okhttp3.OkHttpClient.Builder()
-                            .connectTimeout(HEALTH_CHECK_TIMEOUT, java.util.concurrent.TimeUnit.MILLISECONDS)
-                            .readTimeout(HEALTH_CHECK_TIMEOUT, java.util.concurrent.TimeUnit.MILLISECONDS)
-                            .build()
-                        val response = client.newCall(request).execute()
-                        val latency = System.currentTimeMillis() - start
-                        if (response.isSuccessful) {
-                            synchronized(healthCache) {
-                                healthCache[key] = ModelHealth(model.modelId, model.providerId, latency, now, true)
-                            }
-                            if (latency < bestModelLatency || bestModelKey == null) {
-                                bestModelKey = key
-                                bestModelLatency = latency
-                                bestModelSetTime = now
-                            }
-                            if (GatewayForegroundService.getDebugMode()) {
-                                GatewayForegroundService.addDebugLog("✓ P${model.providerId} · ${model.modelId}: ${latency}ms")
-                            }
-                        } else {
-                            synchronized(healthCache) {
-                                healthCache[key] = ModelHealth(model.modelId, model.providerId, Long.MAX_VALUE, now, false)
-                            }
-                        }
-                        response.close()
-                    } catch (_: Exception) {
-                        synchronized(healthCache) {
-                            healthCache[key] = ModelHealth(
-                                model.modelId,
-                                model.providerId,
-                                Long.MAX_VALUE,
-                                System.currentTimeMillis(),
-                                false
-                            )
+        // ★★ 串行测速，每个模型间隔500ms，避免并发判刑 ★★
+        for (model in targetModels) {
+            val key = model.routeKey
+            try {
+                val provider = database.providerDao().getProviderById(model.providerId) ?: continue
+                if (!provider.isEnabled) continue
+                val start = System.currentTimeMillis()
+                val resolvedUrl = provider.resolvedBaseUrl.trimEnd('/')
+                val testBody = """{"model":"${model.modelId}","messages":[{"role":"user","content":"hi"}],"max_tokens":1,"stream":false}"""
+                val request = okhttp3.Request.Builder()
+                    .url("$resolvedUrl" + (provider.chatPath?.let { if (it.startsWith("/")) it else "/$it" } ?: "/v1/chat/completions"))
+                    .post(testBody.toRequestBody(DEFAULT_CT))
+                    .apply {
+                        if (!provider.apiKey.isNullOrBlank()) {
+                            header("Authorization", "Bearer ${provider.apiKey}")
                         }
                     }
+                    .build()
+                val client = okhttp3.OkHttpClient.Builder()
+                    .connectTimeout(HEALTH_CHECK_TIMEOUT, java.util.concurrent.TimeUnit.MILLISECONDS)
+                    .readTimeout(HEALTH_CHECK_TIMEOUT, java.util.concurrent.TimeUnit.MILLISECONDS)
+                    .build()
+                val response = client.newCall(request).execute()
+                val latency = System.currentTimeMillis() - start
+                if (response.isSuccessful) {
+                    synchronized(healthCache) {
+                        healthCache[key] = ModelHealth(model.modelId, model.providerId, latency, now, true)
+                    }
+                    if (latency < bestModelLatency || bestModelKey == null) {
+                        bestModelKey = key
+                        bestModelLatency = latency
+                        bestModelSetTime = now
+                    }
+                    if (GatewayForegroundService.getDebugMode()) {
+                        GatewayForegroundService.addDebugLog("✓ P${model.providerId} · ${model.modelId}: ${latency}ms")
+                    }
+                } else {
+                    synchronized(healthCache) {
+                        healthCache[key] = ModelHealth(model.modelId, model.providerId, Long.MAX_VALUE, now, false)
+                    }
                 }
-            }.awaitAll()
+                response.close()
+            } catch (_: Exception) {
+                synchronized(healthCache) {
+                    healthCache[key] = ModelHealth(
+                        model.modelId,
+                        model.providerId,
+                        Long.MAX_VALUE,
+                        System.currentTimeMillis(),
+                        false
+                    )
+                }
+            }
+            // ★★ 每个模型之间延迟500ms，避免接口限流（判刑）★★
+            kotlinx.coroutines.delay(500)
         }
         invalidatePreheat()
     }

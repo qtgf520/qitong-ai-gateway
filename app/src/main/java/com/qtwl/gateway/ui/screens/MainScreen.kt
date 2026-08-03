@@ -1108,6 +1108,7 @@ private fun ProviderCard(
 // ============================================================
 // 添加服务商对话框
 // ============================================================
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AddProviderDialog(
     viewModel: GatewayViewModel,
@@ -1235,7 +1236,30 @@ private fun AddProviderDialog(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth()
                 )
-
+                // 对话接口路径
+                val apiPathOptions = listOf("/v1/chat/completions", "/v1/messages", "/v1/completions", "/v1/embeddings", "/v1/rerank", "/v1/moderations", "/v1/audio/speech", "/v1/images/generations", "/v1/videos", "/chat/completions", "/completions", "/generate")
+                var chatPathExpanded by remember { mutableStateOf(false) }
+                var chatPathText by remember(form.chatPath) { mutableStateOf(form.chatPath) }
+                ExposedDropdownMenuBox(expanded = chatPathExpanded, onExpandedChange = { chatPathExpanded = it }) {
+                    OutlinedTextField(
+                        value = chatPathText,
+                        onValueChange = { v -> chatPathText = v; viewModel.updateFormField("chatPath", v); chatPathExpanded = true },
+                        label = { Text(localizedText("对话接口路径（留空自动拼接）", "Chat API path (blank = auto-append)")) },
+                        placeholder = { Text("/v1/chat/completions") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().menuAnchor(),
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = chatPathExpanded) }
+                    )
+                    ExposedDropdownMenu(expanded = chatPathExpanded, onDismissRequest = { chatPathExpanded = false }) {
+                        val filtered = apiPathOptions.filter { chatPathText.isBlank() || it.contains(chatPathText, ignoreCase = true) }
+                        filtered.forEach { option ->
+                            DropdownMenuItem(
+                                text = { Text(option, style = MaterialTheme.typography.bodyMedium) },
+                                onClick = { chatPathText = option; viewModel.updateFormField("chatPath", option); chatPathExpanded = false }
+                            )
+                        }
+                    }
+                }
                 // API Key
                 OutlinedTextField(
                     value = form.apiKey,
@@ -1295,6 +1319,7 @@ private fun EditProviderDialog(
     var baseUrl by remember { mutableStateOf(provider.baseUrl) }
     var port by remember { mutableStateOf(provider.port) }
     var apiKey by remember { mutableStateOf(provider.apiKey ?: "") }
+    var chatPath by remember { mutableStateOf(provider.chatPath ?: "") }
     var showApiKey by remember { mutableStateOf(false) }
     var typeExpanded by remember { mutableStateOf(false) }
     val types = GatewayViewModel.PROVIDER_TYPES
@@ -1376,9 +1401,9 @@ private fun EditProviderDialog(
                         }
                     },
                     label = { Text(tr("api_url")) },
-                    supportingText = {
+supportingText = {
                         if (baseUrl.startsWith("http")) {
-                            val finalUrl = baseUrl.trimEnd('/') + "/v1/chat/completions"
+                            val finalUrl = baseUrl.trimEnd('/') + (chatPath.ifBlank { "/v1/chat/completions" })
                             Text("${tr("final_url")}: $finalUrl", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                         } else {
                             Text(tr("url_hint"), style = MaterialTheme.typography.labelSmall)
@@ -1387,7 +1412,6 @@ private fun EditProviderDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
-
                 OutlinedTextField(
                     value = port,
                     onValueChange = { port = it },
@@ -1397,7 +1421,29 @@ private fun EditProviderDialog(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth()
                 )
-
+                // 对话接口路径
+                val apiPathOptions = listOf("/v1/chat/completions", "/v1/messages", "/v1/completions", "/v1/embeddings", "/v1/rerank", "/v1/moderations", "/v1/audio/speech", "/v1/images/generations", "/v1/videos", "/chat/completions", "/completions", "/generate")
+                var chatPathExpanded by remember { mutableStateOf(false) }
+                ExposedDropdownMenuBox(expanded = chatPathExpanded, onExpandedChange = { chatPathExpanded = it }) {
+                    OutlinedTextField(
+                        value = chatPath,
+                        onValueChange = { v -> chatPath = v; chatPathExpanded = true },
+                        label = { Text(localizedText("对话接口路径（留空自动拼接）", "Chat API path (blank = auto-append)")) },
+                        placeholder = { Text("/v1/chat/completions") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().menuAnchor(),
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = chatPathExpanded) }
+                    )
+                    ExposedDropdownMenu(expanded = chatPathExpanded, onDismissRequest = { chatPathExpanded = false }) {
+                        val filtered = apiPathOptions.filter { chatPath.isBlank() || it.contains(chatPath, ignoreCase = true) }
+                        filtered.forEach { option ->
+                            DropdownMenuItem(
+                                text = { Text(option, style = MaterialTheme.typography.bodyMedium) },
+                                onClick = { chatPath = option; chatPathExpanded = false }
+                            )
+                        }
+                    }
+                }
                 OutlinedTextField(
                     value = apiKey,
                     onValueChange = { apiKey = it },
@@ -1426,7 +1472,8 @@ private fun EditProviderDialog(
                         type = type,
                         baseUrl = baseUrl.trimEnd('/'),
                         port = port,
-                        apiKey = apiKey.ifBlank { null }
+                        apiKey = apiKey.ifBlank { null },
+                        chatPath = chatPath.ifBlank { null }
                     )
                 )
             }) {

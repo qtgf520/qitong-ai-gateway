@@ -9,7 +9,7 @@
 > Recommended: Uninstall old version OR clear app data → Install new version → Import backup.
 
 > **包名 / Package：** `com.qtwl.gateway`  
-> **最新版本 / Latest：** v3.18.9 (versionCode=175)  
+> **最新版本 / Latest：** v3.18.11 (versionCode=177)  
 > **开源协议 / License：** Apache 2.0  
 > **语言 / Languages：** 🌐 15 languages (CN/EN/JP/KR/FR/DE/ES/RU/PT/VN/TH/AR/HI/ID)
 > **官方QQ群 / QQ Group：** [1007488535](https://qm.qq.com/q/1007488535) 💬
@@ -179,6 +179,7 @@ See [CHANGELOG.md](CHANGELOG.md) for full changelog.
 
 | Version | Key Features |
 |:--------|:-------------|
+| **v3.18.11** | 🐛 **服务商页UI添加chatPath + 测速串行延迟 + 内置聊天修复** — 添加/编辑服务商对话框新增chatPath下拉选择框，chatPath空值自动转null，内置聊天上传provider.chatPath，测速串行+500ms延迟防误判 |
 | **v3.18.9** | ✨ **API地址不再强制拼接 + 手动添加模型** — 取消强制拼接/v1/chat/completions，支持Ollama/Gemini/中转服务等非标准路径；模型页新增"手动添加模型"按钮；💥 **后端硬编码路径全面修复** — 所有转发层改用provider.chatPath，自定义路径真正可用 |
 | **v3.18.8** | 🐛 **修复测速倒计时bug** — 倒计时现在严格按滑块设定时间（5分钟=300秒）倒数，归零才重启 |
 | **v3.18.7** | 🔀 **自定义路由规则引擎** — 支持路径/模型名(*通配符)/API密钥/服务商匹配，支持route转发+block拒绝；📊 **模型延迟历史趋势图** — Canvas折线图展示；🔑 **按API密钥用量面板** — 密钥级用量统计 |
