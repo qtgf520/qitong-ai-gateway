@@ -47,6 +47,20 @@ class GatewayForegroundService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        // ★★★ Android 16+ 前台服务启动超时修复：立即 startForeground()，避免5秒内未调用崩溃 ★★★
+        val immediatePi = PendingIntent.getActivity(this, 0,
+            Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val immediateNotification = NotificationCompat.Builder(this, GatewayApplication.CHANNEL_ID)
+            .setContentTitle(localizedText("綦桐网关启动中...", "QiTong Gateway starting..."))
+            .setContentText(localizedText("正在初始化...", "Initializing..."))
+            .setSmallIcon(android.R.drawable.ic_menu_share)
+            .setContentIntent(immediatePi)
+            .setOngoing(true)
+            .build()
+        try { startForeground(NOTIFICATION_ID, immediateNotification) } catch (_: Exception) {}
+        notificationInitialized = true
+
         val app = application as GatewayApplication
         gatewayService = GatewayService(app.database)
         wakeEnabled = getWakeEnabled()

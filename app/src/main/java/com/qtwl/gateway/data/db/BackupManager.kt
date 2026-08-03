@@ -64,7 +64,11 @@ class BackupManager(private val database: AppDatabase) {
                     "current_model_idx", "auto_backup_enabled", "auto_backup_hour", "auto_backup_minute",
                     "chat_memory_json", "chat_memory_enabled", "chat_memory_max", "capabilities_json_v2",
                     "capabilities_auto_detect", "custom_skills_json", "app_version",
-                    "require_api_key", "brain_memory_config", "thinking_config", "group_chat_enabled")
+                    "require_api_key", "brain_memory_config", "thinking_config", "group_chat_enabled",
+                    "pipeline_interval_minutes", "show_home_hint", "home_hint", "home_thinking_depth",
+                    "qtai_sj_brain_model", "traffic_upload_total", "traffic_download_total",
+                    "proxy_list_json", "allowed_api_keys", "proxy_protocol", "proxy_host", "proxy_port",
+                    "last_auto_backup_time", "auto_backup_retention_days", "initial_setup_done")
             }
             val settingsJson = org.json.JSONObject(allEntries.mapValues { it.value.toString() }).toString()
 
@@ -165,9 +169,10 @@ class BackupManager(private val database: AppDatabase) {
                                 "proxy_enabled", "auto_failover", "debug_mode", "qtai_sj_enabled", "wake_enabled",
                                 "hide_from_recents", "gateway_was_running", "continuous_chat", "require_api_key",
                                 "chat_memory_enabled", "capabilities_auto_detect", "group_chat_enabled",
-                                "auto_backup_enabled" -> putBoolean(key, value.toBooleanStrictOrNull() ?: false)
+                                "auto_backup_enabled", "show_home_hint", "home_hint" -> putBoolean(key, value.toBooleanStrictOrNull() ?: false)
                                 "gateway_port", "auto_backup_hour", "auto_backup_minute", "chat_memory_max",
-                                "current_model_idx" -> putInt(key, value.toIntOrNull() ?: 0)
+                                "current_model_idx", "pipeline_interval_minutes", "home_thinking_depth",
+                                "proxy_port", "auto_backup_retention_days" -> putInt(key, value.toIntOrNull() ?: 0)
                                 else -> putString(key, value)
                             }
                         }

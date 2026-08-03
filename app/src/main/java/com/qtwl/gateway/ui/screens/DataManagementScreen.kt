@@ -584,6 +584,78 @@ Text(localizedText("💡 备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加
                         })
                     }
                     Spacer(modifier = Modifier.height(4.dp))
+                    // ★★ qtai-sj 绑定的大脑模型（按排行榜服务商分组选择）★★
+                    val providers by viewModel.providers.collectAsState()
+                    val allModels by viewModel.models.collectAsState()
+                    var showBrainModelPicker by remember { mutableStateOf(false) }
+                    val currentBrain = remember { mutableStateOf(GatewayForegroundService.getQtaiSjBrain()) }
+                    // 按服务商分组
+                    val brainGroupedModels = remember(providers, allModels) {
+                        val providersById = providers.associateBy { it.id }
+                        val providerOrder = providers.sortedBy { it.orderIndex }.map { it.id }
+                        allModels
+                            .groupBy { it.providerId }
+                            .entries
+                            .sortedBy { (providerId, _) ->
+                                providerOrder.indexOf(providerId).let { if (it < 0) Int.MAX_VALUE else it }
+                            }
+                            .map { (providerId, modelList) ->
+                                val providerName = providersById[providerId]?.name ?: localizedText("未知服务商", "Unknown provider")
+                                "P$providerId · $providerName" to modelList
+                            }
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(localizedText("🧠 绑定大脑模型: ", "🧠 Brain model: ") + (currentBrain.value.ifBlank { localizedText("未绑定", "Not bound") }),
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                        TextButton(onClick = { showBrainModelPicker = true }) {
+                            Text(localizedText("选择", "Select"), style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                    // 大脑模型选择弹窗（排行榜风格）
+                    if (showBrainModelPicker) {
+                        AlertDialog(
+                            onDismissRequest = { showBrainModelPicker = false },
+                            title = { Text(localizedText("选择 qtai-sj 绑定大脑", "Select qtai-sj brain model"), fontWeight = FontWeight.Bold) },
+                            text = {
+                                LazyColumn(modifier = Modifier.heightIn(max = 400.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    brainGroupedModels.forEach { (providerLabel, modelList) ->
+                                        item {
+                                            Spacer(Modifier.height(4.dp))
+                                            Text("📌 $providerLabel", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                        }
+                                        items(modelList, key = { it.id }) { model ->
+                                            val isSelected = model.modelId == currentBrain.value ||
+                                                (currentBrain.value.isBlank() && model.modelId == GatewayForegroundService.getQtaiSjBrain())
+                                            Card(
+                                                modifier = Modifier.fillMaxWidth()
+                                                    .clickable {
+                                                        currentBrain.value = model.modelId
+                                                        GatewayForegroundService.saveQtaiSjBrain(model.modelId)
+                                                        showBrainModelPicker = false
+                                                    },
+                                                colors = CardDefaults.cardColors(
+                                                    containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer
+                                                        else MaterialTheme.colorScheme.surface
+                                                )
+                                            ) {
+                                                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                                    Text(if (isSelected) "●" else "○", color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                                                    Spacer(Modifier.width(8.dp))
+                                                    Column(Modifier.weight(1f)) {
+                                                        Text(model.modelId, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+                                                        if (model.customAlias.isNotBlank()) {
+                                                            Text(model.customAlias, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            confirmButton = { TextButton(onClick = { showBrainModelPicker = false }) { Text(localizedText("关闭", "Close")) } }
+                        )
+                    }
                     Text(localizedText("qtai-sj 大脑：", "qtai-sj brain: ") + memList.size + localizedText("条记忆 · 模式:", " memories · mode:") + memMode + localizedText(" · 情感感知:", " · emotional awareness:") + if (cfg.emotionalAwareness) localizedText("开", "on") else localizedText("关", "off"),
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
