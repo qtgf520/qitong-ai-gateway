@@ -624,13 +624,12 @@ Text(localizedText("💡 备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加
                                             Text("📌 $providerLabel", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                                         }
                                         items(modelList, key = { it.id }) { model ->
-                                            val isSelected = model.modelId == currentBrain.value ||
-                                                (currentBrain.value.isBlank() && model.modelId == GatewayForegroundService.getQtaiSjBrain())
+                                            val isSelected = model.routeKey == currentBrain.value
                                             Card(
                                                 modifier = Modifier.fillMaxWidth()
                                                     .clickable {
-                                                        currentBrain.value = model.modelId
-                                                        GatewayForegroundService.saveQtaiSjBrain(model.modelId)
+                                                        currentBrain.value = model.routeKey
+                                                        GatewayForegroundService.saveQtaiSjBrain(model.routeKey)
                                                         showBrainModelPicker = false
                                                     },
                                                 colors = CardDefaults.cardColors(

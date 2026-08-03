@@ -1308,7 +1308,7 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
                 if (actualCmd.isNotBlank()) {
                     // ★★★ v3.8.7：大脑调度版 — 有脑子直接跳过硬匹配 ★★★
                     val brainModelIdForCmd = GatewayForegroundService.getQtaiSjBrain()
-                    val brainModelForCmd = if (brainModelIdForCmd.isNotBlank()) database.aiModelDao().getEnabledModelsList().find { it.modelId == brainModelIdForCmd && it.isEnabled } else null
+                    val brainModelForCmd = if (brainModelIdForCmd.isNotBlank()) database.aiModelDao().getEnabledModelsList().findByRouteKey(brainModelIdForCmd)?.takeIf { it.isEnabled } else null
                     val brainProviderForCmd = if (brainModelForCmd != null) database.providerDao().getProviderById(brainModelForCmd.providerId) else null
                     if (brainModelForCmd != null && brainProviderForCmd != null && brainProviderForCmd.isEnabled) {
                         // ★ 有脑子 → 替换userMsg，直接进大脑理解，跳过旧式硬匹配 ★
@@ -1395,7 +1395,7 @@ private suspend fun proxyRequest(call: ApplicationCall, database: AppDatabase) {
                     // ★★ 硬指令未命中 → 用脑子模型理解自然语言 ★★
 val brainModelId = GatewayForegroundService.getQtaiSjBrain()
 if (brainModelId.isNotBlank()) {
-    val brainModel = database.aiModelDao().getEnabledModelsList().find { it.modelId == brainModelId && it.isEnabled }
+    val brainModel = database.aiModelDao().getEnabledModelsList().findByRouteKey(brainModelId)?.takeIf { it.isEnabled }
     val brainProvider = if (brainModel != null) database.providerDao().getProviderById(brainModel.providerId) else null
 
     if (brainModel != null && brainProvider != null && brainProvider.isEnabled) {

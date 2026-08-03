@@ -9,7 +9,7 @@
 > Recommended: Uninstall old version OR clear app data → Install new version → Import backup.
 
 > **包名 / Package：** `com.qtwl.gateway`  
-> **最新版本 / Latest：** v3.18.11 (versionCode=177)  
+> **最新版本 / Latest：** v3.18.12 (versionCode=178)  
 > **开源协议 / License：** Apache 2.0  
 > **语言 / Languages：** 🌐 15 languages (CN/EN/JP/KR/FR/DE/ES/RU/PT/VN/TH/AR/HI/ID)
 > **官方QQ群 / QQ Group：** [1007488535](https://qm.qq.com/q/1007488535) 💬
@@ -179,6 +179,7 @@ See [CHANGELOG.md](CHANGELOG.md) for full changelog.
 
 | Version | Key Features |
 |:--------|:-------------|
+| **v3.18.12** | 🐛 **修复Android 16前台服务闪退+大脑模型去重+备份增强** — 修复Android 16+前台服务启动超时崩溃，大脑模型选择改用routeKey去重防跨服务商重名全选，备份白名单新增15个键，大脑选择UI按服务商分组 |
 | **v3.18.11** | 🐛 **服务商页UI添加chatPath + 测速串行延迟 + 内置聊天修复** — 添加/编辑服务商对话框新增chatPath下拉选择框，chatPath空值自动转null，内置聊天上传provider.chatPath，测速串行+500ms延迟防误判 |
 | **v3.18.9** | ✨ **API地址不再强制拼接 + 手动添加模型** — 取消强制拼接/v1/chat/completions，支持Ollama/Gemini/中转服务等非标准路径；模型页新增"手动添加模型"按钮；💥 **后端硬编码路径全面修复** — 所有转发层改用provider.chatPath，自定义路径真正可用 |
 | **v3.18.8** | 🐛 **修复测速倒计时bug** — 倒计时现在严格按滑块设定时间（5分钟=300秒）倒数，归零才重启 |

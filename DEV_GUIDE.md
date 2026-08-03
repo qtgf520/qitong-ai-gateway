@@ -5,15 +5,15 @@
 
 ---
 
-## 📌 开发铁律（每次必读）
+## 📌 开发铁律（每次必读，违反即回滚）
 
-0. **📖 每次开发前先读本文件** — 不跳步，不省略
-1. **🔥 优先 Debug 编译** — 所有修改先 `assembleDebug` 验证通过
-2. **💾 改前先备份单个文件** — 改哪个文件就备份哪个文件（`cp xxx.kt xxx.kt.bak`）
+0. **📖 每次开发前先读本文件** — 不跳步，不省略，禁止跳过任何一步
+1. **🔥 优先 Debug 编译** — 所有修改先 `assembleDebug` 验证通过才交付
+2. **💾 改前先备份单个文件** — 改哪个文件就备份哪个文件（`cp xxx.kt xxx.kt.bak`），**不备份不准改**
 3. **🔍 参照备份开发** — 打开备份文件（xxx.kt.bak）参考，修改现有文件（xxx.kt），避免花括号等格式错误
-4. **❌ 编译报错时先恢复备份** — 从刚备份的 `.bak` 文件恢复，**禁止直接从Git拉取**
-5. **✅ 编译必须通过** — `BUILD SUCCESSFUL` 才能交付
-6. **🚿 Git提交前清理** — 删 `.bak`、`backup_*`、临时文件
+4. **❌ 编译报错时先恢复备份** — 从刚备份的 `.bak` 文件恢复，**绝对禁止从Git拉取**
+5. **✅ 编译必须通过** — `BUILD SUCCESSFUL` 才能交付，不通过不交付
+6. **🚿 Git提交前清理** — 删 `.bak`、`backup_*`、临时文件，不清不提交
 7. **📖 每次改代码前先看本文件** — 严格按流程走，不跳步
 8. **⌨️ 改代码优先使用工具编辑** — 用 `edit_file` 工具修改，避免手动替换导致格式错乱
 9. **🚫 禁止卸载APP** — 签名不对重新签名，禁止卸载（保持用户数据）
@@ -22,6 +22,10 @@
 12. **📄 每次发布前同步更新README.md和CHANGELOG.md** — 版本号、更新日志、功能描述必须与当前版本一致，改完再提交Git
 13. **🏠 双轨Git制 — 测试版提交本地Git，正式版才推远程** — 测试版只 commit 到本地 `.git`，不 `git push`；正式版才 `git push origin` + 打标签 + Release。本地Git作为"测试版存档"，远程Git作为"正式版发布"
 14. **📦 本地Git archive 发布到目录** — 测试通过后，用 `git archive` 导出干净代码到发布目录，供产出比对
+15. **🔐 编译前必须设置签名环境变量** — `export QITONG_STORE_PASSWORD=qitongwangluo && export QITONG_KEY_ALIAS=qitong && export QITONG_KEY_PASSWORD=qitongwangluo`，**不设不编译**
+16. **🔢 测试版版本号必须递增** — 每次测试版 `-N` 必须 +1（如 3.18.12-1 → 3.18.12-2 → 3.18.12-3），**禁止重复使用同一个 -N**，发布正式版时去掉 `-N`
+17. **🧠 大脑模型选择必须用 routeKey 去重** — 大脑存储和比较必须用 `model.routeKey`（`providerId::modelId`），**禁止用 `modelId` 对比**，否则跨服务商重名模型全选
+18. **💾 项目级备份（每次开发前必做）** — 每次开发任务开始前，先创建一次项目快照备份：`mkdir -p backup_$(date +%Y%m%d) && cp -r app/src backup_$(date +%Y%m%d)/ && echo "项目备份完成"`，备份到 `backup_YYYYMMDD/` 目录。开发完成后清理超过7天的旧备份
 
 ---
 
@@ -32,12 +36,14 @@
 格式：3.x.x-N  （N是测试序号，每次测试递增）
 例如：3.18.2-1 → 3.18.2-2 → 3.18.2-3 ...
 ```
-- **测试版** = 只编译安装本地验证，不发Git
+- **测试版** = 只编译安装本地验证，不发Git远程
 - 每次测试 versionCode 递增1，versionName 的 -N 数字递增
+- **绝对不能重复使用同一个 -N 号**
+
 ### 正式版
 ```
 格式：3.x.x  （去掉 -N）
-例如：3.18.2-3 测试通过 → 发布 3.18.3
+例如：3.18.12-1 测试通过 → 发布 3.18.12
 ```
 - **正式版** = 编译 + 复制到sdcard + 安装本地 + 推Git + 打标签 + GitHub Release
 - 正式发布时 versionCode 保持测试版最后的值，versionName 去掉 -N 后缀
@@ -45,9 +51,10 @@
 ### 示例
 | 阶段 | versionName | versionCode | 操作 |
 |------|-------------|-------------|------|
-| 测试1 | 3.18.2-1 | 162 | 编译安装验证 |
-| 测试2 | 3.18.2-2 | 163 | 编译安装验证 |
-| 正式发布 | 3.18.3 | 163 | 编译+安装+Git+Release |
+| 测试1 | 3.18.12-1 | 178 | 编译安装验证 |
+| 测试2 | 3.18.12-2 | 179 | 编译安装验证 |
+| 测试3 | 3.18.12-3 | 180 | 编译安装验证 |
+| 正式发布 | 3.18.12 | 180 | 编译+安装+Git+Release |
 
 ---
 
@@ -85,6 +92,9 @@
 | 群聊管理器 | service/GroupChatManager.kt |
 | 调度器 | gateway/GatewayScheduler.kt |
 | ViewModel | ui/viewmodel/GatewayViewModel.kt |
+| 首页UI | ui/screens/MainScreen.kt |
+| 聊天UI | ui/screens/ChatScreen.kt |
+| 统计页UI | ui/screens/StatsScreen.kt |
 
 ### 2.4 编译报错时**绝对禁止**的操作
 ```
@@ -100,6 +110,11 @@
 
 ```bash
 cd /data/user/0/com.ai.assistance.operit/files/workspace/app621
+
+# 先设置签名环境变量（必须）
+export QITONG_STORE_PASSWORD=qitongwangluo
+export QITONG_KEY_ALIAS=qitong
+export QITONG_KEY_PASSWORD=qitongwangluo
 
 # Debug 版（测试用，优先）
 ./gradlew assembleDebug
@@ -159,28 +174,30 @@ dumpsys package com.qtwl.gateway | grep -E 'versionName|versionCode'
 
 ### 测试模式（我说"测试"时）
 ```
-① 改版本号 → 3.x.x-N（N递增）
-② 改代码（对照备份法）
-③ ./gradlew assembleDebug
-④ 复制APK到sdcard（带版本号）
-⑤ 安装到设备
-⑥ 验证功能
-⑦ 提交本地Git（不 push 远程）
-⑧ 可选：git archive 导出到发布目录 ~/publish/
+① 备份项目 → mkdir -p backup_YYYYMMDD && cp -r app/src backup_YYYYMMDD/
+② 改版本号 → 3.x.x-N（N必须递增，不能重复）
+③ 改代码（对照备份法）
+④ export QITONG_STORE_PASSWORD=...（设置签名环境变量）
+⑤ ./gradlew assembleDebug
+⑥ 复制APK到sdcard（带版本号）
+⑦ 安装到设备
+⑧ 验证功能
+⑨ 提交本地Git（不 push 远程）
+⑩ 可选：git archive 导出到发布目录 ~/publish/
 ```
 **不推远程Git，不打远程标签，不发GitHub Release**
 
 ### 正式模式（我说"发布"时）
 ```
-① 改版本号 → 3.x.x（去掉 -N）
-② 改代码（对照备份法）
-③ 更新README.md（版本号+更新日志）
-④ 更新CHANGELOG.md（追加新版本日志）
+① 改版本号 → 3.x.x（去掉 -N，versionCode保持测试版最后值）
+② 更新CHANGELOG.md（追加新版本日志）
+③ 更新README.md（版本号+版本历史表）
+④ export QITONG_STORE_PASSWORD=...（设置签名环境变量）
 ⑤ ./gradlew assembleDebug
 ⑥ 复制APK到sdcard（带版本号）
 ⑦ 安装到设备
 ⑧ 验证功能
-⑨ 清理备份文件（删.bak）
+⑨ 清理备份文件（删.bak、backup_*）
 ⑩ 提交本地Git
 ⑪ 推远程Git + 打标签 + GitHub Release（APK上传）
 ```
@@ -273,7 +290,7 @@ cp -r ~/publish/v3.x.x /sdcard/Download/publish/
 ```bash
 # 清理旧APK（保留最新）
 cd /sdcard/Download
-ls QiTongAI*.apk 2>/dev/null | grep -v 'QiTongAI-v3.18.3.apk' | while read f; do rm -f "$f"; done
+ls QiTongAI*.apk 2>/dev/null | grep -v 'QiTongAI-v3.18.12.apk' | while read f; do rm -f "$f"; done
 
 # 清理旧备份（保留最近5天）
 # 自动由 BackupManager.cleanupOldBackups(5) 在导出时执行
@@ -284,10 +301,40 @@ ls -t *.qtbk 2>/dev/null | tail -n +2 | while read f; do rm -f "$f"; done
 
 ---
 
-> **文档版本:** v18 — 2026-08-03
+## 10. AI经典踩坑清单（每次必读）
+
+以下错误AI**经常犯**，每次开发前必须逐条核对：
+
+### 10.1 大脑存储用 routeKey 而非 modelId
+- ❌ **错误做法**：`saveQtaiSjBrain(model.modelId)`、`model.modelId == brainModelId`
+- ✅ **正确做法**：`saveQtaiSjBrain(model.routeKey)`、`model.routeKey == brainModelId`
+- **原因**：不同服务商下同名模型（如多个DeepSeek）共用一个modelId，用modelId比较会全选
+
+### 10.2 测试版版本号必须递增
+- ❌ **错误做法**：连续两次测试都用同一个 `-N` 号
+- ✅ **正确做法**：每次测试 `-N` 必须 +1（3.18.12-1 → 3.18.12-2）
+
+### 10.3 编译前必须设置签名环境变量
+- ❌ **错误做法**：直接 `./gradlew assembleDebug` 不设环境变量，APK签名不一致
+- ✅ **正确做法**：`export QITONG_STORE_PASSWORD=qitongwangluo && export QITONG_KEY_ALIAS=qitong && export QITONG_KEY_PASSWORD=qitongwangluo`
+
+### 10.4 修改代码前必须备份
+- ❌ **错误做法**：直接改原文件，不备份
+- ✅ **正确做法**：`cp TargetFile.kt TargetFile.kt.bak` 再改
+
+### 10.5 编译报错不从Git恢复
+- ❌ **错误做法**：`git checkout -- xxx.kt` 或 `git restore xxx.kt`
+- ✅ **正确做法**：`cp xxx.kt.bak xxx.kt` 从备份恢复
+
+---
+
+> **文档版本:** v19 — 2026-08-03
 > **适用于:** 綦桐AI网关 v3.18.x+
 > **核心改动:**
-> - 铁律13：新增"双轨Git制 — 测试版提交本地Git，正式版才推远程"
-> - 铁律14：新增"本地Git archive 发布到目录"
-> - 第7节：测试版流程新增⑦提交本地Git + ⑧可选archive导出；正式版流程拆出⑩提交本地Git和⑪推远程
-> - 第8节：拆分为8.1本地Git（测试版）、8.2远程Git（正式版）、8.3 GitHub Release、8.4 本地Git archive 发布到目录
+> - 铁律15：新增"编译前必须设置签名环境变量"
+> - 铁律16：新增"测试版版本号必须递增"
+> - 铁律17：新增"大脑模型选择必须用 routeKey 去重"
+> - 铁律18：新增"项目级备份（每次开发前必做）"
+> - 第7节：测试版流程增加①备份项目；正式版流程分拆更细
+> - 新增第10节：AI经典踩坑清单
+> - 版本号示例更新到3.18.12

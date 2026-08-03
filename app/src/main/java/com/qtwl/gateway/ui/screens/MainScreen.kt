@@ -1893,12 +1893,12 @@ private fun ModelCard(model: AiModel, viewModel: GatewayViewModel) {
                             text = { LazyColumn(modifier = Modifier.heightIn(max = 300.dp)) {
                                 item { TextButton(onClick = { com.qtwl.gateway.service.GatewayForegroundService.saveQtaiSjBrain(""); showBrainPicker = false }) { Text(tr("clear_brain")) } }
                                 items(enabledModels) { m ->
-                                    val isSelected = m.modelId == brainModelId
+                                    val isSelected = m.routeKey == brainModelId
                                     Row(modifier = Modifier.fillMaxWidth().clickable {
-                                        com.qtwl.gateway.service.GatewayForegroundService.saveQtaiSjBrain(m.modelId); showBrainPicker = false
+                                        com.qtwl.gateway.service.GatewayForegroundService.saveQtaiSjBrain(m.routeKey); showBrainPicker = false
                                     }.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                                         RadioButton(selected = isSelected, onClick = {
-                                            com.qtwl.gateway.service.GatewayForegroundService.saveQtaiSjBrain(m.modelId); showBrainPicker = false
+                                            com.qtwl.gateway.service.GatewayForegroundService.saveQtaiSjBrain(m.routeKey); showBrainPicker = false
                                         })
                                         Spacer(Modifier.width(8.dp))
                                         Text(m.displayName, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)

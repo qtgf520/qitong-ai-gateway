@@ -6,6 +6,26 @@
 
 ---
 
+## 🔄 v3.18.12（正式发布）
+
+### 🐛 修复
+- **Android 16前台服务闪退** — `ForegroundServiceDidNotStartInTimeException` 修复：`onCreate()` 最开头立即 `startForeground()` 创建默认通知，避免5秒超时崩溃
+- **大脑模型选择跨服务商重名全选** — 大脑存储和比较从 `modelId` 改为 `routeKey`（`providerId::modelId`），跟测速排行一致，同名模型（如多个DeepSeek）不再全选标记
+
+### ✨ 新增
+- **备份覆盖更多设置项** — 导出白名单新增15个键（`pipeline_interval_minutes`、`show_home_hint`、`home_hint`、`home_thinking_depth`、`qtai_sj_brain_model`、`traffic_upload_total`、`traffic_download_total`、`proxy_list_json`、`allowed_api_keys`、`proxy_protocol`、`proxy_host`、`proxy_port`、`last_auto_backup_time`、`auto_backup_retention_days`、`initial_setup_done`），恢复逻辑补充布尔/整数类型分支
+- **大脑模型选择UI按服务商分组** — DataManagementScreen大脑记忆卡片新增模型选择器，按排行榜风格（服务商分组，`P$providerId · $providerName` 标签）
+
+### 🔧 优化
+- **DEV_GUIDE.md 升级 v19** — 新增铁律15~18（签名环境变量/版本号递增/routeKey去重/项目级备份），新增第10节「AI经典踩坑清单」，第7节测试版流程增加①备份项目
+
+### ✅ 验证
+- 编译验证：`./gradlew assembleDebug` → `BUILD SUCCESSFUL`
+- 安装验证：`pm install -r` → `Success`（versionCode=178, versionName=3.18.12）
+- 签名：debug APK 使用 qitong.jks 签名，与 release 一致
+
+---
+
 ## 🔄 v3.18.11（正式发布）
 
 ### 🐛 修复
