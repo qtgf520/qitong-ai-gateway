@@ -1907,31 +1907,46 @@ fun ModelsScreen(viewModel: GatewayViewModel) {
 
             // 批量测速按钮 + 手动添加模型按钮
             item {
-                Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    val isBatchTesting by viewModel.batchTesting.collectAsState()
-                    Button(
-                        onClick = { viewModel.batchTestAllModels() },
-                        enabled = !isBatchTesting,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        if (isBatchTesting) {
-                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                Column {
+                    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        val isBatchTesting by viewModel.batchTesting.collectAsState()
+                        Button(
+                            onClick = { viewModel.batchTestAllModels() },
+                            enabled = !isBatchTesting,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            if (isBatchTesting) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(localizedText("测速中...", "Speed testing..."))
+                            } else {
+                                Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(localizedText("🔍 批量测速(自动开启)", "🔍 Batch speed test (auto-enable)"))
+                            }
+                        }
+                        // ★★ 手动添加模型按钮 ★★
+                        OutlinedButton(
+                            onClick = { showManualAddModel = true },
+                            enabled = providers.isNotEmpty()
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text(localizedText("测速中...", "Speed testing..."))
-                        } else {
-                            Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(localizedText("🔍 批量测速(自动开启)", "🔍 Batch speed test (auto-enable)"))
+                            Text(localizedText("✏️ 手动添加", "✏️ Add manually"))
                         }
                     }
-                    // ★★ 手动添加模型按钮 ★★
-                    OutlinedButton(
-                        onClick = { showManualAddModel = true },
-                        enabled = providers.isNotEmpty()
+                    // 🔇 错误自动关闭开关
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(localizedText("✏️ 手动添加", "✏️ Add manually"))
+                        Text("🔇 错误自动关闭", style = MaterialTheme.typography.bodyMedium)
+                        Spacer(modifier = Modifier.weight(1f))
+                        val autoClose by viewModel.batchTestingAutoClose.collectAsState()
+                        Switch(
+                            checked = autoClose,
+                            onCheckedChange = { viewModel.setBatchTestingAutoClose(it) }
+                        )
                     }
                 }
             }

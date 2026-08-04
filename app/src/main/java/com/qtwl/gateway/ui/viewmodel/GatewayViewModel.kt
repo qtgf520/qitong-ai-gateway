@@ -2314,6 +2314,13 @@ fun getDisplayModelName(model: AiModel): String {
     private val _batchTesting = MutableStateFlow(false)
     val batchTesting: StateFlow<Boolean> = _batchTesting.asStateFlow()
 
+    private val _batchTestingAutoClose = MutableStateFlow(false)
+    val batchTestingAutoClose: StateFlow<Boolean> = _batchTestingAutoClose.asStateFlow()
+
+    fun setBatchTestingAutoClose(enabled: Boolean) {
+        _batchTestingAutoClose.value = enabled
+    }
+
     /** 批量测速所有模型，通过的自动开启（顺序一个一个测） */
     fun batchTestAllModels() {
         viewModelScope.launch {
@@ -2351,6 +2358,9 @@ fun getDisplayModelName(model: AiModel): String {
                         database.aiModelDao().update(model.copy(isEnabled = true))
                         passed++
                     } else {
+                        if (_batchTestingAutoClose.value) {
+                            database.aiModelDao().update(model.copy(isEnabled = false))
+                        }
                         failed++
                     }
                 }
