@@ -2503,21 +2503,42 @@ fun clearChatError() {
                     // ★★ 测速完成一轮 → 关闭运行状态，开启倒计时 ★★
                     _pipelineRunning.value = false
                     val intervalMinutes = GatewayForegroundService.getPipelineInterval()
-                    val totalSeconds = intervalMinutes * 60
+                    val totalSeconds = (intervalMinutes * 60).coerceAtLeast(10) // 最少10秒
                     _pipelineCountdown.value = totalSeconds
                     // ★★ 倒计时循环，每秒更新一次，归零自动重启测速 ★★
-                    // ★ 修复：移除_pipelineRunning检查，避免立即跳出 ★
-                    while (_pipelineCountdown.value > 0) {
-                        kotlinx.coroutines.delay(1000)
-                        _pipelineCountdown.value--
+                    // ★ 修复：使用独立try-catch保护倒计时，防止异常中断循环 ★
+                    try {
+                        while (_pipelineCountdown.value > 0) {
+                            kotlinx.coroutines.delay(1000)
+                            _pipelineCountdown.value--
+                        }
+                    } catch (_: Exception) {
+                        // 倒计时被取消，不重启测速
+                        _pipelineCountdown.value = 0
+                        refreshQtaiSjStatus()
+                        return@launch
                     }
                     _pipelineCountdown.value = 0
                     _pipelineRunning.value = true
                 }
-            } catch (_: Exception) { }
-            _pipelineRunning.value = false
-            _pipelineCountdown.value = 0
-            refreshQtaiSjStatus()
+            } catch (_: Exception) {
+                // 外层异常：测速异常中断，仍尝试重启
+                _pipelineRunning.value = false
+                _pipelineCountdown.value = 0
+                refreshQtaiSjStatus()
+                // 异常后延迟10秒自动重启
+                kotlinx.coroutines.delay(10000)
+                if (!_pipelineRunning.value) {
+                    _pipelineRunning.value = true
+                }
+            }
+            if (_pipelineRunning.value) {
+                // 正常循环继续
+            } else {
+                _pipelineRunning.value = false
+                _pipelineCountdown.value = 0
+                refreshQtaiSjStatus()
+            }
         }
     }
 

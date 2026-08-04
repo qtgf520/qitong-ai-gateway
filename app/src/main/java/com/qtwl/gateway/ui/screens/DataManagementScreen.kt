@@ -241,53 +241,6 @@ fun DataManagementScreen(
                     }
                 }
             }
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // 导出备份
-            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Upload, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(localizedText("导出备份", "Export backup"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(localizedText("将所有配置、模型、聊天记录和 Token 用量导出为 JSON 备份文件", "Export all configuration, models, chats, and token usage as a JSON backup file"),
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = {
-                            scope.launch {
-                                val result = withContext(Dispatchers.IO) { viewModel.getBackupJson() }
-                                result.onSuccess { json ->
-                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                    clipboard.setPrimaryClip(ClipData.newPlainText(localizedText("AI网关备份", "AI Gateway Backup"), json))
-                                    snackbarHostState.showSnackbar(localizedText("✅ 备份 JSON 已复制到剪贴板", "✅ Backup JSON copied to clipboard"))
-                                }.onFailure { e -> snackbarHostState.showSnackbar(localizedText("❌ 导出失败: ", "❌ Export failed: ") + e.message) }
-                            }
-                        }, modifier = Modifier.weight(1f)) {
-                            Icon(Icons.Default.ContentCopy, contentDescription = null)
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(localizedText("复制到剪贴板", "Copy to clipboard"))
-                        }
-                        OutlinedButton(onClick = {
-                            scope.launch {
-                                val result = withContext(Dispatchers.IO) { viewModel.getBackupJson() }
-                                result.onSuccess { json ->
-                                    context.startActivity(Intent.createChooser(Intent().apply {
-                                        action = Intent.ACTION_SEND; putExtra(Intent.EXTRA_TEXT, json); type = "application/json"
-                                    }, localizedText("分享备份", "Share backup")))
-                                }.onFailure { e -> snackbarHostState.showSnackbar(localizedText("❌ 导出失败: ", "❌ Export failed: ") + e.message) }
-                            }
-                        }, modifier = Modifier.weight(1f)) {
-                            Icon(Icons.Default.Share, contentDescription = null)
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(localizedText("分享", "Share"))
-                        }
-                    }
-                }
-            }
-
             // 自动备份（含定时开关）+ 一键恢复
             Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -301,10 +254,16 @@ fun DataManagementScreen(
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // ★ 定时备份开关 + 时间设置
-                    val autoBackupEnabled = remember { mutableStateOf(false) }
-                    val autoBackupHour = remember { mutableStateOf(3) }  // 默认凌晨3点
-                    val autoBackupMinute = remember { mutableStateOf(0) }
+                    // ★ 定时备份开关 + 时间设置（从持久化读取，避免重建丢失）
+                    val autoBackupEnabled = remember { mutableStateOf(
+                        GatewayForegroundService.getGatewayConfig("auto_backup_enabled", "false").toBoolean()
+                    ) }
+                    val autoBackupHour = remember { mutableStateOf(
+                        GatewayForegroundService.getGatewayConfig("auto_backup_hour", "3").toIntOrNull() ?: 3
+                    ) }
+                    val autoBackupMinute = remember { mutableStateOf(
+                        GatewayForegroundService.getGatewayConfig("auto_backup_minute", "0").toIntOrNull() ?: 0
+                    ) }
                     var showTimePicker by remember { mutableStateOf(false) }
 
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -406,6 +365,38 @@ fun DataManagementScreen(
                             Icon(Icons.Default.Restore, contentDescription = null)
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(localizedText("恢复备份", "Restore backup"))
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    // ★ 导出备份行（复制到剪贴板 / 分享）
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = {
+                            scope.launch {
+                                val result = withContext(Dispatchers.IO) { viewModel.getBackupJson() }
+                                result.onSuccess { json ->
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                    clipboard.setPrimaryClip(ClipData.newPlainText(localizedText("AI网关备份", "AI Gateway Backup"), json))
+                                    snackbarHostState.showSnackbar(localizedText("✅ 备份 JSON 已复制到剪贴板", "✅ Backup JSON copied to clipboard"))
+                                }.onFailure { e -> snackbarHostState.showSnackbar(localizedText("❌ 导出失败: ", "❌ Export failed: ") + e.message) }
+                            }
+                        }, modifier = Modifier.weight(1f)) {
+                            Icon(Icons.Default.ContentCopy, contentDescription = null)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(localizedText("复制到剪贴板", "Copy to clipboard"))
+                        }
+                        OutlinedButton(onClick = {
+                            scope.launch {
+                                val result = withContext(Dispatchers.IO) { viewModel.getBackupJson() }
+                                result.onSuccess { json ->
+                                    context.startActivity(Intent.createChooser(Intent().apply {
+                                        action = Intent.ACTION_SEND; putExtra(Intent.EXTRA_TEXT, json); type = "application/json"
+                                    }, localizedText("分享备份", "Share backup")))
+                                }.onFailure { e -> snackbarHostState.showSnackbar(localizedText("❌ 导出失败: ", "❌ Export failed: ") + e.message) }
+                            }
+                        }, modifier = Modifier.weight(1f)) {
+                            Icon(Icons.Default.Share, contentDescription = null)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(localizedText("分享", "Share"))
                         }
                     }
                     Spacer(modifier = Modifier.height(8.dp))
@@ -534,29 +525,6 @@ Text(localizedText("💡 备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加
                     }
                 }
             }
-
-            // 重置数据
-            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Error.copy(alpha = 0.08f))) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.DeleteForever, contentDescription = null, tint = Error)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(localizedText("重置所有数据", "Reset all data"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Error)
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(localizedText("⚠️ 此操作将清空所有服务商、模型、聊天记录和 Token 用量，不可恢复！", "⚠️ This will delete all providers, models, chats, and token usage. It cannot be undone!"),
-                        style = MaterialTheme.typography.bodySmall, color = Error.copy(alpha = 0.8f))
-                    Spacer(modifier = Modifier.height(12.dp))
-                    OutlinedButton(onClick = { showResetConfirm = true }, modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Error)) {
-                        Icon(Icons.Default.Warning, contentDescription = null)
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(localizedText("重置所有数据", "Reset all data"))
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
 
             // ★★ 记忆管理卡片（BrainMemory 大脑）★★
             val cfg = BrainMemoryManager.getConfig()
@@ -1064,227 +1032,27 @@ Text(localizedText("💡 备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加
 
             // ★★ 抓包日志页面（全屏覆盖）★★
 
-            Spacer(modifier = Modifier.height(8.dp))
-            HorizontalDivider()
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // ★★ 思考引导配置 ★★
-            val thinkingEnabled = remember { mutableStateOf(ThinkingConfigManager.isEnabled()) }
-            val thinkingDepth = remember { mutableStateOf(ThinkingConfigManager.getDepth()) }
-            val depthOptions = ThinkingConfigManager.ThinkingDepth.entries
-            var depthExpanded by remember { mutableStateOf(false) }
-            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Psychology, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(localizedText("🧠 思考引导", "🧠 Thinking guide"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                        Switch(checked = thinkingEnabled.value, onCheckedChange = { e ->
-                            thinkingEnabled.value = e
-                            ThinkingConfigManager.setEnabled(e)
-                        })
-                    }
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(localizedText("在 qtai-sj 回复前注入思考引导，让 AI 先分析再回答", "Inject a thinking guide before qtai-sj replies so the AI analyzes first, then answers"),
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (thinkingEnabled.value) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        ExposedDropdownMenuBox(expanded = depthExpanded, onExpandedChange = { depthExpanded = it }) {
-                            OutlinedTextField(value = thinkingDepth.value.localizedLabel(), onValueChange = {}, readOnly = true,
-                                label = { Text(localizedText("思考深度", "Thinking depth")) }, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = depthExpanded) },
-                                modifier = Modifier.fillMaxWidth().menuAnchor())
-                            ExposedDropdownMenu(expanded = depthExpanded, onDismissRequest = { depthExpanded = false }) {
-                                depthOptions.forEach { opt ->
-                                    DropdownMenuItem(text = { Text(opt.localizedLabel()) }, onClick = {
-                                        thinkingDepth.value = opt
-                                        ThinkingConfigManager.setDepth(opt)
-                                        if (opt == ThinkingConfigManager.ThinkingDepth.OFF) {
-                                            ThinkingConfigManager.setEnabled(false)
-                                            thinkingEnabled.value = false
-                                        }
-                                        depthExpanded = false
-                                    })
-                                }
-                            }
-                        }
-                    }
-                }
-            }
             Spacer(modifier = Modifier.height(16.dp))
 
-            // ★★ 群聊模式配置 ★★
-            val groupChatEnabled = remember { mutableStateOf(GroupChatManager.isEnabled()) }
-            val groupChatSummarizer = remember { mutableStateOf(GroupChatManager.getSummarizerModel()) }
-            val groupChatMaxRounds = remember { mutableStateOf(GroupChatManager.getMaxRounds().toString()) }
-            var showGroupChatModelPicker by remember { mutableStateOf(false) }
-            var showGroupChatSummarizerPicker by remember { mutableStateOf(false) }
-            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+            // 重置数据
+            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Error.copy(alpha = 0.08f))) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Group, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Default.DeleteForever, contentDescription = null, tint = Error)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(localizedText("💬 群聊模式", "💬 Group chat mode"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                        Switch(checked = groupChatEnabled.value, onCheckedChange = { e ->
-                            groupChatEnabled.value = e
-                            GroupChatManager.setEnabled(e)
-                        })
+                        Text(localizedText("重置所有数据", "Reset all data"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Error)
                     }
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(localizedText("虚拟沙箱：用户发消息 → AI依次发言 → 总结者输出", "Virtual sandbox: user sends a message → AIs speak in order → summarizer outputs"),
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (groupChatEnabled.value) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        // ★ 参与模型（从排行榜勾选）★★
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(localizedText("参与模型: ", "Participant models: "), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(GroupChatManager.getParticipantModels().joinToString(", ").take(30) + if (GroupChatManager.getParticipantModels().joinToString(", ").length > 30) "..." else "",
-                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Button(onClick = { showGroupChatModelPicker = true }, modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)) {
-                            Icon(Icons.Default.List, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text(localizedText("📊 从测速排行榜选择模型 (", "📊 Select models from speed ranking (") + GroupChatManager.getParticipantModels().size + localizedText("个)", ")"))
-                        }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        // ★ 总结模型（从排行榜勾选）★★
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(localizedText("总结模型: ", "Summary model: "), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(GroupChatManager.getSummarizerModel().ifBlank { localizedText("未设置", "Not set") },
-                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Button(onClick = { showGroupChatSummarizerPicker = true }, modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)) {
-                            Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text(localizedText("🎯 选择总结模型", "🎯 Select summary model"))
-                        }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        OutlinedTextField(value = groupChatMaxRounds.value, onValueChange = { v ->
-                            groupChatMaxRounds.value = v
-                            v.toIntOrNull()?.let { GroupChatManager.setMaxRounds(it) }
-                        }, label = { Text(localizedText("轮次", "Rounds")) }, singleLine = true, modifier = Modifier.width(100.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(localizedText("⚠️ 此操作将清空所有服务商、模型、聊天记录和 Token 用量，不可恢复！", "⚠️ This will delete all providers, models, chats, and token usage. It cannot be undone!"),
+                        style = MaterialTheme.typography.bodySmall, color = Error.copy(alpha = 0.8f))
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedButton(onClick = { showResetConfirm = true }, modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Error)) {
+                        Icon(Icons.Default.Warning, contentDescription = null)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(localizedText("重置所有数据", "Reset all data"))
                     }
                 }
-            }
-            // ★ 参与模型选择弹窗（排行榜列表勾选）★★
-            if (showGroupChatModelPicker) {
-                // ★★★ 弹窗打开时快照数据，避免实时刷新导致列表跳动 ★★★
-                val snapshotModels = remember(viewModel) {
-                    viewModel.enabledModels.value.ifEmpty {
-                        listOf<com.qtwl.gateway.data.model.AiModel>()
-                    }
-                }
-                val snapshotSortedIds = remember { com.qtwl.gateway.gateway.GatewayScheduler.pipelineSortedModelKeys.toList() }
-                val sortedModels = remember {
-                    snapshotModels.sortedByDescending { snapshotSortedIds.indexOf(it.routeKey) }.reversed()
-                }
-                val currentParticipants = remember { mutableStateListOf<String>().apply { addAll(GroupChatManager.getParticipantModels()) } }
-                AlertDialog(
-                    onDismissRequest = { showGroupChatModelPicker = false },
-                    title = { Text(localizedText("选择参与模型", "Select participant models"), fontWeight = FontWeight.Bold) },
-                    text = {
-                        if (sortedModels.isEmpty()) {
-                            Text(localizedText("暂无可用模型，请先添加服务商和启用模型", "No available models. Add a provider and enable models first"))
-                        } else {
-                            LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {
-                                items(sortedModels) { model ->
-                                    val isSelected = model.modelId in currentParticipants
-                                    val rank = snapshotSortedIds.indexOf(model.modelId)
-                                    val rankStr = if (rank >= 0) " #${rank + 1}" else ""
-                                    Row(modifier = Modifier.fillMaxWidth().clickable {
-                                        if (isSelected) currentParticipants.remove(model.modelId)
-                                        else currentParticipants.add(model.modelId)
-                                    }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        Checkbox(checked = isSelected, onCheckedChange = { c ->
-                                            if (c) currentParticipants.add(model.modelId)
-                                            else currentParticipants.remove(model.modelId)
-                                        })
-                                        Spacer(Modifier.width(4.dp))
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(model.modelId, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
-                                            Text(model.displayName.ifBlank { model.customAlias }, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        }
-                                        if (rank >= 0) {
-                                            Text(rankStr, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                                        }
-                                    }
-                                    HorizontalDivider()
-                                }
-                            }
-                        }
-                    },
-                    confirmButton = {
-                        Button(onClick = {
-                            GroupChatManager.setParticipantModels(currentParticipants.toList())
-                            showGroupChatModelPicker = false
-                        }) { Text(localizedText("确定 (", "OK (") + currentParticipants.size + localizedText("个)", ")")) }
-                    },
-                    dismissButton = { TextButton(onClick = { showGroupChatModelPicker = false }) { Text(localizedText("取消", "Cancel")) } }
-                )
-            }
-            // ★ 总结模型选择弹窗 ★★
-            if (showGroupChatSummarizerPicker) {
-                // ★★★ 弹窗打开时快照数据，避免实时刷新导致列表跳动 ★★★
-                val snapshotModels = remember(viewModel) {
-                    viewModel.enabledModels.value.ifEmpty {
-                        listOf<com.qtwl.gateway.data.model.AiModel>()
-                    }
-                }
-                val snapshotSortedIds = remember { com.qtwl.gateway.gateway.GatewayScheduler.pipelineSortedModelKeys.toList() }
-                val sortedModels = remember {
-                    snapshotModels.sortedByDescending { snapshotSortedIds.indexOf(it.routeKey) }.reversed()
-                }
-                var selectedSummarizer by remember { mutableStateOf(GroupChatManager.getSummarizerModel()) }
-                AlertDialog(
-                    onDismissRequest = { showGroupChatSummarizerPicker = false },
-                    title = { Text(localizedText("选择总结模型", "Select summary model"), fontWeight = FontWeight.Bold) },
-                    text = {
-                        if (sortedModels.isEmpty()) {
-                            Text(localizedText("暂无可用模型", "No available models"))
-                        } else {
-                            LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {
-                                // 加一个localizedText("无总结者", "No summarizer")选项
-                                item {
-                                    Row(modifier = Modifier.fillMaxWidth().clickable { selectedSummarizer = "" }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        RadioButton(selected = selectedSummarizer == "", onClick = { selectedSummarizer = "" })
-                                        Spacer(Modifier.width(4.dp))
-                                        Text(localizedText("无总结者", "No summarizer"), style = MaterialTheme.typography.bodySmall)
-                                    }
-                                }
-                                item { HorizontalDivider() }
-                                items(sortedModels) { model ->
-                                    val rank = snapshotSortedIds.indexOf(model.modelId)
-                                    val rankStr = if (rank >= 0) " #${rank + 1}" else ""
-                                    Row(modifier = Modifier.fillMaxWidth().clickable { selectedSummarizer = model.modelId }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        RadioButton(selected = selectedSummarizer == model.modelId, onClick = { selectedSummarizer = model.modelId })
-                                        Spacer(Modifier.width(4.dp))
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(model.modelId, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
-                                            Text(model.displayName.ifBlank { model.customAlias }, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        }
-                                        if (rank >= 0) {
-                                            Text(rankStr, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                                        }
-                                    }
-                                    HorizontalDivider()
-                                }
-                            }
-                        }
-                    },
-                    confirmButton = {
-                        Button(onClick = {
-                            GroupChatManager.setSummarizerModel(selectedSummarizer)
-                            groupChatSummarizer.value = selectedSummarizer
-                            showGroupChatSummarizerPicker = false
-                        }) { Text(localizedText("确定", "OK")) }
-                    },
-                    dismissButton = { TextButton(onClick = { showGroupChatSummarizerPicker = false }) { Text(localizedText("取消", "Cancel")) } }
-                )
             }
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -1964,6 +1732,7 @@ fun AboutScreen(viewModel: GatewayViewModel = viewModel(factory = GatewayViewMod
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(localizedText("版本: v", "Version: v") + appVersion, style = MaterialTheme.typography.bodyMedium)
                     Text(localizedText("开发者: 綦桐网络", "Developer: QiTong Network"), style = MaterialTheme.typography.bodyMedium)
+                    Text(localizedText("QQ群: 966345026", "QQ Group: 966345026"), style = MaterialTheme.typography.bodyMedium)
                     Text(localizedText("协议: OpenAI Compatible API", "Protocol: OpenAI-compatible API"), style = MaterialTheme.typography.bodyMedium)
                 }
             }

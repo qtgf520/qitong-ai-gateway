@@ -2,11 +2,11 @@
 
 > 包名：com.qtwl.gateway
 > 签名证书：qitong.jks (别名: qitong)
-> 最后更新：2026-08-03
+> 最后更新：2026-08-04
 
 ---
 
-## 🔄 v3.18.12（正式发布）
+## 🔄 v3.18.13（正式发布）
 
 ### 🐛 修复
 - **Android 16前台服务闪退** — `ForegroundServiceDidNotStartInTimeException` 修复：`onCreate()` 最开头立即 `startForeground()` 创建默认通知，避免5秒超时崩溃
@@ -19,9 +19,20 @@
 ### 🔧 优化
 - **DEV_GUIDE.md 升级 v19** — 新增铁律15~18（签名环境变量/版本号递增/routeKey去重/项目级备份），新增第10节「AI经典踩坑清单」，第7节测试版流程增加①备份项目
 
+### ✨ 新增（v3.18.12 补充）
+- **🚀 网关启动自动测速** — `GatewayService.start()` 启动2秒后自动调用 `GatewayScheduler.refreshHealthCache(database)`，自动故障转移开启时触发，无需手动点测速
+- **⏰ 网关启动自动调度备份** — 启动后检查 `auto_backup_enabled` 配置，启用时自动调用 `AutoBackupWorker.schedule()` 调度WorkManager定时备份
+- **🏠 思考引导和群聊模式移到首页** — 从数据管理页移至首页，首页直接使用思考引导和群聊，操作更便捷
+- **🔽 重置按钮移到底部** — DataManagementScreen 重置数据Card移至Column底部，添加服务Card之前，更符合操作流程
+- **🔗 导出备份合并到备份&恢复卡片** — 删除独立导出行，整合到备份&恢复卡片内部，界面更简洁
+
+### 🐛 修复（v3.18.12 补充）
+- **🧹 qtai-sj无前缀输出人格移除** — 无前缀透传路径不再输出人格设定，纯净模型回复
+- **💬 关于我们添加QQ群号** — 关于页面新增"QQ群: 966345026"，方便用户交流
+
 ### ✅ 验证
 - 编译验证：`./gradlew assembleDebug` → `BUILD SUCCESSFUL`
-- 安装验证：`pm install -r` → `Success`（versionCode=178, versionName=3.18.12）
+- 安装验证：`pm install -r` → `Success`（versionCode=182, versionName=3.18.13）
 - 签名：debug APK 使用 qitong.jks 签名，与 release 一致
 
 ---

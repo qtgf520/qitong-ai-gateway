@@ -69,6 +69,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
+import com.qtwl.gateway.GatewayApplication
+import com.qtwl.gateway.data.db.AutoBackupWorker
 
 /**
  * 本地 AI 网关服务（Ktor Server）
@@ -90,6 +92,33 @@ class GatewayService(private val database: AppDatabase) {
 
         // ★★ 启动会话清理协程（闲置超时自动断开）★★
         startSessionCleanup()
+
+        // ★★ 服务启动后自动测速 + 定时备份调度 ★★
+        sessionCleanupScope.launch {
+            delay(2000) // 等2秒，让服务完全启动
+            // 任务1：自动启动测速（如果启用了自动故障转移）
+            try {
+                if (GatewayForegroundService.getAutoFailover()) {
+                    GatewayForegroundService.addDebugLog("⚡ 自动启动流水线测速...")
+                    GatewayScheduler.refreshHealthCache(database)
+                    GatewayForegroundService.addDebugLog("✅ 自动测速完成")
+                }
+            } catch (e: Exception) {
+                GatewayForegroundService.addDebugLog("⚠️ 自动测速失败: ${e.message}")
+            }
+            // 任务2：检查并调度定时备份
+            try {
+                val context = GatewayApplication.getInstance()
+                if (GatewayForegroundService.getGatewayConfig("auto_backup_enabled", "false").toBoolean()) {
+                    val hour = GatewayForegroundService.getGatewayConfig("auto_backup_hour", "3").toIntOrNull() ?: 3
+                    val minute = GatewayForegroundService.getGatewayConfig("auto_backup_minute", "0").toIntOrNull() ?: 0
+                    AutoBackupWorker.schedule(context, hour, minute)
+                    GatewayForegroundService.addDebugLog("✅ 定时备份已调度: 每日 $hour:${minute.toString().padStart(2, '0')}")
+                }
+            } catch (e: Exception) {
+                GatewayForegroundService.addDebugLog("⚠️ 定时备份调度失败: ${e.message}")
+            }
+        }
 
         val embedded = embeddedServer(CIO, port = port) {
             // ★★ 安装 WebSocket 支持 ★★★
@@ -1942,14 +1971,8 @@ val attemptModels: List<AiModel> = if (allEnabled.isNotEmpty()) {
                     val useProxy = primaryModel.useProxy
 
                     val sanitizedBody = sanitizeRequestBody(finalRequestBodyStr)
-                    // ★★ 人格+记忆注入 ★★
-                    val bodyWithPersona = if (BrainMemoryManager.getConfig().enabled) {
-                        val personaText = BrainMemoryManager.buildPersonaPrompt()
-                        if (personaText.isNotBlank()) {
-                            val systemJson = "{\"role\":\"system\",\"content\":${proxyJson.encodeToString(JsonPrimitive(personaText))}}"
-                            sanitizedBody.replaceFirst(Regex("\"messages\"\\s*:\\s*\\["), "\"messages\":[$systemJson,")
-                        } else sanitizedBody
-                    } else sanitizedBody
+                    // ★★ 无前缀模式：不注入人格/记忆/技能，纯透传 ★★
+                    val bodyWithPersona = sanitizedBody
                     // ★★ qtai-sj 替换模型ID ★★
                     val modifiedBody = if (modelId == "qtai-sj" || (autoFailover && primaryModel.modelId != modelId)) {
                         bodyWithPersona.replaceFirst(Regex("\"model\"\\s*:\\s*\"[^\"]+\""), "\"model\":\"${primaryModel.modelId}\"")
@@ -1998,13 +2021,8 @@ val attemptModels: List<AiModel> = if (allEnabled.isNotEmpty()) {
                     val useProxy = matchedModel.useProxy
 
                     val sanitizedBody2 = sanitizeRequestBody(requestBodyStr)
-                    val bodyWithPersona2 = if (BrainMemoryManager.getConfig().enabled) {
-                        val personaText = BrainMemoryManager.buildPersonaPrompt()
-                        if (personaText.isNotBlank()) {
-                            val systemJson = "{\"role\":\"system\",\"content\":${proxyJson.encodeToString(JsonPrimitive(personaText))}}"
-                            sanitizedBody2.replaceFirst(Regex("\"messages\"\\s*:\\s*\\["), "\"messages\":[$systemJson,")
-                        } else sanitizedBody2
-                    } else sanitizedBody2
+                    // ★★ 无前缀模式（故障转移时同样不注入人格/记忆）- 纯透传 ★★
+                    val bodyWithPersona2 = sanitizedBody2
                     val modifiedBody2 = if (modelId == "qtai-sj" || (autoFailover && matchedModel.modelId != modelId)) {
                         bodyWithPersona2.replaceFirst(Regex("\"model\"\\s*:\\s*\"[^\"]+\""), "\"model\":\"${matchedModel.modelId}\"")
                     } else bodyWithPersona2
