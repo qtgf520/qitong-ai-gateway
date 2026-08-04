@@ -6,6 +6,18 @@
 
 ---
 
+## 🔄 v3.18.14（正式发布）
+
+### ✨ 新增
+- **🔇 批量测速错误自动关闭开关** — 模型页新增"🔇 错误自动关闭"开关，开启后批量测速中失败的模型会被自动禁用（`isEnabled=false`），避免反复调用无效模型，与"批量测速自动开启"按钮并列使用
+
+### ✅ 验证
+- 编译验证：`./gradlew assembleDebug` → `BUILD SUCCESSFUL`
+- 安装验证：`pm install -r` → `Success`（versionCode=183, versionName=3.18.14）
+- 签名：debug APK 使用 qitong.jks 签名，与 release 一致
+
+---
+
 ## 🔄 v3.18.13（正式发布）
 
 ### 🐛 修复
