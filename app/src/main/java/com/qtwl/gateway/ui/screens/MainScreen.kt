@@ -989,20 +989,20 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                 } else {
                     LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {
                         items(sortedModels) { model ->
-                            val isSelected = model.modelId in currentParticipants
-                            val rank = snapshotSortedIds.indexOf(model.modelId)
+                            val isSelected = model.routeKey in currentParticipants
+                            val rank = snapshotSortedIds.indexOf(model.routeKey)
                             val rankStr = if (rank >= 0) " #${rank + 1}" else ""
                             Row(modifier = Modifier.fillMaxWidth().clickable {
-                                if (isSelected) currentParticipants.remove(model.modelId)
-                                else currentParticipants.add(model.modelId)
+                                if (isSelected) currentParticipants.remove(model.routeKey)
+                                else currentParticipants.add(model.routeKey)
                             }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Checkbox(checked = isSelected, onCheckedChange = { c ->
-                                    if (c) currentParticipants.add(model.modelId)
-                                    else currentParticipants.remove(model.modelId)
+                                    if (c) currentParticipants.add(model.routeKey)
+                                    else currentParticipants.remove(model.routeKey)
                                 })
                                 Spacer(Modifier.width(4.dp))
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(model.modelId, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                                    Text("P${model.providerId}·${model.modelId}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
                                     Text(model.displayName.ifBlank { model.customAlias }, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 if (rank >= 0) {
@@ -1052,13 +1052,13 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                         }
                         item { HorizontalDivider() }
                         items(sortedModels) { model ->
-                            val rank = snapshotSortedIds.indexOf(model.modelId)
+                            val rank = snapshotSortedIds.indexOf(model.routeKey)
                             val rankStr = if (rank >= 0) " #${rank + 1}" else ""
-                            Row(modifier = Modifier.fillMaxWidth().clickable { selectedSummarizer = model.modelId }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                RadioButton(selected = selectedSummarizer == model.modelId, onClick = { selectedSummarizer = model.modelId })
+                            Row(modifier = Modifier.fillMaxWidth().clickable { selectedSummarizer = model.routeKey }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                RadioButton(selected = selectedSummarizer == model.routeKey, onClick = { selectedSummarizer = model.routeKey })
                                 Spacer(Modifier.width(4.dp))
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(model.modelId, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                                    Text("P${model.providerId}·${model.modelId}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
                                     Text(model.displayName.ifBlank { model.customAlias }, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 if (rank >= 0) {
@@ -2121,7 +2121,7 @@ private fun ModelCard(model: AiModel, viewModel: GatewayViewModel) {
                     Switch(checked = qtaiSjEnabled, onCheckedChange = { viewModel.toggleQtaiSj() })
                     Spacer(Modifier.width(4.dp))
                     TextButton(onClick = { showBrainPicker = true }) {
-                        Text(if (brainModelId.isNotBlank()) "🧠 $brainModelId" else localizedText("🧠绑定", "🧠 Bind"), style = MaterialTheme.typography.labelSmall)
+                        Text(if (brainModelId.isNotBlank()) "🧠 ${ModelRouteKey.display(brainModelId)}" else localizedText("🧠绑定", "🧠 Bind"), style = MaterialTheme.typography.labelSmall)
                     }
                     if (showBrainPicker) {
                         val enabledModels by viewModel.enabledModels.collectAsState()
@@ -2139,7 +2139,7 @@ private fun ModelCard(model: AiModel, viewModel: GatewayViewModel) {
                                             com.qtwl.gateway.service.GatewayForegroundService.saveQtaiSjBrain(m.routeKey); showBrainPicker = false
                                         })
                                         Spacer(Modifier.width(8.dp))
-                                        Text(m.displayName, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
+                                        Text("P${m.providerId}·${m.modelId}", fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
                                     }
                                 }
                             } },

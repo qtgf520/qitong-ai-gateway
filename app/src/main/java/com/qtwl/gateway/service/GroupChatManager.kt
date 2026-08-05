@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import com.qtwl.gateway.GatewayApplication
 import com.qtwl.gateway.data.db.AppDatabase
 import com.qtwl.gateway.data.model.AiModel
+import com.qtwl.gateway.data.model.findByRouteKey
 import com.qtwl.gateway.utils.localizedText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -97,7 +98,7 @@ object GroupChatManager {
             fullLog.add(localizedText("## 第 $round 轮", "## Round $round"))
 
             val futures = participantIds.mapNotNull { modelId ->
-                val model = allModels.firstOrNull { it.modelId == modelId } ?: return@mapNotNull null
+                val model = allModels.findByRouteKey(modelId) ?: return@mapNotNull null
                 val provider = database.providerDao().getProviderById(model.providerId) ?: return@mapNotNull null
                 if (!provider.isEnabled) return@mapNotNull null
 
@@ -124,7 +125,7 @@ object GroupChatManager {
 
         // ===== 总结者 =====
         if (summarizerId.isNotBlank()) {
-            val sumModel = allModels.firstOrNull { it.modelId == summarizerId }
+            val sumModel = allModels.findByRouteKey(summarizerId)
             val sumProvider = sumModel?.let { database.providerDao().getProviderById(it.providerId) }
             if (sumModel != null && sumProvider != null && sumProvider.isEnabled) {
                 try {
