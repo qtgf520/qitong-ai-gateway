@@ -2,7 +2,22 @@
 
 > 包名：com.qtwl.gateway
 > 签名证书：qitong.jks (别名: qitong)
-> 最后更新：2026-08-04
+> 最后更新：2026-08-05
+
+---
+
+## 🔄 v3.18.15（正式发布）
+
+### ✨ 新增
+- **🏷️ 模型选择器P前缀显示（全端统一）** — 群聊参与模型/总结模型选择、qtai-sj脑子按钮/弹窗、统计页模型选择器/趋势图标题、服务商页名称，全部统一显示 `P${providerId}·${modelId}` 格式
+- **🔗 模型选择/去重改用 routeKey** — 群聊参与模型、总结者选择、GroupChatManager 内部匹配全部改用 `routeKey`（`providerId::modelId`）做唯一标识，彻底修复同名模型（如多个服务商均有 deepseek-v4）点击一个全选/错误路由的bug
+- **⏱ 测速间隔滑块绑定自启测速** — 修改滑块间隔时，若测速正在运行，自动 `stopPipelineTest()` + `startPipelineTest()` 使新间隔立即生效，不再需要手动开关
+- **📊 统计页"所有模型"选项** — 模型选择器新增 `📊 所有模型` 选项，点击清空选择显示全部模型历史趋势
+
+### ✅ 验证
+- 编译验证：`./gradlew assembleDebug` → `BUILD SUCCESSFUL`
+- 安装验证：`pm install -r` → `Success`（versionCode=185, versionName=3.18.15）
+- 签名：debug APK 使用 qitong.jks 签名，与 release 一致
 
 ---
 

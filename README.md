@@ -9,7 +9,7 @@
 > Recommended: Uninstall old version OR clear app data → Install new version → Import backup.
 
 > **包名 / Package：** `com.qtwl.gateway`  
-> **最新版本 / Latest：** v3.18.14 (versionCode=183)  
+> **最新版本 / Latest：** v3.18.15 (versionCode=185)  
 > **开源协议 / License：** Apache 2.0  
 > **语言 / Languages：** 🌐 15 languages (CN/EN/JP/KR/FR/DE/ES/RU/PT/VN/TH/AR/HI/ID)
 > **官方QQ群 / QQ Group：** [1007488535](https://qm.qq.com/q/1007488535) 💬
@@ -179,6 +179,7 @@ See [CHANGELOG.md](CHANGELOG.md) for full changelog.
 
 | Version | Key Features |
 |:--------|:-------------|
+| **v3.18.15** | 🏷️ **全端P前缀显示统一 + routeKey去重 + 测速滑块绑定自启 + 统计页"所有模型"** — 群聊/脑子/统计/服务商全部显示`P${providerId}·${modelId}`，routeKey彻底修复同名模型全选bug，滑块改间隔自动重启测速 |
 | **v3.18.14** | 🔇 **批量测速错误自动关闭开关** — 模型页新增错误自动关闭开关，测速失败模型自动禁用，与批量测速按钮并列使用 |
 | **v3.18.13** | 🚀 **网关启动自动测速+自动备份+UI优化** — 启动自动调用测速和定时备份，思考引导和群聊移至首页，重置按钮移到底部，导出备份合并到备份&恢复卡片，qtai-sj无前缀输出人格移除，关于页面添加QQ群号，修复Android 16前台服务闪退+大脑模型去重+备份增强 |
 | **v3.18.11** | 🐛 **服务商页UI添加chatPath + 测速串行延迟 + 内置聊天修复** — 添加/编辑服务商对话框新增chatPath下拉选择框，chatPath空值自动转null，内置聊天上传provider.chatPath，测速串行+500ms延迟防误判 |
