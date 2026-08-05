@@ -1255,7 +1255,7 @@ private fun ProviderCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = localizeGeneratedName(provider.name),
+                        text = "P${provider.id}·${localizeGeneratedName(provider.name)}",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.weight(1f, fill = false)
