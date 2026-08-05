@@ -6,6 +6,18 @@
 
 ---
 
+## 🔄 v3.18.15-1（测试发布）
+
+### 🐛 修复
+- **💥 前台服务启动崩溃（ClassCastException）** — `GatewayForegroundService.onCreate()` 中 `getSavedTraffic()` 调用 `sp.getLong()` 时，因旧版数据可能存成了 String 类型，导致 `ClassCastException: String cannot be cast to Long`，APP 启动即闪退。修复方案：`getSavedTraffic()` 加 `try-catch ClassCastException` 兜底，捕获异常后回退到 `sp.getString()` + `toLongOrNull()` 兼容解析
+
+### ✅ 验证
+- 编译验证：`./gradlew assembleDebug` → `BUILD SUCCESSFUL`
+- 安装验证：`pm install -r` → `Success`（versionCode=186, versionName=3.18.15-1）
+- 签名：debug APK 使用 qitong.jks 签名，与 release 一致
+
+---
+
 ## 🔄 v3.18.15（正式发布）
 
 ### ✨ 新增

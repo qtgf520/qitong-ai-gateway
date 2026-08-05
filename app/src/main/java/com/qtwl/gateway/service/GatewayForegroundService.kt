@@ -555,10 +555,16 @@ val totalDownloadBytes = java.util.concurrent.atomic.AtomicLong(0L)   // ★ APP
         }
         fun getSavedTraffic(type: String): Long {
             val sp = GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0)
-            return when (type) {
-                "total_upload" -> sp.getLong(KEY_TRAFFIC_UPLOAD + "_total", 0L)
-                "total_download" -> sp.getLong(KEY_TRAFFIC_DOWNLOAD + "_total", 0L)
-                else -> 0L
+            val key = when (type) {
+                "total_upload" -> KEY_TRAFFIC_UPLOAD + "_total"
+                "total_download" -> KEY_TRAFFIC_DOWNLOAD + "_total"
+                else -> return 0L
+            }
+            return try {
+                sp.getLong(key, 0L)
+            } catch (e: ClassCastException) {
+                // ★★★ 兼容旧版：之前可能存成了String，解析为Long ★★★
+                sp.getString(key, "0")?.toLongOrNull() ?: 0L
             }
         }
         
