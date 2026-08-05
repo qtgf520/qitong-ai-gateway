@@ -625,6 +625,11 @@ fun refreshTokenStats() {
 
     /** 加载指定模型的测速历史 */
     fun loadModelHistory(modelKey: String) {
+        if (modelKey.isBlank()) {
+            _selectedHistoryModelKey.value = null
+            _selectedModelHistory.value = emptyList()
+            return
+        }
         _selectedHistoryModelKey.value = modelKey
         viewModelScope.launch {
             try {

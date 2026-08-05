@@ -487,6 +487,11 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                         },
                         onValueChangeFinished = {
                             GatewayForegroundService.savePipelineInterval(intervalMinutes)
+                            // 测速正在运行时自动重启使新间隔生效
+                            if (pRunning) {
+                                viewModel.stopPipelineTest()
+                                viewModel.startPipelineTest()
+                            }
                         },
                         valueRange = 5f..240f,
                         steps = 46, // 5,10,15,20...240 = 47个点, steps=46

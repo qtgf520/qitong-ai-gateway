@@ -460,6 +460,25 @@ fun StatsScreen(viewModel: GatewayViewModel) {
             title = { Text(localizedText("选择模型查看趋势", "Select model for trend"), fontWeight = FontWeight.Bold) },
             text = {
                 LazyColumn {
+                    // "所有模型"选项
+                    item {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth().clickable {
+                                viewModel.loadModelHistory("")
+                                showModelSelector = false
+                            },
+                            color = if (selectedHistoryModelKey == null)
+                                MaterialTheme.colorScheme.primaryContainer
+                            else MaterialTheme.colorScheme.surface
+                        ) {
+                            Text(
+                                text = localizedText("📊 所有模型", "📊 All models"),
+                                modifier = Modifier.padding(12.dp),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
                     items(enabledModels) { model ->
                         Surface(
                             modifier = Modifier.fillMaxWidth().clickable {
@@ -471,7 +490,7 @@ fun StatsScreen(viewModel: GatewayViewModel) {
                             else MaterialTheme.colorScheme.surface
                         ) {
                             Text(
-                                text = model.customAlias.ifBlank { model.displayName },
+                                text = "P${model.providerId}·${model.modelId}",
                                 modifier = Modifier.padding(12.dp),
                                 style = MaterialTheme.typography.bodyMedium
                             )
@@ -522,7 +541,7 @@ private fun SpeedTrendChartCard(
                 TextButton(onClick = onShowModelSelector) {
                     val selectedName = if (selectedHistoryModelKey != null) {
                         enabledModels.firstOrNull { it.routeKey == selectedHistoryModelKey }
-                            ?.let { it.customAlias.ifBlank { it.displayName } } ?: selectedHistoryModelKey
+                            ?.let { "P${it.providerId}·${it.modelId}" } ?: selectedHistoryModelKey
                     } else {
                         localizedText("所有模型", "All models")
                     }
