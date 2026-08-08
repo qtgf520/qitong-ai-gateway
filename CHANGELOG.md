@@ -6,6 +6,22 @@
 
 ---
 
+## 🔄 v3.18.16（正式发布）
+
+### 🐛 修复
+- **💥 前台服务启动崩溃（ClassCastException）** — `GatewayForegroundService.getSavedTraffic()` 加 `try-catch ClassCastException` 兜底，兼容旧版 SharedPreferences 存成 String 类型导致闪退的问题
+- **🔌 Ktor CIO 端口占用异常处理** — 启动前 `isPortAvailable()` 提前检测端口可用性，端口占用时自动尝试备选端口（+1起，最多20个），自动持久化备选端口避免下次再冲突，`stop()` 加 try-catch 确保端口完整释放
+
+### ✨ 新增
+- **🧠 模型独立记忆开关** — 数据管理页大脑记忆卡片新增"模型独立记忆"开关，开启后各模型记忆互相隔离，`BrainMemoryManager.addMemory()` 自动标注当前模型ID，`getSubconscious()` 只取当前模型相关记忆
+
+### ✅ 验证
+- 编译验证：`./gradlew assembleDebug` → `BUILD SUCCESSFUL`
+- 安装验证：`pm install -r` → `Success`（versionCode=188, versionName=3.18.16）
+- 签名：debug APK 使用 qitong.jks 签名，与 release 一致
+
+---
+
 ## 🔄 v3.18.15-1（测试发布）
 
 ### 🐛 修复
