@@ -23,7 +23,7 @@
 13. **🏠 双轨Git制 — 测试版提交本地Git，正式版才推远程** — 测试版只 commit 到本地 `.git`，不 `git push`；正式版才 `git push origin` + 打标签 + Release。本地Git作为"测试版存档"，远程Git作为"正式版发布"
 14. **🔐 编译前必须设置签名环境变量** — 根据项目实际签名配置设置，**不设不编译**
 15. **🔢 每次开发必须升级版本号，严禁重复使用** — 无论测试版还是正式版，**每次修改代码（含修复、新功能、文档调整）都必须先递增 versionCode，versionName 同步递增**（测试版 `-N` 每次 +1，正式版去 `-N`）。**禁止重复使用同一个版本号**（重复会导致覆盖安装不生效、系统判定版本未更新或更新不兼容）。每次 `git commit` 前必须先确认 build.gradle.kts 版本号已递增且未与历史重复
-16. **📛 APK 文件名必须统一格式 `AppName-v版本号.apk`** — 测试版和正式版复制到 sdcard 的 APK 文件名必须统一使用 `QiTongGateway-v版本号.apk` 格式（如 `QiTongGateway-v3.18.15-1.apk`、`QiTongGateway-v3.18.16.apk`），**禁止使用 `app-debug.apk` 等无版本号或不同格式的文件名直接安装**，否则 Android 系统会因包签名不一致或文件名差异导致更新不兼容（安装失败或无法覆盖安装）
+16. **📛 APK 文件名必须统一格式 `AppName-版本号-android.apk`** — 测试版和正式版复制到 sdcard 的 APK 文件名必须统一使用 `AppName-版本号-android.apk` 格式（如 `QiTongGateway-3.18.16-android.apk`、`QiTongGateway-3.18.15-1-android.apk`），**禁止使用 `app-debug.apk` 等无版本号或不同格式的文件名直接安装**，否则 Android 系统会因包签名不一致或文件名差异导致更新不兼容（安装失败或无法覆盖安装）
 
 ---
 
@@ -110,12 +110,12 @@ cd /path/to/your/project
 ## 4. 安装到设备
 
 ```bash
-# ★★★ 复制到 sdcard（必须带版本号，命名统一为 AppName-v版本号.apk）★★★
-# 例如：QiTongGateway-v3.18.16.apk（正式版） / QiTongGateway-v3.18.15-1.apk（测试版）
-cp app/build/outputs/apk/debug/app-debug.apk /sdcard/Download/QiTongGateway-v版本号.apk
+# ★★★ 复制到 sdcard（必须带版本号，命名统一为 AppName-版本号-android.apk）★★★
+# 例如：QiTongGateway-3.18.16-android.apk（正式版） / QiTongGateway-3.18.15-1-android.apk（测试版）
+cp app/build/outputs/apk/debug/app-debug.apk /sdcard/Download/QiTongGateway-版本号-android.apk
 
 # 安装（需先复制到 /data/local/tmp/）
-cp /sdcard/Download/QiTongGateway-v版本号.apk /data/local/tmp/app.apk
+cp /sdcard/Download/QiTongGateway-版本号-android.apk /data/local/tmp/app.apk
 chmod 644 /data/local/tmp/app.apk
 pm install -r /data/local/tmp/app.apk
 
