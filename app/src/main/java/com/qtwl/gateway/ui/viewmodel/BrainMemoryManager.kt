@@ -32,7 +32,8 @@ object BrainMemoryManager {
         val timestamp: Long = System.currentTimeMillis(),
         val accessCount: Int = 0,                  // 访问次数
         val source: String = "chat",               // chat/system/manual
-        val tags: String = ""                      // 标签（逗号分隔）
+        val tags: String = "",                      // 标签（逗号分隔）
+        val modelId: String = ""                    // ★★ 所属模型ID（模型独立记忆用）★★
     )
 
     @Serializable
@@ -63,7 +64,8 @@ object BrainMemoryManager {
         val catchphrases: String = "好嘞~,我看看啊,这个有意思,搞定了！,嗯嗯，明白了",  // 口头禅（逗号分隔）
         val forbiddenWords: String = "作为一个AI,作为AI助手,AI语言模型",  // 禁用词
         val expertise: String = "全栈通用",        // 专业领域
-        val communicationStyle: String = "自然亲切、像朋友聊天"  // 沟通风格描述
+        val communicationStyle: String = "自然亲切、像朋友聊天",  // 沟通风格描述
+        val modelIndependentMemory: Boolean = false  // ★★ 模型独立记忆模式（开启后各模型记忆互相隔离）★★
     )
 
     // ==================== 配置管理 ====================
@@ -105,13 +107,18 @@ object BrainMemoryManager {
         emotion: String = "neutral",
         importance: Int = -1,
         source: String = "chat",
-        tags: String = ""
+        tags: String = "",
+        modelId: String = ""  // ★★ 模型ID（模型独立记忆用）★★
     ): MemoryItem {
         loadConfig()
         val list = getAll().toMutableList()
         val autoTitle = if (title.isBlank()) content.take(40) + if (content.length > 40) "..." else "" else title
         val autoImportance = if (importance >= 0) importance else calcImportance(content)
         val autoEmotion = if (emotion == "neutral" && _config.emotionalAwareness) detectEmotion(content) else emotion
+        // ★★ 模型独立记忆：自动填充当前模型ID ★★
+        val effectiveModelId = if (_config.modelIndependentMemory && modelId.isBlank()) {
+            com.qtwl.gateway.service.GatewayForegroundService.activeNodeName
+        } else modelId
 
         val item = MemoryItem(
             title = autoTitle,
@@ -120,7 +127,8 @@ object BrainMemoryManager {
             emotion = autoEmotion,
             importance = autoImportance,
             source = source,
-            tags = tags
+            tags = tags,
+            modelId = effectiveModelId
         )
         list.add(item)
 
@@ -184,12 +192,18 @@ object BrainMemoryManager {
     /** 获取潜意识 + 最近短期记忆（影响近期行为，最重要+最近高频的记忆） */
     fun getSubconscious(limit: Int = 5): List<MemoryItem> {
         val all = getAll()
-        val highPriority = all.sortedByDescending { it.importance * 2 + it.accessCount }
+        // ★★ 模型独立记忆：只取当前模型相关的记忆 ★★
+        val scoped = if (_config.modelIndependentMemory) {
+            val currentModel = com.qtwl.gateway.service.GatewayForegroundService.activeNodeName
+            if (currentModel.isNotBlank()) all.filter { it.modelId == currentModel || it.modelId.isBlank() }
+            else all
+        } else all
+        val highPriority = scoped.sortedByDescending { it.importance * 2 + it.accessCount }
             .filter { it.type == "long" || it.importance >= 7 }
             .take(limit)
         // 如果不够数量，补充最近的短期记忆
         if (highPriority.size < limit) {
-            val recentShort = all.filter { it.type == "short" }
+            val recentShort = scoped.filter { it.type == "short" }
                 .sortedByDescending { it.timestamp }
                 .take(limit - highPriority.size)
             return (highPriority + recentShort).distinctBy { it.id }

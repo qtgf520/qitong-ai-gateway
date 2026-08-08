@@ -628,6 +628,24 @@ Text(localizedText("💡 备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加
 
                     if (memEnabled) {
                         Spacer(modifier = Modifier.height(8.dp))
+                        // ★★ 模型独立记忆开关 ★★
+                        var modelIndependentMem by remember { mutableStateOf(cfg.modelIndependentMemory) }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.SwapHoriz, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(localizedText("模型独立记忆", "Model-independent memory"), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+                                Text(localizedText("开启后各模型记忆互相隔离，模型间互不干扰", "Each model's memories are isolated and don't interfere with each other"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
+                            }
+                            Switch(
+                                checked = modelIndependentMem,
+                                onCheckedChange = { e ->
+                                    modelIndependentMem = e
+                                    BrainMemoryManager.updateConfig(cfg.copy(modelIndependentMemory = e))
+                                }
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
                         // 保存模式
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(localizedText("保存模式:", "Save mode:"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
