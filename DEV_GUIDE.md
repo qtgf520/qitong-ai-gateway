@@ -23,6 +23,7 @@
 13. **🏠 双轨Git制 — 测试版提交本地Git，正式版才推远程** — 测试版只 commit 到本地 `.git`，不 `git push`；正式版才 `git push origin` + 打标签 + Release。本地Git作为"测试版存档"，远程Git作为"正式版发布"
 14. **🔐 编译前必须设置签名环境变量** — 根据项目实际签名配置设置，**不设不编译**
 15. **🔢 测试版版本号必须递增** — 每次测试版 `-N` 必须 +1，**禁止重复使用同一个 -N**，发布正式版时去掉 `-N`
+16. **📛 APK 文件名必须统一格式 `AppName-v版本号.apk`** — 测试版和正式版复制到 sdcard 的 APK 文件名必须统一使用 `QiTongGateway-v版本号.apk` 格式（如 `QiTongGateway-v3.18.15-1.apk`、`QiTongGateway-v3.18.16.apk`），**禁止使用 `app-debug.apk` 等无版本号或不同格式的文件名直接安装**，否则 Android 系统会因包签名不一致或文件名差异导致更新不兼容（安装失败或无法覆盖安装）
 
 ---
 
@@ -109,11 +110,12 @@ cd /path/to/your/project
 ## 4. 安装到设备
 
 ```bash
-# 复制到 sdcard（带版本号）
-cp app/build/outputs/apk/debug/app-debug.apk /sdcard/Download/YourAppName-v版本号.apk
+# ★★★ 复制到 sdcard（必须带版本号，命名统一为 AppName-v版本号.apk）★★★
+# 例如：QiTongGateway-v3.18.16.apk（正式版） / QiTongGateway-v3.18.15-1.apk（测试版）
+cp app/build/outputs/apk/debug/app-debug.apk /sdcard/Download/QiTongGateway-v版本号.apk
 
 # 安装（需先复制到 /data/local/tmp/）
-cp /sdcard/Download/YourAppName-v版本号.apk /data/local/tmp/app.apk
+cp /sdcard/Download/QiTongGateway-v版本号.apk /data/local/tmp/app.apk
 chmod 644 /data/local/tmp/app.apk
 pm install -r /data/local/tmp/app.apk
 
@@ -143,7 +145,7 @@ dumpsys package 你的包名 | grep -E 'versionName|versionCode'
 ② 改代码（对照备份法）
 ③ 设置签名环境变量
 ④ ./gradlew assembleDebug
-⑤ 复制APK到sdcard（带版本号）
+⑤ 复制APK到sdcard（带版本号，命名统一：QiTongGateway-vx.x.x-N.apk）
 ⑥ 安装到设备
 ⑦ 验证功能
 ⑧ 提交本地Git（不 push 远程）
@@ -157,7 +159,7 @@ dumpsys package 你的包名 | grep -E 'versionName|versionCode'
 ③ 更新README.md（版本号+版本历史表）
 ④ 设置签名环境变量
 ⑤ ./gradlew assembleDebug
-⑥ 复制APK到sdcard（带版本号）
+⑥ 复制APK到sdcard（带版本号，命名统一：QiTongGateway-vx.x.x.apk）
 ⑦ 安装到设备
 ⑧ 验证功能
 ⑨ 清理备份文件（删.bak、backup_*）
