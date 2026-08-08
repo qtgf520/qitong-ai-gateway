@@ -90,6 +90,53 @@ class GatewayService(private val database: AppDatabase) {
     fun start(port: Int = 8889) {
         if (server != null) return
 
+        // ★★★ 端口占用提前检测：启动前确认端口可用，避免 BindException 崩溃 ★★★
+        if (!isPortAvailable(port)) {
+            GatewayForegroundService.addDebugLog("⚠️ 端口 $port 已被占用，尝试备选端口...")
+            // 检测到端口占用：尝试备选端口（8889+1 起，最多试20个）
+            var altPort = port + 1
+            var found = -1
+            var attempts = 0
+            while (attempts < 20) {
+                if (isPortAvailable(altPort)) { found = altPort; break }
+                altPort++
+                attempts++
+            }
+            if (found > 0) {
+                // ★★ 自动切换备选端口并持久化，避免下次再冲突 ★★
+                GatewayForegroundService.addDebugLog("✅ 端口 $port 被占用，已自动切换到备选端口 $found")
+                GatewayForegroundService.saveGatewayPort(found)
+                startWithPort(found)
+            } else {
+                GatewayForegroundService.addDebugLog("❌ 端口 $port 及其备选端口均被占用，请在数据管理页修改网关端口后重试")
+                GatewayForegroundService.addDebugLog("❌ 端口占用：$port 正被其他进程使用，网关未启动")
+                return
+            }
+            return
+        }
+
+        startWithPort(port)
+    }
+
+    /**
+     * 检测指定端口是否可用（未被占用）
+     */
+    private fun isPortAvailable(port: Int): Boolean {
+        return try {
+            java.net.ServerSocket().use { ss ->
+                ss.reuseAddress = true
+                ss.bind(java.net.InetSocketAddress(port))
+            }
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    /**
+     * 使用指定端口实际启动网关服务
+     */
+    private fun startWithPort(port: Int) {
         // ★★ 启动会话清理协程（闲置超时自动断开）★★
         startSessionCleanup()
 
@@ -753,7 +800,9 @@ class GatewayService(private val database: AppDatabase) {
     }
 
     fun stop() {
-        server?.stop(1000, 2000)
+        try {
+            server?.stop(1000, 2000)
+        } catch (_: Exception) { }
         server = null
     }
 
