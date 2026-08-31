@@ -4,9 +4,11 @@ import android.app.PendingIntent
 import android.app.Service
 import android.app.AlarmManager
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
+import androidx.core.app.ServiceCompat
 import com.qtwl.gateway.GatewayApplication
 import com.qtwl.gateway.MainActivity
 import com.qtwl.gateway.R
@@ -47,7 +49,8 @@ class GatewayForegroundService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        // ★★★ Android 16+ 前台服务启动超时修复：立即 startForeground()，避免5秒内未调用崩溃 ★★★
+        // ★★★ Android 15+ 前台服务启动超时修复：立即 startForeground()，避免5秒内未调用崩溃 ★★★
+        // 关键：startForeground() 必须在 onCreate 最开头同步调用（不外包耗时逻辑），且 ServiceCompat 兼容
         val immediatePi = PendingIntent.getActivity(this, 0,
             Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
@@ -58,7 +61,13 @@ class GatewayForegroundService : Service() {
             .setContentIntent(immediatePi)
             .setOngoing(true)
             .build()
-        try { startForeground(NOTIFICATION_ID, immediateNotification) } catch (_: Exception) {}
+        // ★★★ 用 ServiceCompat.startForeground 兼容各版本，并显式声明前台服务类型 specialUse ★★★
+        try {
+            ServiceCompat.startForeground(
+                this, NOTIFICATION_ID, immediateNotification,
+                if (android.os.Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0
+            )
+        } catch (_: Exception) { }
         notificationInitialized = true
 
         val app = application as GatewayApplication
