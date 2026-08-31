@@ -1932,14 +1932,16 @@ val attemptModels: List<AiModel> = if (allEnabled.isNotEmpty()) {
                             // qtai-sj 已禁用，返回空列表
                             emptyList()
                         } else {
-                            // ★★ 检查是否有手动强制切换的模型 ★★
+                            // ★★ 检查是否有手动强制切换的模型（支持强制故障多转移池）★★
                             val forcedModelId = GatewayForegroundService.getForcedModel()
                             if (forcedModelId.isNotBlank()) {
-                                val forced = allEnabled.findByRouteKey(forcedModelId)
-                                if (forced != null) {
-                                    listOf(forced) // 强制只使用这个模型
+                                // ★★★ 强制故障多转移：用整个池（人工多选），第一个优先，崩溃后自动切池内下一个可用 ★★★
+                                val pool = GatewayForegroundService.getForcedPool().ifEmpty { listOf(forcedModelId) }
+                                val forcedPoolModels = pool.mapNotNull { allEnabled.findByRouteKey(it) }
+                                if (forcedPoolModels.isNotEmpty()) {
+                                    forcedPoolModels
                                 } else {
-                                    // 强制模型不存在了，回退到自动
+                                    // 强制池模型都失效了，回退到自动
                                     if (GatewayScheduler.pipelineSortedModelKeys.isEmpty()) {
                                         listOfNotNull(allEnabled.sortedBy { it.modelId }.firstOrNull())
                                     } else {

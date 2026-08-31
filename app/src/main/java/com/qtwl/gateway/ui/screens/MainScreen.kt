@@ -524,9 +524,13 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                 }
 
                 // ★★ 指示灯 + 框1 + 框2 ★★
-                val doneItems = pStatus.filter {
-                    it.status.startsWith("✅") || it.status.startsWith("❌")
-                }.sortedBy { it.latencyMs }
+                // ★★ 排行榜显示优化：显示所有已启用模型（无需测速）；已测速的排前（按速度），未测速(⏳等待中)排后 ★★
+                // 测速归测速、显示归显示、删除归删除 —— 只要模型存在于数据库即上排行，测速只影响排序不决定是否显示
+                val doneItems = pStatus.sortedWith(
+                    compareBy<com.qtwl.gateway.ui.viewmodel.PipelineTestItem> {
+                        !(it.status.startsWith("✅") || it.status.startsWith("❌"))
+                    }.thenBy { it.latencyMs }
+                )
                 val forcedModelKey by viewModel.forcedModelKey.collectAsState()
                 val hasReadyModel = doneItems.any { it.status.startsWith("✅") }
                 val allFailed = doneItems.isNotEmpty() && doneItems.all { it.status.startsWith("❌") }
@@ -617,31 +621,34 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                     }
                 }
 
-                // ★★ 框1：已测速完的模型（✅成功 / ❌失败），按速度排序 ★★
+                // ★★ 框1：全部已启用模型排行榜（已测速的按速度排前，未测速的排后）★★
                 if (doneItems.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text(localizedText("✅ 已测速完成", "✅ Speed test complete"), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold,
+                    Text(localizedText("📊 模型排行榜（点击加入/移出强制故障池）", "📊 Model ranking (tap to add/remove from forced failover pool)"), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold,
                         color = Online)
                     Spacer(modifier = Modifier.height(4.dp))
-// ★ 显示强制模式指示
-                    if (forcedModelKey.isNotBlank()) {
+// ★ 显示强制故障池指示
+                    val forcedPoolBanner by viewModel.forcedPool.collectAsState()
+                    if (forcedPoolBanner.isNotEmpty()) {
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = localizedText("🎯 强制模式: ", "🎯 Forced mode: ") +
-                                    (doneItems.find { it.selectionKey == forcedModelKey }?.let { item ->
-                                        val rank = doneItems.indexOfFirst { it.selectionKey == item.selectionKey } + 1
-                                        "#$rank · P${item.providerId} · ${item.modelName}"
-                                    } ?: ModelRouteKey.display(forcedModelKey)),
+                                text = "🎯 ${localizedText("强制故障池", "Forced failover pool")} (${forcedPoolBanner.size}): " +
+                                    forcedPoolBanner.joinToString(" | ") { key ->
+                                        val item = doneItems.find { it.selectionKey == key }
+                                        if (item != null) "P${item.providerId}·${item.modelName}" else ModelRouteKey.modelIdOf(key)
+                                    },
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
+                                color = MaterialTheme.colorScheme.primary,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
                             )
-                            TextButton(onClick = { viewModel.clearForcedModel() }) {
-                                Text(localizedText("↩️ 取消强制", "↩️ Cancel forced mode"), style = MaterialTheme.typography.labelSmall)
+                            TextButton(onClick = { viewModel.clearForcedPool() }) {
+                                Text(localizedText("↩️ 清空", "↩️ Clear"), style = MaterialTheme.typography.labelSmall)
                             }
                         }
                     }
@@ -653,12 +660,13 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                             items = doneItems,
                             key = { _, item -> item.selectionKey }
                         ) { index, item ->
-                            val isSelected = item.selectionKey == forcedModelKey
+                            val forcedPool by viewModel.forcedPool.collectAsState()
+                            val isSelected = forcedPool.contains(item.selectionKey)
                             val providerName = providerMap[item.providerId]?.name
                                 ?: localizedText("未知服务商", "Unknown provider")
                             Card(
                                 modifier = Modifier.fillMaxWidth()
-                                    .clickable { viewModel.forceModel(item.modelId, item.providerId, index + 1) }
+                                    .clickable { viewModel.toggleForcedPool(item.modelId, item.providerId) }
                                     .then(
                                         if (isSelected) Modifier.background(
                                             Warning.copy(alpha = 0.12f), MaterialTheme.shapes.small
@@ -917,6 +925,40 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                         groupChatMaxRounds.value = v
                         v.toIntOrNull()?.let { GroupChatManager.setMaxRounds(it) }
                     }, label = { Text(localizedText("轮次", "Rounds")) }, singleLine = true, modifier = Modifier.width(100.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // ★★ 强制故障多转移绑定管理卡片 ★★
+        val forcedPoolCard by viewModel.forcedPool.collectAsState()
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Sync, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(localizedText("🎯 强制故障多转移绑定", "🎯 Forced failover multi-binding"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(localizedText("在下方排行榜点选模型即可加入/移出故障池；默认模型崩溃后自动在池内切换可用模型（可多选无限加）", "Tap models in the ranking below to add/remove them from the pool; when the default model crashes, the gateway automatically switches to the next available model in the pool (multi-select, unlimited)"),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (forcedPoolCard.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(localizedText("已绑定 (${forcedPoolCard.size}):", "Bound (${forcedPoolCard.size}):"), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    forcedPoolCard.forEach { key ->
+                        val item = pStatus.find { it.selectionKey == key }
+                        Text(
+                            text = "• ${if (item != null) "P${item.providerId}·${item.modelName}" else ModelRouteKey.modelIdOf(key)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    TextButton(onClick = { viewModel.clearForcedPool() }) {
+                        Text(localizedText("↩️ 清空全部", "↩️ Clear all"), style = MaterialTheme.typography.labelSmall)
+                    }
                 }
             }
         }

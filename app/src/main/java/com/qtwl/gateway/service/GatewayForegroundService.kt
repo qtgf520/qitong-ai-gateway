@@ -483,8 +483,50 @@ val totalDownloadBytes = java.util.concurrent.atomic.AtomicLong(0L)   // ★ APP
             saveLastRealModel(current)
         }
         GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).edit().putString(KEY_FORCED_MODEL, modelId).apply()
+        // ★★★ 同步维护强制故障多转移池：清空旧池，把新选中的模型设为池内第一个 ★★★
+        if (modelId.isBlank()) {
+            saveForcedPool(emptyList())
+        } else {
+            val pool = getForcedPool().toMutableList()
+            if (pool.contains(modelId)) pool.remove(modelId)
+            pool.add(0, modelId)  // 最新强制模型放到首位
+            saveForcedPool(pool)
+        }
     }
     fun getForcedModel(): String = GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).getString(KEY_FORCED_MODEL, "") ?: ""
+
+    // ★★★ 强制故障多转移池（多选，逗号分隔，可无限加）★★★
+    private const val KEY_FORCED_POOL = "forced_pool"
+    /** 获取强制故障池（有序，第一个为默认模型） */
+    fun getForcedPool(): List<String> {
+        val raw = GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).getString(KEY_FORCED_POOL, "") ?: ""
+        return raw.split(",").filter { it.isNotBlank() }.map { it.trim() }.distinct()
+    }
+    /** 保存强制故障池 */
+    fun saveForcedPool(pool: List<String>) {
+        GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).edit()
+            .putString(KEY_FORCED_POOL, pool.distinct().joinToString(",")).apply()
+    }
+    /** 从池中追加一个模型 */
+    fun addToForcedPool(modelKey: String) {
+        if (modelKey.isBlank()) return
+        val pool = getForcedPool().toMutableList()
+        pool.add(modelKey)
+        saveForcedPool(pool)
+        // 同时设为当前强制模型
+        saveForcedModel(modelKey)
+    }
+    /** 从池中移除一个模型 */
+    fun removeFromForcedPool(modelKey: String) {
+        val pool = getForcedPool().toMutableList()
+        pool.remove(modelKey)
+        saveForcedPool(pool)
+        // 若移除的是当前强制模型，切到池内下一个；池空则清空强制
+        if (getForcedModel() == modelKey) {
+            if (pool.isNotEmpty()) saveForcedModel(pool.first())
+            else saveForcedModel("")
+        }
+    }
     fun saveLastRealModel(modelId: String) {
         GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).edit().putString(KEY_LAST_REAL_MODEL, modelId).apply()
     }

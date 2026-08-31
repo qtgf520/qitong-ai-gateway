@@ -2625,6 +2625,56 @@ fun clearChatError() {
     private val _forcedModelKey = MutableStateFlow(GatewayForegroundService.getForcedModel())
     val forcedModelKey: StateFlow<String> = _forcedModelKey.asStateFlow()
 
+    // ★★★ 强制故障多转移池（多选，可无限加）★★★
+    private val _forcedPool = MutableStateFlow(GatewayForegroundService.getForcedPool())
+    val forcedPool: StateFlow<List<String>> = _forcedPool.asStateFlow()
+
+    /** 刷新强制池（UI 外部变化后同步） */
+    fun refreshForcedPool() {
+        _forcedPool.value = GatewayForegroundService.getForcedPool()
+    }
+
+    /** 切换是否在强制池中（加入/移出） */
+    fun toggleForcedPool(modelId: String, providerId: Long) {
+        val modelKey = ModelRouteKey.encode(providerId, modelId)
+        val pool = GatewayForegroundService.getForcedPool().toMutableList()
+        if (pool.contains(modelKey)) {
+            pool.remove(modelKey)
+            savePoolAndSync(pool)
+            _snackbarMessage.value = "🗑️ 已从强制故障池移除"
+        } else {
+            pool.add(modelKey)
+            savePoolAndSync(pool)
+            val item = _pipelineStatus.value.find { it.selectionKey == modelKey }
+            _snackbarMessage.value = "🎯 已加入强制故障池: P$providerId · ${item?.modelName ?: modelId}"
+        }
+    }
+
+    /** 保存池并同步状态 */
+    private fun savePoolAndSync(pool: List<String>) {
+        GatewayForegroundService.saveForcedPool(pool)
+        _forcedPool.value = pool
+        // 若池非空且当前无强制模型，把池第一个设为当前强制
+        if (pool.isNotEmpty() && GatewayForegroundService.getForcedModel().isBlank()) {
+            GatewayForegroundService.saveForcedModel(pool.first())
+            _forcedModelKey.value = pool.first()
+        }
+        // 若池已空，清空强制模型
+        if (pool.isEmpty() && GatewayForegroundService.getForcedModel().isNotBlank()) {
+            GatewayForegroundService.saveForcedModel("")
+            _forcedModelKey.value = ""
+        }
+    }
+
+    /** 清空整个强制池 */
+    fun clearForcedPool() {
+        GatewayForegroundService.saveForcedPool(emptyList())
+        GatewayForegroundService.saveForcedModel("")
+        _forcedPool.value = emptyList()
+        _forcedModelKey.value = ""
+        _snackbarMessage.value = "↩️ 已清空强制故障池，回到自动排行模式"
+    }
+
     fun forceModel(modelId: String, providerId: Long, rankingId: Int? = null) {
         val modelKey = ModelRouteKey.encode(providerId, modelId)
         if (_forcedModelKey.value == modelKey) {
