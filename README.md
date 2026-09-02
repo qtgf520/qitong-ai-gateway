@@ -9,7 +9,7 @@
 > Recommended: Uninstall old version OR clear app data → Install new version → Import backup.
 
 > **包名 / Package：** `com.qtwl.gateway`  
-> **最新版本 / Latest：** v3.18.18 (versionCode=193)  
+> **最新版本 / Latest：** v3.18.18-1 (versionCode=194)  
 > **开源协议 / License：** Apache 2.0  
 > **语言 / Languages：** 🌐 15 languages (CN/EN/JP/KR/FR/DE/ES/RU/PT/VN/TH/AR/HI/ID)
 > **官方QQ群 / QQ Group：** [1007488535](https://qm.qq.com/q/1007488535) 💬
@@ -179,6 +179,7 @@ See [CHANGELOG.md](CHANGELOG.md) for full changelog.
 
 | Version | Key Features |
 |:--------|:-------------|
+| **v3.18.18-1** | 🔥 **强制故障池对所有请求生效，故障切换真正生效** — 修复根因：强制池此前只在qtai-sj请求时生效，具体模型ID请求被忽略。现强制池对所有请求优先生效（请求模型置首，其余按池顺序作故障切换候选） |
 | **v3.18.18** | ↕️ **强制故障池顺序调整 + 模型自由调度消除卡顿** — 池内模型旁新增▲▼按钮可调切换顺序（序号=优先级）；池内模型后台预热探活，故障时毫秒级切换下一个可用模型，被调用APP无感知；首页删除思考引导卡片；上游空content触发故障转移 |
 | **v3.18.17** | 🎯 **强制故障多转移绑定 + 排行榜显示优化** — 首页群聊模式下方新增"强制故障多转移绑定"管理卡片，强制模型可多选无限加组成故障池，默认崩溃后自动在池内切换可用模型；排行榜无需测速也显示所有已启用模型，测速/显示/删除三者解耦 |
 | **v3.18.16** | 🐛 **修复前台服务启动崩溃 + 端口占用异常处理 + 模型独立记忆开关** — 兼容旧版SP存String类型闪退，端口占用自动切换备选端口，各模型记忆互相隔离互不干扰 |

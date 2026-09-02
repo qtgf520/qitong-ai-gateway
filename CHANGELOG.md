@@ -6,6 +6,18 @@
 
 ---
 
+## 🔄 v3.18.18-1（正式发布）
+
+### 🐛 修复
+- **🔥 强制故障池对所有请求生效，故障切换真正生效** — 修复根因：强制池此前只在 `qtai-sj` 请求时生效，当被调用APP请求**具体模型ID**时走 `autoFailover`（用户权威模式）分支，完全忽略强制池导致故障不切换。现重构 `attemptModels` 选择逻辑，强制池对所有请求优先生效（请求模型置首，其余按池内顺序作故障切换候选），故障时真正按池顺序自动切换
+
+### ✅ 验证
+- 编译验证：`./gradlew assembleDebug` → `BUILD SUCCESSFUL`
+- 安装验证：`pm install -r` → `Success`（versionCode=194, versionName=3.18.18-1）
+- 签名：debug APK 使用 qitong.jks 签名，与 release 一致
+
+---
+
 ## 🔄 v3.18.18（正式发布）
 
 ### ✨ 新增
