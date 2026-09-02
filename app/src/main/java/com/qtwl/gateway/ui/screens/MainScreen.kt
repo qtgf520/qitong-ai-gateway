@@ -347,60 +347,6 @@ fun HomeScreen(viewModel: GatewayViewModel) {
         }
 
         Spacer(modifier = Modifier.height(12.dp))
-// ★★ 首页思考引导开关 & 卡片 ★★
-          // 读取/保存开关状态（SharedPreferences via GatewayForegroundService)
-          val showHintState = remember { mutableStateOf(true) }
-          LaunchedEffect(Unit) {
-              val stored = com.qtwl.gateway.service.GatewayForegroundService.getGatewayConfig("show_home_hint", "true")
-              showHintState.value = stored.toBoolean()
-          }
-          Row(
-              modifier = Modifier.fillMaxWidth(),
-              horizontalArrangement = Arrangement.SpaceBetween,
-              verticalAlignment = Alignment.CenterVertically
-          ) {
-              Text(tr("home_thinking_guide"), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-              Switch(
-                  checked = showHintState.value,
-                  onCheckedChange = { enabled ->
-                      showHintState.value = enabled
-                      com.qtwl.gateway.service.GatewayForegroundService.saveGatewayConfig("show_home_hint", enabled.toString())
-                  }
-              )
-          }
-          if (showHintState.value) {
-              Card(
-                  modifier = Modifier.fillMaxWidth(),
-                  colors = CardDefaults.cardColors(
-                      containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
-                  )
-              ) {
-                  Column(modifier = Modifier.padding(16.dp)) {
-                      Row(verticalAlignment = Alignment.CenterVertically) {
-                          Text("💡", style = MaterialTheme.typography.titleLarge)
-                          Spacer(modifier = Modifier.width(8.dp))
-                          Text(
-                              text = tr("quick_start"),
-                              style = MaterialTheme.typography.titleSmall,
-                              fontWeight = FontWeight.Bold,
-                              color = MaterialTheme.colorScheme.primary
-                          )
-                      }
-                      Spacer(modifier = Modifier.height(8.dp))
-                      Text(
-                          text = "1. ${tr("add_provider")} → ${tr("sync_models")}\n" +
-                                "2. ${tr("start_gateway")}\n" +
-                                "3. ${tr("set_base_url")}\n" +
-                                "4. ${tr("enable_failover")}",
-                          style = MaterialTheme.typography.bodySmall,
-                          color = MaterialTheme.colorScheme.onSurfaceVariant,
-                          lineHeight = MaterialTheme.typography.bodySmall.lineHeight
-                      )
-                  }
-              }
-          }
-
-        Spacer(modifier = Modifier.height(12.dp))
 
         // ★★ 自动故障转移开关 + 流水线测速看板 ★★
         val autoFailover by viewModel.autoFailover.collectAsState()
@@ -947,17 +893,42 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (forcedPoolCard.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text(localizedText("已绑定 (${forcedPoolCard.size}):", "Bound (${forcedPoolCard.size}):"), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                    forcedPoolCard.forEach { key ->
+                    Text(localizedText("已绑定 (${forcedPoolCard.size}) — 点击 ▲▼ 调整顺序，序号即切换优先级:", "Bound (${forcedPoolCard.size}) — tap ▲▼ to reorder, order = failover priority:"), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    forcedPoolCard.forEachIndexed { idx, key ->
                         val item = pStatus.find { it.selectionKey == key }
-                        Text(
-                            text = "• ${if (item != null) "P${item.providerId}·${item.modelName}" else ModelRouteKey.modelIdOf(key)}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        val displayName = if (item != null) "P${item.providerId}·${item.modelName}" else ModelRouteKey.modelIdOf(key)
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("${idx + 1}. ", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                            Text(
+                                text = displayName,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.weight(1f),
+                                maxLines = 1, overflow = TextOverflow.Ellipsis
+                            )
+                            IconButton(
+                                onClick = { viewModel.moveForcedPoolUp(idx) },
+                                enabled = idx > 0
+                            ) { Text("▲", style = MaterialTheme.typography.labelSmall) }
+                            IconButton(
+                                onClick = { viewModel.moveForcedPoolDown(idx) },
+                                enabled = idx < forcedPoolCard.size - 1
+                            ) { Text("▼", style = MaterialTheme.typography.labelSmall) }
+                        }
                     }
-                    TextButton(onClick = { viewModel.clearForcedPool() }) {
+                    TextButton(onClick = {
+                        viewModel.clearForcedPool()
+                    }) {
                         Text(localizedText("↩️ 清空全部", "↩️ Clear all"), style = MaterialTheme.typography.labelSmall)
+                    }
+                    // ★ 调度说明 + 预热按钮
+                    Text(localizedText("⚡ 模型自由调度：池内模型后台自动预热探活，故障时毫秒级切换到下一个可用模型，被调用APP无感知", "⚡ Free scheduling: pool models are pre-warmed in background; on failure the gateway switches to the next available model in ms, invisible to the calling APP"),
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    TextButton(onClick = { viewModel.precheckForcedPoolModels() }) {
+                        Text(localizedText("🔥 立即预热池内模型", "🔥 Pre-warm pool models now"), style = MaterialTheme.typography.labelSmall)
                     }
                 }
             }

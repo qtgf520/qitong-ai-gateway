@@ -22,6 +22,7 @@ import com.qtwl.gateway.network.UpstreamClient
 import com.qtwl.gateway.service.GatewayForegroundService
 import com.qtwl.gateway.service.LiveSession
 import com.qtwl.gateway.gateway.GatewayService
+import com.qtwl.gateway.gateway.GatewayScheduler
 import com.qtwl.gateway.data.model.SpeedHistory
 import com.qtwl.gateway.data.db.SpeedHistoryDao
 import com.qtwl.gateway.utils.localizeGeneratedName
@@ -2673,6 +2674,57 @@ fun clearChatError() {
         _forcedPool.value = emptyList()
         _forcedModelKey.value = ""
         _snackbarMessage.value = "↩️ 已清空强制故障池，回到自动排行模式"
+    }
+
+    /** 拖拽排序强制池模型 */
+    fun reorderForcedPool(fromIndex: Int, toIndex: Int) {
+        val pool = GatewayForegroundService.getForcedPool().toMutableList()
+        if (fromIndex < 0 || fromIndex >= pool.size || toIndex < 0 || toIndex >= pool.size) return
+        val item = pool.removeAt(fromIndex)
+        pool.add(toIndex, item)
+        savePoolAndSync(pool)
+        _snackbarMessage.value = "↕️ 已调整强制池顺序"
+    }
+
+    /** 上移强制池模型 */
+    fun moveForcedPoolUp(index: Int) {
+        if (index <= 0) return
+        reorderForcedPool(index, index - 1)
+    }
+
+    /** 下移强制池模型 */
+    fun moveForcedPoolDown(index: Int) {
+        val pool = GatewayForegroundService.getForcedPool()
+        if (index < 0 || index >= pool.size - 1) return
+        reorderForcedPool(index, index + 1)
+    }
+
+    /**
+     * 预检查池内所有模型可用性（后台预热）
+     * 提前探测下一个可用模型，减少故障切换延迟
+     */
+    fun precheckForcedPoolModels() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val pool = GatewayForegroundService.getForcedPool()
+            if (pool.size <= 1) return@launch
+            for (modelKey in pool) {
+                try {
+                    val health = GatewayScheduler.healthCache[modelKey]
+                    if (health == null || health.lastCheckTime < System.currentTimeMillis() - 5 * 60 * 1000L) {
+                        val model = database.aiModelDao().getEnabledModelsList().find { it.routeKey == modelKey } ?: continue
+                        val provider = database.providerDao().getProviderById(model.providerId) ?: continue
+                        if (!provider.isEnabled) continue
+                        val tester = ModelSpeedTester()
+                        tester.measure(
+                            modelId = model.modelId,
+                            baseUrl = provider.resolvedBaseUrl,
+                            apiKey = provider.apiKey,
+                            chatPath = provider.chatPath
+                        )
+                    }
+                } catch (_: Exception) {}
+            }
+        }
     }
 
     fun forceModel(modelId: String, providerId: Long, rankingId: Int? = null) {
