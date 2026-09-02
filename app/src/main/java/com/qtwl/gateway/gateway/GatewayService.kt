@@ -1924,38 +1924,34 @@ if (brainContent.isNotBlank()) {
 
             // 已移除 refreshHealthCache — 每次请求都触发健康检查会导致模型一直在跑
             val allEnabled = database.aiModelDao().getEnabledModelsList().filter { it.isEnabled }
-val attemptModels: List<AiModel> = if (allEnabled.isNotEmpty()) {
-                    // ★★ 自动化切换 (qtai-sj) ★★
+ val attemptModels: List<AiModel> = if (allEnabled.isNotEmpty()) {
+                    // ★★ 先构建强制故障池（人工多选，顺序=切换优先级）★★
+                    val forcedModelId = GatewayForegroundService.getForcedModel()
+                    val forcedPool: List<AiModel> = if (forcedModelId.isNotBlank()) {
+                        val pool = GatewayForegroundService.getForcedPool().ifEmpty { listOf(forcedModelId) }
+                        pool.mapNotNull { allEnabled.findByRouteKey(it) }
+                    } else emptyList()
+
                     if (modelId == "qtai-sj") {
+                        // ★★ 自动化切换 (qtai-sj) ★★
                         val qtaiSjEnabled = GatewayForegroundService.getQtaiSjEnabled()
                         if (!qtaiSjEnabled) {
                             // qtai-sj 已禁用，返回空列表
                             emptyList()
+                        } else if (forcedPool.isNotEmpty()) {
+                            // ★★★ 强制故障多转移：用整个池（人工多选），第一个优先，崩溃后自动切池内下一个可用 ★★★
+                            forcedPool
+                        } else if (GatewayScheduler.pipelineSortedModelKeys.isEmpty()) {
+                            // 无测速数据时，智能排序
+                            GatewayScheduler.smartSort(allEnabled).ifEmpty { allEnabled }
                         } else {
-                            // ★★ 检查是否有手动强制切换的模型（支持强制故障多转移池）★★
-                            val forcedModelId = GatewayForegroundService.getForcedModel()
-                            if (forcedModelId.isNotBlank()) {
-                                // ★★★ 强制故障多转移：用整个池（人工多选），第一个优先，崩溃后自动切池内下一个可用 ★★★
-                                val pool = GatewayForegroundService.getForcedPool().ifEmpty { listOf(forcedModelId) }
-                                val forcedPoolModels = pool.mapNotNull { allEnabled.findByRouteKey(it) }
-                                if (forcedPoolModels.isNotEmpty()) {
-                                    forcedPoolModels
-                                } else {
-                                    // 强制池模型都失效了，回退到自动
-                                    if (GatewayScheduler.pipelineSortedModelKeys.isEmpty()) {
-                                        listOfNotNull(allEnabled.sortedBy { it.modelId }.firstOrNull())
-                                    } else {
-                                        allEnabled.orderedByRouteKeys(GatewayScheduler.pipelineSortedModelKeys).ifEmpty { allEnabled }
-                                    }
-                                }
-                            } else if (GatewayScheduler.pipelineSortedModelKeys.isEmpty()) {
-                                // 无测速数据时，智能排序
-                                GatewayScheduler.smartSort(allEnabled).ifEmpty { allEnabled }
-                            } else {
-                                // ★★ 使用智能排序：a(当前可用)→d(历史成功)→b(历史可用)→c(失败) ★★
-                                GatewayScheduler.smartSort(allEnabled).ifEmpty { allEnabled }
-                            }
+                            // ★★ 使用智能排序 ★★
+                            GatewayScheduler.smartSort(allEnabled).ifEmpty { allEnabled }
                         }
+                    } else if (forcedPool.isNotEmpty()) {
+                        // ★★ 具体模型ID + 已配置强制池：请求模型置首，其余按池顺序作故障切换候选 ★★
+                        val primary = allEnabled.find { it.modelId == modelId }
+                        (listOfNotNull(primary) + forcedPool.filter { it.routeKey != primary?.routeKey }).distinctBy { it.routeKey }
                     } else if (autoFailover) {
                     // ★★ 其他模型 + 故障转移开启：用户权威模式
                     val primary = allEnabled.find { it.modelId == modelId }
