@@ -2743,6 +2743,21 @@ fun clearChatError() {
         } else {
             _forcedModelKey.value = modelKey
             GatewayForegroundService.saveForcedModel(modelKey)
+            // ★★ 点灯切换：把该模型提升到强制池第一位（网关qtai-sj分支按池顺序优先用第一个）★★
+            val pool = GatewayForegroundService.getForcedPool().toMutableList()
+            if (pool.isNotEmpty() && pool.first() != modelKey) {
+                pool.remove(modelKey)
+                pool.add(0, modelKey)
+                GatewayForegroundService.saveForcedPool(pool)
+                _forcedPool.value = pool
+            } else if (pool.isEmpty()) {
+                // 池空时，把该模型作为唯一池成员，保证 qtai-sj 优先用它
+                GatewayForegroundService.saveForcedPool(listOf(modelKey))
+                _forcedPool.value = listOf(modelKey)
+            }
+            // ★★ 同步更新全局活跃节点，使池灯立即点亮（2秒轮询读取的就是这俩）★★
+            GatewayForegroundService.activeNodeName = modelId
+            GatewayForegroundService.activeNodeProviderId = providerId
             val item = _pipelineStatus.value.find { it.selectionKey == modelKey }
             val rankPrefix = rankingId?.let { "#$it · " }.orEmpty()
             _snackbarMessage.value = "🎯 已选择: ${rankPrefix}P$providerId · ${item?.modelName ?: modelId}"

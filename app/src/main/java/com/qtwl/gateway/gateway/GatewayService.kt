@@ -2367,6 +2367,20 @@ private suspend fun pipeStreamResponse(
         throw Exception("Upstream stream ${response.code}: empty response body")
     }
 
+    // ★★ 流式预读首块：若上游连接建立后立刻失败/空流，在响应开始前抛出异常，触发故障转移 ★★
+    val firstBuffer = ByteArray(4096)
+    var firstRead: Int
+    try {
+        firstRead = withContext(Dispatchers.IO) { bodyStream.read(firstBuffer) }
+    } catch (e: Exception) {
+        response.close()
+        throw Exception("Upstream stream ${response.code}: ${e.message}", e)
+    }
+    if (firstRead == -1 || firstRead == 0) {
+        response.close()
+        throw Exception("Upstream stream ${response.code}: upstream closed/empty stream on first read")
+    }
+
     // 2. 在 CIO 线程上启动流式写，从 IO 流读取并逐块转发
     call.respondBytesWriter(contentType = ContentType.parse(ct), status = respStatus) {
         val buffer = ByteArray(4096)  // 4KB 小缓冲区，延迟最低
@@ -2374,6 +2388,14 @@ private suspend fun pipeStreamResponse(
         var bytesRead: Int
 
         try {
+            // 先写预读的首块，再继续读剩余流
+            writeFully(firstBuffer, 0, firstRead)
+            flush()
+            GatewayForegroundService.trafficDownloadBytes.addAndGet(firstRead.toLong())
+            GatewayForegroundService.totalDownloadBytes.addAndGet(firstRead.toLong())
+            if (path.contains("chat/completions")) {
+                accumulatedBytes.write(firstBuffer, 0, firstRead)
+            }
             while (true) {
                 bytesRead = withContext(Dispatchers.IO) {
                     try { bodyStream.read(buffer) } catch (_: Exception) { -1 }
