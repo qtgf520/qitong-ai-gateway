@@ -206,7 +206,9 @@ class GatewayForegroundService : Service() {
             append(if (wakeEnabled) localizedText("綦桐网关保活", "QiTong Gateway (keep-alive)") else localizedText("綦桐网关", "QiTong Gateway"))
             if (nodeName.isNotBlank()) {
                 val light = if (hasTraffic && isActive) " 🟢" else if (hasTraffic) " ⚪" else ""
-                append(" ·$light $nodeName")
+                // ★★ 显示服务商ID：P服务商ID · 模型名 ★★
+                val nodeDisplay = if (activeNodeProviderId > 0L) "P$activeNodeProviderId · $nodeName" else nodeName
+                append(" ·$light $nodeDisplay")
             }
         }
 
@@ -362,6 +364,7 @@ val totalDownloadBytes = java.util.concurrent.atomic.AtomicLong(0L)   // ★ APP
         @Volatile var isServiceRunning: Boolean = false  // 由 start/stop 同步更新
 
         @Volatile var activeNodeName: String = ""
+        @Volatile var activeNodeProviderId: Long = 0L  // ★ 当前活跃模型的服务商ID（通知栏显示P服务商ID·模型名）
         @Volatile var lastUploadBytes: Long = 0L
         @Volatile var lastDownloadBytes: Long = 0L
         @Volatile var idleCount: Int = 0

@@ -878,6 +878,17 @@ fun HomeScreen(viewModel: GatewayViewModel) {
 
         // ★★ 强制故障多转移绑定管理卡片 ★★
         val forcedPoolCard by viewModel.forcedPool.collectAsState()
+        // ★★ 当前活跃模型（用于点亮池内灯，2秒轮询响应式）★★
+        var activeNodeKey by remember { mutableStateOf("") }
+        LaunchedEffect(Unit) {
+            while (true) {
+                activeNodeKey = com.qtwl.gateway.data.model.ModelRouteKey.encode(
+                    com.qtwl.gateway.service.GatewayForegroundService.activeNodeProviderId,
+                    com.qtwl.gateway.service.GatewayForegroundService.activeNodeName
+                )
+                delay(2000)
+            }
+        }
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
@@ -889,23 +900,37 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                     Text(localizedText("🎯 强制故障多转移绑定", "🎯 Forced failover multi-binding"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                 }
                 Spacer(modifier = Modifier.height(4.dp))
-                Text(localizedText("在下方排行榜点选模型即可加入/移出故障池；默认模型崩溃后自动在池内切换可用模型（可多选无限加）", "Tap models in the ranking below to add/remove them from the pool; when the default model crashes, the gateway automatically switches to the next available model in the pool (multi-select, unlimited)"),
+                Text(localizedText("● 灯亮=当前使用模型，点灯可手动切换；▲▼ 调顺序（序号=切换优先级）", "● Lit=current model, tap light to switch; ▲▼ reorder (=priority)"),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (forcedPoolCard.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text(localizedText("已绑定 (${forcedPoolCard.size}) — 点击 ▲▼ 调整顺序，序号即切换优先级:", "Bound (${forcedPoolCard.size}) — tap ▲▼ to reorder, order = failover priority:"), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    Text(localizedText("已绑定 (${forcedPoolCard.size}):", "Bound (${forcedPoolCard.size}):"), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                     forcedPoolCard.forEachIndexed { idx, key ->
                         val item = pStatus.find { it.selectionKey == key }
                         val displayName = if (item != null) "P${item.providerId}·${item.modelName}" else ModelRouteKey.modelIdOf(key)
+                        val isActive = key == activeNodeKey
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            // ★★ 灯：当前活跃=绿色实心可点（手动切换），不活跃=灰色 ★★
+                            val lightColor = if (isActive) Online else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                            Canvas(
+                                modifier = Modifier.size(14.dp)
+                                    .clickable {
+                                        if (item != null) viewModel.forceModel(item.modelId, item.providerId)
+                                    }
+                                    .padding(2.dp)
+                            ) {
+                                drawCircle(color = lightColor)
+                            }
+                            Spacer(modifier = Modifier.width(4.dp))
                             Text("${idx + 1}. ", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                             Text(
                                 text = displayName,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isActive) Online else MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.weight(1f),
                                 maxLines = 1, overflow = TextOverflow.Ellipsis
                             )

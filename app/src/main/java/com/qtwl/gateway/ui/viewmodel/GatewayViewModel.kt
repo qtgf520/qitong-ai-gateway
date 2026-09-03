@@ -1784,6 +1784,9 @@ fun getDisplayModelName(model: AiModel): String {
             _isSending.value = true
             _chatError.value = null
 
+            // ★★ 候选列表（qtai-sj 故障转移用），提升作用域供 catch 访问 ★★
+            var qtaiCandidates: List<Pair<Provider, String>> = emptyList()
+
             try {
                 // 确保有当前对话
                 val conversation = ensureConversation()
@@ -1806,52 +1809,36 @@ fun getDisplayModelName(model: AiModel): String {
                 // 更新对话时间
                 database.conversationDao().touchConversation(conversation.id)
 
-// 2. 获取服务商信息
-                    val provider = if (model.modelId == "qtai-sj") {
-            // ★★ qtai-sj 直连通道：强制模型可能是"qtai-sj"（虚拟），改用 activeNodeName
-            val forcedModelId = GatewayForegroundService.getForcedModel()
-            val effectiveModelId = if (forcedModelId == "qtai-sj") GatewayForegroundService.activeNodeName else forcedModelId
-            if (effectiveModelId.isNotBlank()) {
-                val bestModels = database.aiModelDao().getEnabledModelsList()
-                val targetModel = bestModels.findByRouteKey(effectiveModelId)
-                if (targetModel != null) {
-                    database.providerDao().getProviderById(targetModel.providerId)
-                } else null
-            } else {
-                val sortedIds = com.qtwl.gateway.gateway.GatewayScheduler.pipelineSortedModelKeys
-                if (sortedIds.isNotEmpty()) {
-                    val bestId = sortedIds.first()
-                    val bestModels = database.aiModelDao().getEnabledModelsList()
-                    val bestModel = bestModels.findByRouteKey(bestId)
-                    if (bestModel != null) {
-                        database.providerDao().getProviderById(bestModel.providerId)
-                    } else null
-                } else null
-            }
-        } else {
-            database.providerDao().getProviderById(model.providerId)
-        }
-                    if (provider == null || !provider.isEnabled) {
-                    _chatError.value = if (model.modelId == "qtai-sj") "⚠️ 请先启动测速获取可用模型排行" else "⚠️ 服务商不可用或已禁用"
-                    _isSending.value = false
-                    return@launch
-                }
-
-// ★★ qtai-sj 用强制模型ID或测速最优模型的实际ID ★★
-                    val actualModelId = if (model.modelId == "qtai-sj") {
-            val forcedModelId = GatewayForegroundService.getForcedModel()
-            val effectiveModelId = if (forcedModelId == "qtai-sj") GatewayForegroundService.activeNodeName else forcedModelId
-            if (effectiveModelId.isNotBlank()) ModelRouteKey.modelIdOf(effectiveModelId)
-            else {
-                val convModelId = _currentConversation.value?.modelId
-                if (!convModelId.isNullOrBlank() && convModelId != "qtai-sj") {
-                    convModelId
-                } else {
-                    val sortedIds = com.qtwl.gateway.gateway.GatewayScheduler.pipelineSortedModelKeys
-                    if (sortedIds.isNotEmpty()) ModelRouteKey.modelIdOf(sortedIds.first()) else model.modelId
-                }
-            }
-        } else model.modelId
+ // 2. 获取服务商信息（qtai-sj 按强制池顺序构建候选列表）
+                    // ★★ 候选列表：provider 对 (provider, modelId)，qtai-sj 按强制池顺序，故障时自动切换下一个 ★★
+                    qtaiCandidates = if (model.modelId == "qtai-sj") {
+                        val allEnabledModels = database.aiModelDao().getEnabledModelsList()
+                        val forcedModelId = GatewayForegroundService.getForcedModel()
+                        val effectiveForced = if (forcedModelId == "qtai-sj") GatewayForegroundService.activeNodeName else forcedModelId
+                        // ★★ 强制池（顺序=切换优先级），池空则用当前模型+排行榜 ★★
+                        val poolKeys: List<String> = if (!effectiveForced.isNullOrBlank()) {
+                            GatewayForegroundService.getForcedPool().ifEmpty { listOfNotNull(effectiveForced) }
+                        } else emptyList()
+                        val poolModels = poolKeys.mapNotNull { allEnabledModels.findByRouteKey(it) }
+                        val fallback = GatewayScheduler.pipelineSortedModelKeys.mapNotNull { allEnabledModels.findByRouteKey(it) }
+                        val candidatesModels = (poolModels.ifEmpty { fallback.ifEmpty { allEnabledModels } }).distinctBy { it.routeKey }
+                        candidatesModels.mapNotNull { m ->
+                            val p = database.providerDao().getProviderById(m.providerId)
+                            if (p != null && p.isEnabled) p to m.modelId else null
+                        }
+                    } else {
+                        listOfNotNull(
+                            database.providerDao().getProviderById(model.providerId)?.let { p -> if (p.isEnabled) p to model.modelId else null }
+                        )
+                    }
+                    if (qtaiCandidates.isEmpty()) {
+                        _chatError.value = if (model.modelId == "qtai-sj") "⚠️ 请先启动测速获取可用模型排行" else "⚠️ 服务商不可用或已禁用"
+                        _isSending.value = false
+                        return@launch
+                    }
+                    // ★★ 首选候选 provider/modelId ★★
+                    val provider = qtaiCandidates.first().first
+                    val actualModelId = qtaiCandidates.first().second
 
                 // 3. 构造请求体
                 val messagesJson = buildMessagesJson(_currentMessages.value)
@@ -1987,23 +1974,43 @@ fun getDisplayModelName(model: AiModel): String {
                 }
             } catch (e: Exception) {
             _chatError.value = "❌ 发送失败: ${e.message}"
-            // ★★ 规则5：失败自动兜底—用测速最优模型重试一次
-            val currentModel = _selectedModel.value
-            if (currentModel != null) {
-                val sortedIds = com.qtwl.gateway.gateway.GatewayScheduler.pipelineSortedModelKeys
-                if (sortedIds.isNotEmpty() && (currentModel.routeKey != sortedIds.first())) {
-                    val bestModelId = sortedIds.first()
-                    // 通过 enabledModels 列表查找最优模型
+            // ★★ 故障转移：qtai-sj 按强制池/候选列表顺序重试下一个模型 ★★
+            if (model.modelId == "qtai-sj" && qtaiCandidates.size > 1) {
+                val currentKey = qtaiCandidates.first().first.id to qtaiCandidates.first().second
+                val retryCandidates = qtaiCandidates.drop(1)
+                if (retryCandidates.isNotEmpty()) {
+                    val next = retryCandidates.first()
+                    _chatError.value = "↻ qtai-sj ${qtaiCandidates.first().second} 失败，切换到 ${next.second} 重试..."
+                    // 找到候选模型对应的 AiModel
                     val enabledList = database.aiModelDao().getEnabledModelsList()
-                    val bestModel = enabledList.findByRouteKey(bestModelId)
-                    if (bestModel != null) {
-                        _chatError.value = "↻ ${currentModel.displayName} 失败，自动切换到 ${bestModel.displayName} 重试..."
-                        _selectedModel.value = bestModel
-                        delay(500)
-                        // 递归重试（只重试一次，防止死循环）
+                    val nextModel = enabledList.find { it.modelId == next.second && it.providerId == next.first.id }
+                    if (nextModel != null) {
+                        _selectedModel.value = nextModel
                         _isSending.value = false
+                        delay(500)
                         sendMessage()
                         return@launch
+                    }
+                }
+            } else {
+                // ★★ 规则5：失败自动兜底—用测速最优模型重试一次
+                val currentModel = _selectedModel.value
+                if (currentModel != null) {
+                    val sortedIds = com.qtwl.gateway.gateway.GatewayScheduler.pipelineSortedModelKeys
+                    if (sortedIds.isNotEmpty() && (currentModel.routeKey != sortedIds.first())) {
+                        val bestModelId = sortedIds.first()
+                        // 通过 enabledModels 列表查找最优模型
+                        val enabledList = database.aiModelDao().getEnabledModelsList()
+                        val bestModel = enabledList.findByRouteKey(bestModelId)
+                        if (bestModel != null) {
+                            _chatError.value = "↻ ${currentModel.displayName} 失败，自动切换到 ${bestModel.displayName} 重试..."
+                            _selectedModel.value = bestModel
+                            delay(500)
+                            // 递归重试（只重试一次，防止死循环）
+                            _isSending.value = false
+                            sendMessage()
+                            return@launch
+                        }
                     }
                 }
             }

@@ -1795,9 +1795,8 @@ if (brainContent.isNotBlank()) {
             }
         }
 
-        // ★★ qtai-sj没有前缀或脑子说chat → 走正常转发：用排行榜最快的模型直接透传 ★★
+        // ★★ qtai-sj没有前缀或脑子说chat → 走正常转发：按强制池顺序故障转移 ★★
         if (modelId == "qtai-sj") {
-            // 找最适合的模型
             val allEnabledModels = database.aiModelDao().getEnabledModelsList().filter { it.isEnabled }
             val forced = GatewayForegroundService.getForcedModel()
             // ★ 如果强制模型是qtai-sj（虚拟模型），用上一次切换的模型或排行榜
@@ -1811,65 +1810,68 @@ if (brainContent.isNotBlank()) {
                     }
                 } catch (_: Exception) { false }
             } ?: false
-            val bestModel = if (!effectiveForced.isNullOrBlank()) {
-                // 支持两种格式：完整前缀(deepseek-ai/deepseek-v4-flash) 和 短ID(deepseek-v4-flash)
-                val directMatch = allEnabledModels.findByRouteKey(effectiveForced)
-                if (directMatch != null) {
-                    directMatch
-                } else {
-                    val shortId = effectiveForced.substringAfterLast('/')
-                    if (shortId != effectiveForced) {
-                        allEnabledModels.filter { it.modelId == shortId }.singleOrNull()
-                    } else null
+
+            // ★★★ 构建故障转移候选列表：优先整个强制池（按顺序），池空则用当前模型+排行榜 ★★★
+            val forcedPoolKeys: List<String> = if (!effectiveForced.isNullOrBlank()) {
+                GatewayForegroundService.getForcedPool().ifEmpty { listOfNotNull(effectiveForced) }
+            } else emptyList()
+            val attemptModels: List<AiModel> = if (forcedPoolKeys.isNotEmpty()) {
+                forcedPoolKeys.mapNotNull { allEnabledModels.findByRouteKey(it) }.ifEmpty {
+                    // 池内模型都失效，回退到当前模型 + 排行榜
+                    listOfNotNull(
+                        if (!effectiveForced.isNullOrBlank()) allEnabledModels.findByRouteKey(effectiveForced!!) else allEnabledModels.firstOrNull()
+                    ) + GatewayScheduler.pipelineSortedModelKeys.mapNotNull { allEnabledModels.findByRouteKey(it) }
                 }
-            } else if (hasImage) {
-                allEnabledModels.firstOrNull { ModelCapabilityManager.getCapabilities(it.modelId).second }
-                    ?: GatewayScheduler.pipelineSortedModelKeys.firstNotNullOfOrNull { id ->
-                        allEnabledModels.findByRouteKey(id)?.takeIf { ModelCapabilityManager.getCapabilities(it.modelId).second }
-                    }
-            } else null
-            val targetModel = bestModel ?: GatewayScheduler.pipelineSortedModelKeys.firstNotNullOfOrNull { id ->
-                allEnabledModels.findByRouteKey(id)
-            } ?: allEnabledModels.firstOrNull()
-
-            // ★★★ 如果仍然找不到目标模型，尝试用 activeNodeName 或任意已启用模型 ★★★
-            val finalTarget = targetModel ?: run {
-                if (GatewayForegroundService.activeNodeName.isNotBlank()) {
-                    allEnabledModels.filter { it.modelId == GatewayForegroundService.activeNodeName }.singleOrNull()
+            } else {
+                // 多模态优先视觉模型
+                val vision = if (hasImage) {
+                    allEnabledModels.firstOrNull { ModelCapabilityManager.getCapabilities(it.modelId).second }
                 } else null
-            } ?: allEnabledModels.firstOrNull()
+                listOfNotNull(
+                    vision ?: allEnabledModels.findByRouteKey(GatewayForegroundService.activeNodeName) ?: allEnabledModels.firstOrNull()
+                ) + GatewayScheduler.pipelineSortedModelKeys.mapNotNull { allEnabledModels.findByRouteKey(it) }.filter { it.routeKey != (vision ?: allEnabledModels.findByRouteKey(GatewayForegroundService.activeNodeName))?.routeKey }
+            }
 
-            if (finalTarget != null) {
-                val provider = database.providerDao().getProviderById(finalTarget.providerId)
-                if (provider != null && provider.isEnabled) {
+            // ★★★ 故障转移循环：按池顺序逐个尝试，成功即返回 ★★★
+            var lastErr: String? = null
+            for ((idx, targetModel) in attemptModels.distinctBy { it.routeKey }.withIndex()) {
+                val provider = database.providerDao().getProviderById(targetModel.providerId)
+                if (provider == null || !provider.isEnabled) continue
+                try {
                     // ★★ 通知栏同步模型名（仅当变化时更新，避免通知栏闪烁）★★
-                    if (GatewayForegroundService.activeNodeName != finalTarget.modelId) {
-                        GatewayForegroundService.activeNodeName = finalTarget.modelId
+                    if (GatewayForegroundService.activeNodeName != targetModel.modelId) {
+                        GatewayForegroundService.activeNodeName = targetModel.modelId
+                        GatewayForegroundService.activeNodeProviderId = targetModel.providerId
                     }
                     // ★★ 设置 modelId/providerId 属性，确保 token 统计能正确记录 ★★
-                    call.attributes.put(MODEL_ID_KEY, finalTarget.modelId)
-                    call.attributes.put(PROVIDER_ID_KEY, finalTarget.providerId)
+                    call.attributes.put(MODEL_ID_KEY, targetModel.modelId)
+                    call.attributes.put(PROVIDER_ID_KEY, targetModel.providerId)
                     // ★★ 透传：修正参数 + 替换model字段（不注入人格，透传就是透传）★★
-                    val modifiedBody = sanitizeRequestBody(requestBodyStr).replaceFirst(Regex("\"model\"\\s*:\\s*\"[^\"]+\""), "\"model\":\"${finalTarget.modelId}\"")
+                    val modifiedBody = sanitizeRequestBody(requestBodyStr).replaceFirst(Regex("\"model\"\\s*:\\s*\"[^\"]+\""), "\"model\":\"${targetModel.modelId}\"")
                     val modifiedBytes = modifiedBody.toByteArray()
-                    val useProxy = finalTarget.useProxy
+                    val useProxy = targetModel.useProxy
 
                     if (stream) {
-                        pipeStreamResponse(call, provider, modifiedBytes, "/v1/$effectivePath", finalTarget.modelId, finalTarget.providerId, database, useProxy)
+                        pipeStreamResponse(call, provider, modifiedBytes, "/v1/$effectivePath", targetModel.modelId, targetModel.providerId, database, useProxy)
                     } else {
                         pipeNormalResponse(call, provider, modifiedBytes, "/v1/$effectivePath", database, useProxy)
                     }
-                    GatewayScheduler.recordModelResult(finalTarget.modelId, finalTarget.providerId, true)
-                    GatewayScheduler.recordModelUsage(finalTarget.modelId, finalTarget.providerId)
-                    GatewayForegroundService.addDebugLog("🔄 qtai-sj透传 → ${finalTarget.modelId}")
+                    GatewayScheduler.recordModelResult(targetModel.modelId, targetModel.providerId, true)
+                    GatewayScheduler.recordModelUsage(targetModel.modelId, targetModel.providerId)
+                    GatewayForegroundService.addDebugLog(if (idx == 0) "🔄 qtai-sj透传 → ${targetModel.modelId}" else "↻ qtai-sj故障转移#${idx} → ${targetModel.modelId}")
                     return
+                } catch (e: Exception) {
+                    lastErr = "${targetModel.modelId}: ${e.message}"
+                    GatewayScheduler.recordModelResult(targetModel.modelId, targetModel.providerId, false)
+                    synchronized(GatewayScheduler.healthCache) { GatewayScheduler.healthCache[targetModel.routeKey] = GatewayScheduler.ModelHealth(targetModel.modelId, targetModel.providerId, Long.MAX_VALUE, System.currentTimeMillis(), false) }
+                    if (GatewayForegroundService.getDebugMode()) GatewayForegroundService.addDebugLog("✗ qtai-sj ${targetModel.modelId}: ${e.message?.take(60)}")
                 }
             }
 
             // ★★★ 所有模型都不可用，返回错误而非静默 ★★★
             val noModelResp = buildJsonObject {
                 put("error", buildJsonObject {
-                    put("message", JsonPrimitive("qtai-sj无前缀转发失败：没有可用的已启用模型"))
+                    put("message", JsonPrimitive("qtai-sj无前缀转发失败：${if (lastErr != null) "最后错误 $lastErr" else "没有可用的已启用模型"}"))
                     put("type", JsonPrimitive("no_available_model"))
                 })
             }
@@ -1909,6 +1911,7 @@ if (brainContent.isNotBlank()) {
                     // ★★ 通知栏同步模型名（仅当变化时更新，避免通知栏闪烁）★★
                     if (GatewayForegroundService.activeNodeName != visionModel.modelId) {
                         GatewayForegroundService.activeNodeName = visionModel.modelId
+                        GatewayForegroundService.activeNodeProviderId = visionModel.providerId
                     }
                     GatewayForegroundService.addDebugLog("👁️ 图片检测→自动切视觉: $modelId → ${visionModel.modelId}")
                     visionModel.modelId
@@ -2013,6 +2016,7 @@ if (brainContent.isNotBlank()) {
                     // ★★ 通知栏同步模型名（仅当变化时更新，避免通知栏闪烁）★★
                     if (GatewayForegroundService.activeNodeName != primaryModel.modelId) {
                         GatewayForegroundService.activeNodeName = primaryModel.modelId
+                        GatewayForegroundService.activeNodeProviderId = primaryModel.providerId
                     }
                     GatewayScheduler.recordModelUsage(primaryModel.modelId, primaryModel.providerId)
                     val useProxy = primaryModel.useProxy
@@ -2063,6 +2067,7 @@ if (brainContent.isNotBlank()) {
                     // ★★ 通知栏同步模型名（仅当变化时更新，避免通知栏闪烁）★★
                     if (GatewayForegroundService.activeNodeName != matchedModel.modelId) {
                         GatewayForegroundService.activeNodeName = matchedModel.modelId
+                        GatewayForegroundService.activeNodeProviderId = matchedModel.providerId
                     }
                     GatewayScheduler.recordModelUsage(matchedModel.modelId, matchedModel.providerId)
                     val useProxy = matchedModel.useProxy
