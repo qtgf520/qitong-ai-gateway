@@ -2,7 +2,28 @@
 
 > 包名：com.qtwl.gateway
 > 签名证书：qitong.jks (别名: qitong)
-> 最后更新：2026-09-03
+> 最后更新：2026-09-06
+
+---
+
+## 🔄 v3.18.20（正式发布）
+
+### 🎨 UI 重构
+- **底部导航精简为4个** — 保留 首页/服务商/模型/聊天，底部菜单更清新简洁
+- **右上角三点菜单** — 统计/管理/关于/实例 收纳到右上角 ⋮ 菜单，操作更集中
+
+### 🔧 新增
+- **多实例管理** — 支持创建/删除/切换多个网关实例（default/office/home等），各实例独立配置
+- **modelMap 别名映射** — 自定义模型ID映射（如 `gpt-4` → `deepseek-chat`），实例级隔离
+- **远程日志上报** — 可配置远程日志服务器地址，便于集中收集网关日志
+
+### ⚡ 性能优化
+- **修复高版本Android卡顿** — 优化 while 循环导致的高频重组，改用 StateFlow/snapshotFlow 减少不必要重组
+
+### ✅ 验证
+- 编译验证：`./gradlew assembleDebug` → `BUILD SUCCESSFUL`
+- 安装验证：`pm install -r` → `Success`（versionCode=199, versionName=3.18.20）
+- 签名：debug APK 使用 qitong.jks 签名，与 release 一致
 
 ---
 

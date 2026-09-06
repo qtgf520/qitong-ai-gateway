@@ -9,7 +9,7 @@
 > Recommended: Uninstall old version OR clear app data → Install new version → Import backup.
 
 > **包名 / Package：** `com.qtwl.gateway`  
-> **最新版本 / Latest：** v3.18.19-1 (versionCode=196)  
+> **最新版本 / Latest：** v3.18.20 (versionCode=199)  
 > **开源协议 / License：** Apache 2.0  
 > **语言 / Languages：** 🌐 15 languages (CN/EN/JP/KR/FR/DE/ES/RU/PT/VN/TH/AR/HI/ID)
 > **官方QQ群 / QQ Group：** [1007488535](https://qm.qq.com/q/1007488535) 💬
@@ -179,6 +179,7 @@ See [CHANGELOG.md](CHANGELOG.md) for full changelog.
 
 | Version | Key Features |
 |:--------|:-------------|
+| **v3.18.20** | 🎨 **底部导航精简 + 多实例管理** — 底部精简为4个（首页/服务商/模型/聊天），统计/管理/关于/实例收纳到右上角⋮菜单；新增多实例管理（创建/删除/切换）；modelMap别名映射；远程日志上报；修复高版本Android卡顿（优化while循环高频重组） |
 | **v3.18.19-1** | 🔁 **网关流式故障转移真正触发 + 点灯切换生效** — 修复根因：流式路径异常被吞导致外部APP走网关HTTP调qtai-sj永不切换，加首块预读在响应前抛异常触发按池顺序切换；点灯时把模型提升到池第一位并同步活跃节点，灯立即点亮、网关立即优先使用 |
 | **v3.18.19** | 🔆 **强制故障转移全链路打通 + 池灯显示** — qtai-sj 透传分支改为按强制池顺序逐个尝试，故障真正切换；池内模型旁新增指示灯（灯亮=当前使用，点灯手动切换，自动切换灯自动点亮）；▲▼顺序即切换优先级真正生效；通知栏标题显示P服务商ID·模型名；内部聊天选qtai-sj也按强制池顺序故障转移 |
 | **v3.18.18-1** | 🔥 **强制故障池对所有请求生效，故障切换真正生效** — 修复根因：强制池此前只在qtai-sj请求时生效，具体模型ID请求被忽略。现强制池对所有请求优先生效（请求模型置首，其余按池顺序作故障切换候选） |
