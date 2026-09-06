@@ -362,6 +362,68 @@ class GatewayViewModel(
     // ==================== JSON 解析器 ====================
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = false }
 
+    // ==================== 多实例管理 ====================
+    private val _instances = MutableStateFlow<List<String>>(emptyList())
+    val instances: StateFlow<List<String>> = _instances.asStateFlow()
+    
+    private val _currentInstance = MutableStateFlow("default")
+    val currentInstance: StateFlow<String> = _currentInstance.asStateFlow()
+    
+    private val _modelMap = MutableStateFlow<String>("")
+    val modelMap: StateFlow<String> = _modelMap.asStateFlow()
+    
+    private val _logServer = MutableStateFlow<String>("")
+    val logServer: StateFlow<String> = _logServer.asStateFlow()
+    
+    init {
+        // 初始化实例列表
+        _instances.value = GatewayForegroundService.getInstances()
+        _currentInstance.value = GatewayForegroundService.getCurrentInstance()
+        _modelMap.value = GatewayForegroundService.getModelMap(_currentInstance.value)
+        _logServer.value = GatewayForegroundService.getLogServer(_currentInstance.value)
+    }
+    
+    /** 刷新实例列表 */
+    fun refreshInstances() {
+        _instances.value = GatewayForegroundService.getInstances()
+        _currentInstance.value = GatewayForegroundService.getCurrentInstance()
+        _modelMap.value = GatewayForegroundService.getModelMap(_currentInstance.value)
+        _logServer.value = GatewayForegroundService.getLogServer(_currentInstance.value)
+    }
+    
+    /** 添加实例 */
+    fun addInstance(name: String) {
+        GatewayForegroundService.addInstance(name)
+        refreshInstances()
+        _snackbarMessage.value = "✅ 实例 [$name] 已创建"
+    }
+    
+    /** 删除实例 */
+    fun removeInstance(name: String) {
+        GatewayForegroundService.removeInstance(name)
+        refreshInstances()
+        _snackbarMessage.value = "🗑️ 实例 [$name] 已删除"
+    }
+    
+    /** 切换实例 */
+    fun switchInstance(name: String) {
+        GatewayForegroundService.saveCurrentInstance(name)
+        refreshInstances()
+        _snackbarMessage.value = "🔄 已切换到实例 [$name]"
+    }
+    
+    /** 保存 modelMap */
+    fun saveModelMap(map: String) {
+        GatewayForegroundService.saveModelMap(_currentInstance.value, map)
+        _modelMap.value = map
+    }
+    
+    /** 保存远程日志地址 */
+    fun saveLogServer(url: String) {
+        GatewayForegroundService.saveLogServer(_currentInstance.value, url)
+        _logServer.value = url
+    }
+
     // ==================== 服务商相关 ====================
     val providers: StateFlow<List<Provider>> = database.providerDao()
         .getAllProviders()

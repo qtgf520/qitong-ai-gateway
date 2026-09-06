@@ -158,6 +158,12 @@ fun MainScreen(
                     icon = { Text("ℹ️") },
                     label = { Text(tr("nav_about")) }
                 )
+                NavigationBarItem(
+                    selected = selectedTab == 7,
+                    onClick = { selectedTab = 7 },
+                    icon = { Text("🔧") },
+                    label = { Text(localizedText("实例", "Instance")) }
+                )
             }
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
@@ -171,6 +177,7 @@ fun MainScreen(
                 4 -> StatsScreen(viewModel)
                 5 -> DataManagementScreen(viewModel)
                 6 -> AboutScreen(viewModel)
+                7 -> InstancesScreen(viewModel)
             }
         }
     }
