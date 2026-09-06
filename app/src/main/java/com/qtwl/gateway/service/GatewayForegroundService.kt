@@ -640,5 +640,79 @@ val totalDownloadBytes = java.util.concurrent.atomic.AtomicLong(0L)   // ★ APP
                 .putLong(KEY_TRAFFIC_DOWNLOAD + "_total", 0L)
                 .apply()
         }
+        
+        // ★★ 多实例管理 ★★
+        private const val KEY_INSTANCES = "gateway_instances"
+        private const val KEY_CURRENT_INSTANCE = "current_instance"
+        
+        /** 获取所有实例名称列表 */
+        fun getInstances(): List<String> {
+            val raw = GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0)
+                .getString(KEY_INSTANCES, "default") ?: "default"
+            return raw.split(",").filter { it.isNotBlank() }.distinct()
+        }
+        
+        /** 保存实例名称列表 */
+        fun saveInstances(instances: List<String>) {
+            GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).edit()
+                .putString(KEY_INSTANCES, instances.joinToString(","))
+                .apply()
+        }
+        
+        /** 获取当前活跃实例 */
+        fun getCurrentInstance(): String {
+            return GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0)
+                .getString(KEY_CURRENT_INSTANCE, "default") ?: "default"
+        }
+        
+        /** 设置当前活跃实例 */
+        fun saveCurrentInstance(name: String) {
+            GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).edit()
+                .putString(KEY_CURRENT_INSTANCE, name).apply()
+        }
+        
+        /** 添加新实例 */
+        fun addInstance(name: String) {
+            val instances = getInstances().toMutableList()
+            if (!instances.contains(name)) {
+                instances.add(name)
+                saveInstances(instances)
+            }
+            saveCurrentInstance(name)
+        }
+        
+        /** 删除实例 */
+        fun removeInstance(name: String) {
+            val instances = getInstances().filter { it != name }.toMutableList()
+            if (instances.isEmpty()) {
+                instances.add("default")
+            }
+            saveInstances(instances)
+            if (getCurrentInstance() == name) {
+                saveCurrentInstance(instances.first())
+            }
+        }
+        
+        // ★★ modelMap 别名映射（实例级别）★★
+        fun saveModelMap(instance: String, mapJson: String) {
+            GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).edit()
+                .putString("model_map_$instance", mapJson).apply()
+        }
+        
+        fun getModelMap(instance: String): String {
+            return GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0)
+                .getString("model_map_$instance", "") ?: ""
+        }
+        
+        // ★★ 远程日志上报地址 ★★
+        fun saveLogServer(instance: String, url: String) {
+            GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).edit()
+                .putString("log_server_$instance", url).apply()
+        }
+        
+        fun getLogServer(instance: String): String {
+            return GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0)
+                .getString("log_server_$instance", "") ?: ""
+        }
     }
 }
