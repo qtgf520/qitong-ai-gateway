@@ -382,15 +382,21 @@ class GatewayViewModel(
         _modelMap.value = GatewayForegroundService.getModelMap(_currentInstance.value)
         _logServer.value = GatewayForegroundService.getLogServer(_currentInstance.value)
         // ★★ 启动低频会话快照刷新（3秒），避免跑马灯高频重组 ★★
-        viewModelScope.launch {
+        // 注意：必须延迟启动，否则构造期间 _quickLiveSessions 属性未初始化会 NPE 闪退
+        viewModelScope.launch(Dispatchers.IO) {
+            delay(1000)  // 先等 ViewModel 完全构造
             while (true) {
-                refreshQuickLiveSessions()
+                _quickLiveSessions.value = GatewayForegroundService.liveSessions
                 delay(3000)
             }
         }
         // ★★ 自动故障转移/自动测速状态持久化恢复：启动APP时若上次是开启，自动恢复自动测速 ★★
+        // 延迟执行避免构造期间访问未初始化属性导致 NPE 闪退
         if (GatewayForegroundService.getAutoFailover()) {
-            startPipelineTest()
+            viewModelScope.launch(Dispatchers.IO) {
+                delay(1500)  // 等 ViewModel 完全构造
+                startPipelineTest()
+            }
         }
     }
     
