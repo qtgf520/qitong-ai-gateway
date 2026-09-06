@@ -2,7 +2,29 @@
 
 > 包名：com.qtwl.gateway
 > 签名证书：qitong.jks (别名: qitong)
-> 最后更新：2026-09-06
+> 最后更新：2026-09-07
+
+---
+
+## 🔄 v3.18.21（正式发布）
+
+### 🐛 修复
+- **启动闪退 NPE** — 修复 ViewModel `init` 构造期间启动协程访问未初始化 `_quickLiveSessions` 导致的 NPE 闪退。快照刷新协程延迟1秒、自动测速恢复延迟1.5秒启动，避开构造期
+
+### ⚡ 性能优化（解决高版本Android卡顿/掉帧）
+- **跑马灯卡顿修复** — 实时会话跑马灯由每800ms全页重组改为3秒低频快照刷新（`quickLiveSessions` StateFlow），消除首页高频重组
+- **滚动卡顿修复** — LazyColumn每个item内重复订阅 forcedPool 提升到外层一次，滚动更流畅
+- **首页精简** — 测速区域重复显示合并（当前AI助手模型/正在测速合并为单一简洁状态行）
+
+### ✨ 新增
+- **pID服务商ID可自定义** — 服务商ID可选自定义显示（SharedPreferences映射，避免数据库迁移），首页/排行榜/强制池统一使用 `displayId`
+- **自动测速状态持久化恢复** — 启动APP时若上次自动故障转移/测速开启，自动恢复自动测速
+
+### ✅ 验证
+- 编译验证：`./gradlew assembleDebug` → `BUILD SUCCESSFUL`
+- 安装验证：`pm install -r` → `Success`（versionCode=200, versionName=3.18.21）
+- 签名：debug APK 使用 qitong.jks 签名，与 release 一致
+- 启动稳定性：APP启动后进程存活，无闪退
 
 ---
 
