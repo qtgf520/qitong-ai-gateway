@@ -546,7 +546,7 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
-                            "#$currentRank · P${currentRankedItem.providerId} · ${currentRankedItem.modelName}",
+                            "#$currentRank · P${GatewayForegroundService.getProviderDisplayId(currentRankedItem.providerId)} · ${currentRankedItem.modelName}",
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
@@ -554,35 +554,21 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                     }
                 }
 
+                // ★★ 正在测速状态（仅测速运行时显示，精简不重复）★★
                 val currentItem = pStatus.find { it.isCurrent && !it.status.startsWith("✅") && !it.status.startsWith("❌") }
-                if (currentItem != null || pRunning) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(localizedText("⏳ 正在测速", "⏳ Speed testing"), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary)
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.06f))
+                if (pRunning && currentItem != null) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = currentItem?.let { "P${it.providerId} · ${it.modelName}" } ?: localizedText("准备中...", "Preparing..."),
-                                style = MaterialTheme.typography.bodySmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            if (pRunning) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
-                                    Spacer(Modifier.width(4.dp))
-                                    Text(localizedText("测速中", "Testing speed"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                                }
-                            }
-                        }
+                        CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = "⏳ ${localizedText("测速中", "Testing speed")}: ${currentItem.modelName}",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
                     }
                 }
 
@@ -594,6 +580,7 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                     Spacer(modifier = Modifier.height(4.dp))
 // ★ 显示强制故障池指示
                     val forcedPoolBanner by viewModel.forcedPool.collectAsState()
+                    val forcedPoolSet = remember(forcedPoolBanner) { forcedPoolBanner.toSet() }
                     if (forcedPoolBanner.isNotEmpty()) {
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
@@ -604,7 +591,7 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                                 text = "🎯 ${localizedText("强制故障池", "Forced failover pool")} (${forcedPoolBanner.size}): " +
                                     forcedPoolBanner.joinToString(" | ") { key ->
                                         val item = doneItems.find { it.selectionKey == key }
-                                        if (item != null) "P${item.providerId}·${item.modelName}" else ModelRouteKey.modelIdOf(key)
+                                        if (item != null) "P${GatewayForegroundService.getProviderDisplayId(item.providerId)}·${item.modelName}" else ModelRouteKey.modelIdOf(key)
                                     },
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
@@ -625,8 +612,7 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                             items = doneItems,
                             key = { _, item -> item.selectionKey }
                         ) { index, item ->
-                            val forcedPool by viewModel.forcedPool.collectAsState()
-                            val isSelected = forcedPool.contains(item.selectionKey)
+                            val isSelected = item.selectionKey in forcedPoolSet
                             val providerName = providerMap[item.providerId]?.name
                                 ?: localizedText("未知服务商", "Unknown provider")
                             Card(
@@ -646,7 +632,7 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                                     // 第一行：排名 + 模型名 + 选中标记
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Text(
-                                            text = "#${index + 1} · P${item.providerId} · ",
+                                            text = "#${index + 1} · P${GatewayForegroundService.getProviderDisplayId(item.providerId)} · ",
                                             style = MaterialTheme.typography.bodySmall,
                                             fontWeight = FontWeight.Bold,
                                             color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
@@ -726,12 +712,8 @@ fun HomeScreen(viewModel: GatewayViewModel) {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // ★★ 实时会话跑马灯（每条从右←左滚动，显示时间+模型+发送+回复内容）★★
-        var tick by remember { mutableStateOf(0L) }
-        LaunchedEffect(Unit) {
-            while (true) { delay(800); tick = System.currentTimeMillis() }
-        }
-        val currentSessions = remember(tick) { viewModel.liveSessions }
+        // ★★ 实时会话跑马灯（优化：水平滚动由 InfiniteTransition 动画驱动，会话列表低频刷新，避免全页每800ms重组卡顿）★★
+        val currentSessions by viewModel.quickLiveSessions.collectAsState()
         if (currentSessions.isNotEmpty() && serviceRunning) {
             Card(
                 modifier = Modifier.fillMaxWidth(),

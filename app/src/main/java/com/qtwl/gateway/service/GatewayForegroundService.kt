@@ -714,5 +714,23 @@ val totalDownloadBytes = java.util.concurrent.atomic.AtomicLong(0L)   // ★ APP
             return GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0)
                 .getString("log_server_$instance", "") ?: ""
         }
+        
+        // ★★ 服务商自定义ID（pID可自定义显示，SharedPreferences 映射，避免数据库迁移）★★
+        private fun providerCustomIdKey(providerId: Long) = "provider_custom_id_$providerId"
+        fun saveProviderCustomId(providerId: Long, customId: String) {
+            GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).edit()
+                .putString(providerCustomIdKey(providerId), customId.trim()).apply()
+        }
+        fun getProviderCustomId(providerId: Long): String {
+            return GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0)
+                .getString(providerCustomIdKey(providerId), "") ?: ""
+        }
+        fun getProviderDisplayId(providerId: Long): String {
+            val custom = getProviderCustomId(providerId)
+            return if (custom.isNotBlank()) custom else providerId.toString()
+        }
+
+        // ★★ 后台保活优化：常驻前台服务 + 高版本Android稳定 ★★
+        @Volatile var isKeepAliveOptimized = false
     }
 }

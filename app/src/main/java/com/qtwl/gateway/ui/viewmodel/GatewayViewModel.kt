@@ -381,6 +381,17 @@ class GatewayViewModel(
         _currentInstance.value = GatewayForegroundService.getCurrentInstance()
         _modelMap.value = GatewayForegroundService.getModelMap(_currentInstance.value)
         _logServer.value = GatewayForegroundService.getLogServer(_currentInstance.value)
+        // ★★ 启动低频会话快照刷新（3秒），避免跑马灯高频重组 ★★
+        viewModelScope.launch {
+            while (true) {
+                refreshQuickLiveSessions()
+                delay(3000)
+            }
+        }
+        // ★★ 自动故障转移/自动测速状态持久化恢复：启动APP时若上次是开启，自动恢复自动测速 ★★
+        if (GatewayForegroundService.getAutoFailover()) {
+            startPipelineTest()
+        }
     }
     
     /** 刷新实例列表 */
@@ -2835,6 +2846,14 @@ fun clearChatError() {
     var liveSessions: List<LiveSession>
         get() = GatewayForegroundService.liveSessions
         private set(value) { /* 只读 */ }
+
+    // ★★ 实时会话低频快照（3秒刷新一次，避免跑马灯高频重组导致卡顿）★★
+    private val _quickLiveSessions = MutableStateFlow<List<LiveSession>>(emptyList())
+    val quickLiveSessions: StateFlow<List<LiveSession>> = _quickLiveSessions.asStateFlow()
+    
+    fun refreshQuickLiveSessions() {
+        _quickLiveSessions.value = GatewayForegroundService.liveSessions
+    }
     
     fun clearLiveSessions() {
         GatewayForegroundService.clearLiveSessions()

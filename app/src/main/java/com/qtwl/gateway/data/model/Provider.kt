@@ -43,4 +43,10 @@ data class Provider(
             // 拼接端口
             return baseUrl.trimEnd('/') + ":" + port.trim()
         }
+
+    /**
+     * ★★ 自定义服务商ID（pID可自定义）：优先用 SharedPreferences 映射的自定义ID，否则用数据库ID
+     */
+    val displayId: String
+        get() = com.qtwl.gateway.service.GatewayForegroundService.getProviderDisplayId(id)
 }
