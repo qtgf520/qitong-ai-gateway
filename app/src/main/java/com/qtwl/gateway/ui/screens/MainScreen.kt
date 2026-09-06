@@ -76,6 +76,9 @@ import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Person
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.FlowCollector
 
 /**
  * 主屏幕 —— 带底部导航的容器
@@ -264,14 +267,14 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                     if (serviceRunning) tr("running") else tr("stopped"),
                     if (serviceRunning) Online else Error
                 )
-                // ★★ 实时活跃模型显示
-                var activeModel by remember { mutableStateOf("") }
-                LaunchedEffect(serviceRunning) {
-                    while (serviceRunning) {
-                        activeModel = com.qtwl.gateway.service.GatewayForegroundService.activeNodeName
-                        delay(2000)
-                    }
-                }
+// ★★ 实时活跃模型显示（优化：减少while循环频率）★★
+                 var activeModel by remember { mutableStateOf("") }
+                 LaunchedEffect(serviceRunning) {
+                     while (serviceRunning) {
+                         activeModel = GatewayForegroundService.activeNodeName
+                         delay(2000)  // 保持2秒轮询，避免高频重组
+                     }
+                 }
                 if (activeModel.isNotBlank()) {
                     InfoRow(
                         tr("active_model"),
