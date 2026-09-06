@@ -72,6 +72,7 @@ import com.qtwl.gateway.utils.localizeRuntimeText
 import com.qtwl.gateway.utils.localizeGeneratedName
 import com.qtwl.gateway.service.ThinkingConfigManager
 import com.qtwl.gateway.service.GroupChatManager
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.List
@@ -104,6 +105,9 @@ fun MainScreen(
         }
     }
 
+    // 右上角菜单展开状态
+    var menuExpanded by remember { mutableStateOf(false) }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -111,7 +115,36 @@ fun MainScreen(
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primary,
                     titleContentColor = MaterialTheme.colorScheme.onPrimary
-                )
+                ),
+                actions = {
+                    // 右上角三点菜单：统计/管理/关于/实例
+                    Box {
+                        IconButton(onClick = { menuExpanded = true }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary)
+                        }
+                        DropdownMenu(
+                            expanded = menuExpanded,
+                            onDismissRequest = { menuExpanded = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("📊 ${tr("nav_stats")}") },
+                                onClick = { selectedTab = 4; menuExpanded = false }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("⚙️ ${tr("nav_manage")}") },
+                                onClick = { selectedTab = 5; menuExpanded = false }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("ℹ️ ${tr("nav_about")}") },
+                                onClick = { selectedTab = 6; menuExpanded = false }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("🔧 ${localizedText("实例", "Instance")}") },
+                                onClick = { selectedTab = 7; menuExpanded = false }
+                            )
+                        }
+                    }
+                }
             )
         },
         bottomBar = {
@@ -139,30 +172,6 @@ fun MainScreen(
                     onClick = { selectedTab = 3 },
                     icon = { Text("💬") },
                     label = { Text(tr("nav_chat")) }
-                )
-                NavigationBarItem(
-                    selected = selectedTab == 4,
-                    onClick = { selectedTab = 4 },
-                    icon = { Text("📊") },
-                    label = { Text(tr("nav_stats")) }
-                )
-                NavigationBarItem(
-                    selected = selectedTab == 5,
-                    onClick = { selectedTab = 5 },
-                    icon = { Text("⚙️") },
-                    label = { Text(tr("nav_manage")) }
-                )
-                NavigationBarItem(
-                    selected = selectedTab == 6,
-                    onClick = { selectedTab = 6 },
-                    icon = { Text("ℹ️") },
-                    label = { Text(tr("nav_about")) }
-                )
-                NavigationBarItem(
-                    selected = selectedTab == 7,
-                    onClick = { selectedTab = 7 },
-                    icon = { Text("🔧") },
-                    label = { Text(localizedText("实例", "Instance")) }
                 )
             }
         },
