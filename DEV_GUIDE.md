@@ -245,6 +245,38 @@ ls YourAppName*.apk 2>/dev/null | grep -v 'YourAppName-v当前版本.apk' | whil
 
 ---
 
-> **文档版本:** v1 — 通用版
+## 9. ⚠️ 终端失联紧急处理（Operit AI 专用）
+
+> **症状：** terminal/shell 所有命令显示 "User cancelled"，重启应用无效，但文件读取正常
+> **时间：** 2026-09-07 实战验证
+
+### 根因
+**Operit 的终端执行依赖 Android 无障碍服务（Accessibility）**。重启手机后，Operit AI 的无障碍服务不会自动重新启用，导致 terminal 和 super_admin:shell 均无法执行命令（所有命令被静默取消）。
+
+### 快速诊断
+```bash
+# 尝试 shell 通道（需 Shizuku）
+super_admin:shell → "echo shell-ok"
+# 若报错 "Current ACCESSIBILITY unavailable: executor unavailable; Accessibility service is not enabled"
+# 说明就是无障碍服务未启用
+```
+
+### 解决方案
+1. 打开 **系统设置 → 无障碍 / 辅助功能（Accessibility）**
+2. 找到 **Operit AI**
+3. **开启无障碍服务**（Toggle ON）
+4. 回到 Operit，terminal 立即恢复
+
+### 恢复后验证
+```bash
+echo "terminal-ok"
+# 输出 terminal-ok 说明已恢复
+```
+
+> 💡 **提示：** 重启手机后若 terminal 命令被持续 "User cancelled"，优先检查无障碍服务开关！
+
+---
+
+> **文档版本:** v2 — 通用版（新增第9节：终端失联紧急处理）
 > **适用于:** 任何 Android 应用的 AI 辅助开发
 > **通用化说明:** 本指南去除了特定项目引用，所有项目名/路径/包名/证书名均为占位符，使用时替换为实际值即可

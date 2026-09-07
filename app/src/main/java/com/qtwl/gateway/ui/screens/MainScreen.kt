@@ -1548,6 +1548,16 @@ private fun AddProviderDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
                 
+                // 自定义ID
+                OutlinedTextField(
+                    value = form.customId,
+                    onValueChange = { viewModel.updateFormField("customId", it) },
+                    label = { Text(localizedText("自定义ID（pID显示用，留空=用数据库ID）", "Custom ID (pID display, blank=default)")) },
+                    placeholder = { Text(localizedText("如: P001", "e.g.: P001")) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                
                 // 提示信息
                 if (selectedIndex != 4) {
                     Text(
@@ -1587,6 +1597,7 @@ private fun EditProviderDialog(
     var port by remember { mutableStateOf(provider.port) }
     var apiKey by remember { mutableStateOf(provider.apiKey ?: "") }
     var chatPath by remember { mutableStateOf(provider.chatPath ?: "") }
+    var customId by remember { mutableStateOf(GatewayForegroundService.getProviderCustomId(provider.id)) }
     var showApiKey by remember { mutableStateOf(false) }
     var typeExpanded by remember { mutableStateOf(false) }
     val types = GatewayViewModel.PROVIDER_TYPES
@@ -1729,6 +1740,16 @@ supportingText = {
                     },
                     modifier = Modifier.fillMaxWidth()
                 )
+                
+                // 自定义ID
+                OutlinedTextField(
+                    value = customId,
+                    onValueChange = { customId = it },
+                    label = { Text(localizedText("自定义ID（pID显示用，留空=用数据库ID）", "Custom ID (pID display, blank=default)")) },
+                    placeholder = { Text(localizedText("如: P001", "e.g.: P001")) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
         },
         confirmButton = {
@@ -1743,6 +1764,7 @@ supportingText = {
                         chatPath = chatPath.ifBlank { null }
                     )
                 )
+                GatewayForegroundService.saveProviderCustomId(provider.id, customId)
             }) {
                 Text(tr("save"))
             }

@@ -842,7 +842,8 @@ companion object {
     val apiKey: String = "",
     val orderIndex: Int = 0,
     val chatPath: String = "", // 聊天接口路径（留空=自动拼接/v1/chat/completions）
-    val apiPath: String = "/v1/models" // 模型列表接口路径
+    val apiPath: String = "/v1/models", // 模型列表接口路径
+    val customId: String = "" // ★★ 自定义服务商ID（pID显示用，留空=用数据库ID）★★
 )
 
     private val _providerForm = MutableStateFlow(ProviderForm())
@@ -1350,6 +1351,11 @@ companion object {
 
     fun showEditProvider(provider: Provider) {
         _showEditProviderDialog.value = provider
+        // 回填自定义ID
+        val existingCustomId = GatewayForegroundService.getProviderCustomId(provider.id)
+        if (existingCustomId.isNotBlank()) {
+            _providerForm.value = _providerForm.value.copy(customId = existingCustomId)
+        }
     }
 
     fun hideEditProvider() {
@@ -1375,6 +1381,7 @@ companion object {
             "apiKey" -> _providerForm.value.copy(apiKey = value)
             "chatPath" -> _providerForm.value.copy(chatPath = value)
             "apiPath" -> _providerForm.value.copy(apiPath = value)
+            "customId" -> _providerForm.value.copy(customId = value)
             "orderIndex" -> _providerForm.value.copy(orderIndex = value.toIntOrNull() ?: 0)
             else -> _providerForm.value
         }
@@ -1403,7 +1410,7 @@ companion object {
 
         viewModelScope.launch {
             try {
-                database.providerDao().insert(
+                val newProviderId = database.providerDao().insert(
                     Provider(
                         name = form.name,
                         type = form.type,
@@ -1414,6 +1421,10 @@ companion object {
                         chatPath = form.chatPath.ifBlank { null }
                     )
                 )
+                // 保存自定义ID
+                if (form.customId.isNotBlank()) {
+                    GatewayForegroundService.saveProviderCustomId(newProviderId, form.customId)
+                }
                 _showAddProviderDialog.value = false
                 _snackbarMessage.value = "✅ 服务商「${form.name}」添加成功"
             } catch (e: Exception) {
@@ -2129,6 +2140,36 @@ fun getDisplayModelName(model: AiModel): String {
             completionTokens = 0,
             totalTokens = 0
         )
+
+        // ★★ 记录 qtai-sj 路由后的真实模型 Token 用量 ★★
+        viewModelScope.launch {
+            try {
+                val realModelName = GatewayForegroundService.activeNodeName
+                if (realModelName.isNotBlank()) {
+                    val allModels = database.aiModelDao().getEnabledModelsList()
+                    val matchedModel = allModels.firstOrNull { it.modelId == realModelName }
+                    if (matchedModel != null) {
+                        // 估算 token：中文约1字符=1token，英文约4字符=1token
+                        val textLen = content.length
+                        val estimatedTokens = if (content.any { it in '\u4e00'..'\u9fff' }) textLen else textLen / 4
+                        val promptEstimate = estimatedTokens / 3
+                        val completionEstimate = estimatedTokens - promptEstimate
+                        if (estimatedTokens > 0) {
+                            database.tokenUsageDao().insert(
+                                TokenUsage(
+                                    providerId = matchedModel.providerId,
+                                    modelId = realModelName,
+                                    promptTokens = promptEstimate,
+                                    completionTokens = completionEstimate,
+                                    totalTokens = estimatedTokens
+                                )
+                            )
+                            refreshTokenStats()
+                        }
+                    }
+                }
+            } catch (_: Exception) { }
+        }
 
         // 更新对话时间戳
         database.conversationDao().touchConversation(conversation.id)

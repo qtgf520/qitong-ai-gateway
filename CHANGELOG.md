@@ -6,6 +6,23 @@
 
 ---
 
+## 🔄 v3.18.22（正式发布）
+
+### ✨ 新增
+- **pID自定义ID UI完整实现** — 服务商添加/编辑对话框新增"自定义ID"输入框，支持保存（`saveProviderCustomId`）与回填（`getProviderCustomId`），首页/排行榜/强制池统一使用 `displayId` 显示
+- **qtai-sj 转接模型真实统计** — `finalizeRouterMessage` 现在记录 qtai-sj 路由后的真实模型 Token 用量（读取 `activeNodeName` 匹配模型，估算token写入TokenUsage），统计页按模型统计不再漏记转接模型（如外部APP选 qtai-sj 实际转接到 DeepSeek 对应模型）
+
+### 📖 文档
+- **DEV_GUIDE.md 升级 v2** — 新增第9节「终端失联紧急处理」：Operit 终端执行依赖 Android 无障碍服务，重启手机后无障碍未启用会导致所有命令被静默取消（显示 "User cancelled"），开启 设置→无障碍→Operit AI 即恢复
+
+### ✅ 验证
+- 编译验证：`./gradlew assembleDebug` → `BUILD SUCCESSFUL`
+- 安装验证：`pm install -r` → `Success`（versionCode=202, versionName=3.18.22）
+- 签名：debug APK 使用 qitong.jks 签名，与 release 一致
+- 启动稳定性：APP启动后进程存活，无闪退
+
+---
+
 ## 🔄 v3.18.21（正式发布）
 
 ### 🐛 修复
