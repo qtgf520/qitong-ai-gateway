@@ -486,9 +486,12 @@ val totalDownloadBytes = java.util.concurrent.atomic.AtomicLong(0L)   // ★ APP
             saveLastRealModel(current)
         }
         GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).edit().putString(KEY_FORCED_MODEL, modelId).apply()
-        // ★★★ 同步维护强制故障多转移池：清空旧池，把新选中的模型设为池内第一个 ★★★
+        // ★★★ 同步维护强制故障多转移池 ★★★
+        // 注意：清空强制模型（""）时【不再清空整个池】——用户多选的强制故障池必须持久保留，
+        // 否则重启APP或取消强制切换后，精心设置的故障转移列表会全部丢失！
         if (modelId.isBlank()) {
-            saveForcedPool(emptyList())
+            // 只清空强制模型，保留强制池（池是用户手动多选的故障转移列表）
+            // 不调用 saveForcedPool(emptyList())，避免误清空用户配置
         } else {
             val pool = getForcedPool().toMutableList()
             if (pool.contains(modelId)) pool.remove(modelId)
