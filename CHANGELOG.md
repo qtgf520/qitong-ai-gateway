@@ -2,7 +2,19 @@
 
 > 包名：com.qtwl.gateway
 > 签名证书：qitong.jks (别名: qitong)
-> 最后更新：2026-09-07
+> 最后更新：2026-10-03
+
+---
+
+## 🔄 v3.18.23（正式发布）
+
+### 🐛 修复
+- **强制故障池重启丢失** — 修复根因：`GatewayForegroundService.saveForcedModel()` 在传入空串（清空强制模型）时会连带 `saveForcedPool(emptyList())` 把用户精心设置的多模型强制故障池整个清空。触发场景包括：开启「自动化切换(qtai-sj)」、「取消强制切换/点灯取消」、重启APP后某些流程。现改为**清空强制模型时保留强制池**（池是用户手动多选的故障转移列表，必须持久保留），重启APP后强制故障池不再丢失
+
+### ✅ 验证
+- 编译验证：`./gradlew assembleDebug` → `BUILD SUCCESSFUL`
+- 安装验证：`pm install -r` → `Success`（versionCode=203, versionName=3.18.23）
+- 签名：debug APK 使用 qitong.jks 签名（C=CN, SHA1 67:37:54:...:68:6D），与 release 一致
 
 ---
 
