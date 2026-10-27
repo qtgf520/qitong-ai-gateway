@@ -124,6 +124,28 @@ pm install -r /data/local/tmp/app.apk
 dumpsys package 你的包名 | grep -E 'versionName|versionCode'
 ```
 
+### ⚠️ vivo/OriginOS 安装确认框自动点击（2026-10-28 实战验证）
+
+> **现象：** `pm install` 在 vivo 设备上会弹出「安全守护」确认页（`com.android.packageinstaller` 的 `PackageInterceptActivity`），若无人手动点确认，`pm install` 会一直卡住直到超时（日志：`Failure [INSTALL_FAILED_ABORTED: User rejected permissions]`）。
+
+**自动点击步骤（用 `Automatic_ui_base` 包）：**
+```text
+① 触发安装：pm install -r -t /data/local/tmp/xxx.apk（APK 先复制到 /data/local/tmp）
+② 等 2~3 秒弹确认框 → get_page_info 确认当前是
+   com.android.packageinstaller PackageInterceptActivity（vivo 安全守护页）
+③ 先勾选「已了解应用的风险检测结果」复选框：
+   click_element → resourceId=com.android.packageinstaller:id/deleted_file_state_cb
+④ 再点「继续安装」按钮：
+   click_element → resourceId=android:id/button1
+⑤ 等 5 秒验证：dumpsys package 包名 | grep -E 'versionName|versionCode'
+   能看到即安装成功
+⑥ （可选）首次启动弹通知权限框 → 点 permission_allow_button 允许
+```
+**关键点：**
+- **必须先勾选「已了解风险」再点「继续安装」**，顺序不能反
+- vivo 安全守护页在大版本升级/未知来源安装时必现，UI 自动化可全自动处理
+- 完成后 `pm list packages | grep 包名` 验证双包共存
+
 ---
 
 ## 5. 验证清单（通用）
@@ -287,6 +309,6 @@ echo "terminal-ok"
 
 ---
 
-> **文档版本:** v2 — 通用版（新增第9节：终端失联紧急处理）
+> **文档版本:** v3 — 通用版（第9节：终端失联紧急处理 + 第4节：vivo安装确认框自动点击 + 第6节：双轨包名机制）
 > **适用于:** 任何 Android 应用的 AI 辅助开发
 > **通用化说明:** 本指南去除了特定项目引用，所有项目名/路径/包名/证书名均为占位符，使用时替换为实际值即可
