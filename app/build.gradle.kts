@@ -13,11 +13,26 @@ android {
         applicationId = "com.qtwl.gateway"
         minSdk = 24
         targetSdk = 35
-        versionCode = 203
-versionName = "3.18.23"
+        versionCode = 204
+versionName = "3.18.24-1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
+        }
+    }
+
+    // ★★ 双轨包名：正式版 formal（com.qtwl.gateway）/ 测试版 cs（com.qtwl.gateway.cs），同一 qitong.jks 签名可共存 ★★
+    flavorDimensions += "track"
+    productFlavors {
+        create("formal") {
+            dimension = "track"
+            applicationId = "com.qtwl.gateway"
+            versionName = "3.18.24"
+        }
+        create("cs") {
+            dimension = "track"
+            applicationId = "com.qtwl.gateway.cs"
+            versionName = "3.18.24-1"
         }
     }
 

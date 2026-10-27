@@ -1270,24 +1270,24 @@ companion object {
             try {
                 _snackbarMessage.value = "⏳ 正在申请后台权限..."
                 withContext(Dispatchers.IO) {
+                    // ★★ 动态获取当前包名（正式 com.qtwl.gateway / 测试 com.qtwl.gateway.cs）★★
+                    val pkg = com.qtwl.gateway.GatewayApplication.getInstance().packageName
                     try {
                         Runtime.getRuntime().exec(arrayOf(
                             "dumpsys", "deviceidle", "whitelist",
-                            "+com.qtwl.gateway"
+                            "+$pkg"
                         )).waitFor()
                     } catch (_: Exception) { }
-
                     try {
                         Runtime.getRuntime().exec(arrayOf(
-                            "appops", "set", "com.qtwl.gateway",
+                            "appops", "set", pkg,
                             "RUN_ANY_IN_BACKGROUND", "allow"
                         )).waitFor()
                     } catch (_: Exception) { }
-
                     try {
                         Runtime.getRuntime().exec(arrayOf(
                             "cmd", "deviceidle", "whitelist",
-                            "+com.qtwl.gateway"
+                            "+$pkg"
                         )).waitFor()
                     } catch (_: Exception) { }
                 }

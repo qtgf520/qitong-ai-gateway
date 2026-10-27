@@ -138,16 +138,26 @@ dumpsys package 你的包名 | grep -E 'versionName|versionCode'
 
 ---
 
-## 6. 测试版 vs 正式版
+## 6. 测试版 vs 正式版（★双轨包名★）
+
+> ⚡ **双轨包名机制（2026-10-28 起强制）：**
+> - **正式版**：包名 `com.qtwl.gateway`，flavor = `formal`，应用名「綦桐AI网关」
+> - **测试版**：包名 `com.qtwl.gateway.cs`，flavor = `cs`，应用名「綦桐AI网关」（包名带 .cs 区分）
+> - **同一 qitong.jks 签名**，两包可**同时安装共存**，互不覆盖，数据互不干扰
+> - **编译前必须修改最新版本号**（versionCode 递增 + versionName 同步），严禁重复使用同一版本号
+> - flavor 内 versionName：formal = `x.x.x`，cs = `x.x.x-N`（测试序号递增）
+> - **编译命令**：测试版 `./gradlew assembleCsDebug`；正式版 `./gradlew assembleFormalDebug`
+> - **APK 产物路径**：测试版 `app/build/outputs/apk/cs/debug/app-cs-debug.apk`；正式版 `app/build/outputs/apk/formal/debug/app-formal-debug.apk`
+> - **安装**：正式版 `pm install -r`（覆盖正式包）；测试版 `pm install -r`（覆盖测试包，不影响正式版数据）
 
 ### 测试模式（AI说"测试"时）
 ```
-① 改版本号 → x.x.x-N（N必须递增，不能重复）
+① 改版本号 → x.x.x-N（versionCode +1，N必须递增，不能重复）
 ② 改代码（对照备份法）
 ③ 设置签名环境变量
-④ ./gradlew assembleDebug
-⑤ 复制APK到sdcard（带版本号，命名统一：QiTongGateway-vx.x.x-N.apk）
-⑥ 安装到设备
+④ ./gradlew assembleCsDebug          ← 测试版专用 flavor
+⑤ 复制APK到sdcard（带版本号，命名统一：QiTongGateway-x.x.x-N-android.apk）
+⑥ 安装到设备（pm install -r，包名 com.qtwl.gateway.cs）
 ⑦ 验证功能
 ⑧ 提交本地Git（不 push 远程）
 ```
@@ -155,13 +165,13 @@ dumpsys package 你的包名 | grep -E 'versionName|versionCode'
 
 ### 正式模式（AI说"发布"时）
 ```
-① 改版本号 → x.x.x（去掉 -N，versionCode保持测试版最后值）
+① 改版本号 → x.x.x（versionCode保持测试版最后值，flavor formal 的 versionName 去 -N）
 ② 更新CHANGELOG.md（追加新版本日志）
 ③ 更新README.md（版本号+版本历史表）
 ④ 设置签名环境变量
-⑤ ./gradlew assembleDebug
-⑥ 复制APK到sdcard（带版本号，命名统一：QiTongGateway-vx.x.x.apk）
-⑦ 安装到设备
+⑤ ./gradlew assembleFormalDebug      ← 正式版专用 flavor
+⑥ 复制APK到sdcard（带版本号，命名统一：QiTongGateway-x.x.x.apk）
+⑦ 安装到设备（pm install -r，包名 com.qtwl.gateway）
 ⑧ 验证功能
 ⑨ 清理备份文件（删.bak、backup_*）
 ⑩ 提交本地Git
