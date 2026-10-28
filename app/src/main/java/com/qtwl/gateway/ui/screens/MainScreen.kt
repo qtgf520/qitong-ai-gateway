@@ -143,6 +143,10 @@ fun MainScreen(
                                 text = { Text("🔧 ${localizedText("实例", "Instance")}") },
                                 onClick = { selectedTab = 7; menuExpanded = false }
                             )
+                            DropdownMenuItem(
+                                text = { Text("🧠 ${localizedText("本地模型", "Local model")}") },
+                                onClick = { selectedTab = 8; menuExpanded = false }
+                            )
                         }
                     }
                 }
@@ -188,6 +192,7 @@ fun MainScreen(
                 5 -> DataManagementScreen(viewModel)
                 6 -> AboutScreen(viewModel)
                 7 -> InstancesScreen(viewModel)
+                8 -> LocalModelScreen()
             }
         }
     }

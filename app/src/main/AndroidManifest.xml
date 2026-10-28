@@ -21,6 +21,8 @@
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <!-- Shizuku（本地模型后台保活/执行命令） -->
+    <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
 
     <application
         android:name=".GatewayApplication"
@@ -53,6 +55,15 @@
             android:name=".service.GatewayForegroundService"
             android:exported="false"
             android:foregroundServiceType="specialUse" />
+
+        <!-- Shizuku Provider（本地模型后台命令/保活必需） -->
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:multiprocess="false"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
 
     </application>
 

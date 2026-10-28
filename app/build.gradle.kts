@@ -13,8 +13,8 @@ android {
         applicationId = "com.qtwl.gateway"
         minSdk = 24
         targetSdk = 35
-        versionCode = 206
-versionName = "3.18.24-3"
+        versionCode = 207
+versionName = "3.18.24-4"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
@@ -27,12 +27,12 @@ versionName = "3.18.24-3"
         create("formal") {
             dimension = "track"
             applicationId = "com.qtwl.gateway"
-            versionName = "3.18.24-3"
+            versionName = "3.18.24-4"
         }
         create("cs") {
             dimension = "track"
             applicationId = "com.qtwl.gateway.cs"
-            versionName = "3.18.24-3"
+            versionName = "3.18.24-4"
         }
     }
 
@@ -140,6 +140,10 @@ dependencies {
 
     // WorkManager (定时备份)
     implementation("androidx.work:work-runtime-ktx:2.9.1")
+
+    // Shizuku（本地模型保活 + 后台命令）
+    implementation(libs.shizuku.api)
+    implementation(libs.shizuku.provider)
 
     // Test
     testImplementation(libs.junit)
