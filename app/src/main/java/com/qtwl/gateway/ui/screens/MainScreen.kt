@@ -61,6 +61,7 @@ import com.qtwl.gateway.ui.viewmodel.pipelineStatus
 import com.qtwl.gateway.ui.viewmodel.pipelineRunning
 import com.qtwl.gateway.ui.viewmodel.pipelineProgress
 import com.qtwl.gateway.ui.viewmodel.pipelineCountdown
+import com.qtwl.gateway.ui.viewmodel.pipelineTestingModel
 import com.qtwl.gateway.service.LiveSession
 import com.qtwl.gateway.service.GatewayForegroundService
 import com.qtwl.gateway.gateway.GatewayScheduler
@@ -554,9 +555,9 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                     }
                 }
 
-                // ★★ 正在测速状态（仅测速运行时显示，精简不重复）★★
-                val currentItem = pStatus.find { it.isCurrent && !it.status.startsWith("✅") && !it.status.startsWith("❌") }
-                if (pRunning && currentItem != null) {
+                // ★★ 正在测速状态（使用轻量 pipelineTestingModel，避免大列表遍历 isCurrent 导致卡顿）★★
+                val testingModelName by pipelineTestingModel.collectAsState()
+                if (pRunning && testingModelName != null) {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -564,7 +565,7 @@ fun HomeScreen(viewModel: GatewayViewModel) {
                         CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
                         Spacer(Modifier.width(6.dp))
                         Text(
-                            text = "⏳ ${localizedText("测速中", "Testing speed")}: ${currentItem.modelName}",
+                            text = "⏳ ${localizedText("测速中", "Testing speed")}: $testingModelName",
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary

@@ -88,6 +88,10 @@ val pipelineStatus: StateFlow<List<PipelineTestItem>> = _pipelineStatus.asStateF
 private val _pipelineProgress = MutableStateFlow(0f)
 val pipelineProgress: StateFlow<Float> = _pipelineProgress.asStateFlow()
 
+/** ★★ 正在测速的模型（轻量独立状态，避免测速中频繁重排大列表导致卡顿）★★ */
+private val _pipelineTestingModel = MutableStateFlow<String?>(null)
+val pipelineTestingModel: StateFlow<String?> = _pipelineTestingModel.asStateFlow()
+
 private val _pipelineRunning = MutableStateFlow(false)
 val pipelineRunning: StateFlow<Boolean> = _pipelineRunning.asStateFlow()
 
@@ -218,16 +222,21 @@ object ModelCapabilityManager {
 
     // ── 探测（后台静默） ──────────────────────────────
 
+    /** ★★ 复用 OkHttpClient（避免每次探测 new client 造成 GC 压力/连接泄漏）★★ */
+    private val probeClient: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .connectTimeout(3000, TimeUnit.MILLISECONDS)
+            .readTimeout(3000, TimeUnit.MILLISECONDS)
+            .build()
+    }
+
     fun probeModel(modelId: String, resolvedUrl: String, apiKey: String?, chatPath: String? = null) {
         val current = loadModel(modelId)
         // 简单探测工具和视觉
         var tools = current.toolCall
         var vision = current.vision
         try {
-            val client = OkHttpClient.Builder()
-                .connectTimeout(3000, TimeUnit.MILLISECONDS)
-                .readTimeout(3000, TimeUnit.MILLISECONDS)
-                .build()
+            val client = probeClient
             val baseUrl = resolvedUrl.trimEnd('/')
             val ct = "application/json".toMediaType()
             val path = chatPath?.let { if (it.startsWith("/")) it else "/$it" } ?: "/v1/chat/completions"
@@ -386,7 +395,11 @@ class GatewayViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             delay(1000)  // 先等 ViewModel 完全构造
             while (true) {
-                _quickLiveSessions.value = GatewayForegroundService.liveSessions
+                val newSessions = GatewayForegroundService.liveSessions
+                // ★★ 内容比较：只有真正变化才更新，避免每3秒无条件触发重组 ★★
+                if (newSessions != _quickLiveSessions.value) {
+                    _quickLiveSessions.value = newSessions
+                }
                 delay(3000)
             }
         }
@@ -2463,28 +2476,25 @@ fun getDisplayModelName(model: AiModel): String {
                 val allModels = database.aiModelDao().getAllModelsOnce()
                 var passed = 0
                 var failed = 0
+                // ★★ 复用 speedTester（避免循环内 new OkHttpClient 造成连接泄漏/GC 压力）★★
+                val tester = com.qtwl.gateway.utils.ModelSpeedTester()
+                _snackbarMessage.value = "⏳ 批量测速开始 [0/${allModels.size}]..."
                 for ((i, model) in allModels.withIndex()) {
-                    _snackbarMessage.value = "⏳ 测试 [${i+1}/${allModels.size}] ${model.displayName}..."
                     // 逐个测速，每个都在 IO 线程执行
                     val ok = withContext(Dispatchers.IO) {
                         try {
                             val provider = database.providerDao().getProviderById(model.providerId)
                             if (provider == null) return@withContext false
-                            val client = okhttp3.OkHttpClient.Builder()
-                                .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
-                                .readTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
-                                .build()
-                            val body = """{"model":"${model.modelId}","messages":[{"role":"user","content":"hi"}],"max_tokens":1}"""
-                                .toByteArray().toRequestBody("application/json".toMediaType())
-                            val chatPath = provider.chatPath?.let { if (it.startsWith("/")) it else "/$it" } ?: "/v1/chat/completions"
-                            val request = okhttp3.Request.Builder()
-                                .url("${provider.resolvedBaseUrl}$chatPath").post(body)
-                                .apply { provider.apiKey?.let { header("Authorization", "Bearer $it") } }
-                                .build()
-                            val response = client.newCall(request).execute()
-                            val success = response.isSuccessful
-                            response.close()
-                            success
+                            val metrics = try {
+                                tester.measure(
+                                    model.modelId,
+                                    provider.resolvedBaseUrl.trimEnd('/'),
+                                    provider.apiKey,
+                                    provider.chatPath,
+                                    prompt = "hi"
+                                )
+                            } catch (_: Exception) { null }
+                            if (metrics != null && metrics.ttftMs >= 0) true else false
                         } catch (_: Exception) { false }
                     }
                     if (ok) {
@@ -2495,6 +2505,10 @@ fun getDisplayModelName(model: AiModel): String {
                             database.aiModelDao().update(model.copy(isEnabled = false))
                         }
                         failed++
+                    }
+                    // ★★ 进度提示合并，避免每模型弹 Toast 刷屏 ★★
+                    if ((i + 1) % 5 == 0 || i + 1 == allModels.size) {
+                        _snackbarMessage.value = "⏳ 批量测速 [${i+1}/${allModels.size}] 通过$passed 失败$failed..."
                     }
                 }
                 _snackbarMessage.value = "✅ 批量测试完成: $passed 个通过(已自动启用), $failed 个失败"
@@ -2542,100 +2556,101 @@ fun clearChatError() {
             _qtaiSjStatus.value = _qtaiSjStatus.value.copy(isTesting = true)
             _pipelineProgress.value = 0f
             try {
-                var firstRound = true
-                while (_pipelineRunning.value) {
-                    val enabledList = database.aiModelDao().getEnabledModelsList().filter { it.isEnabled }
-                    if (enabledList.isEmpty()) { _pipelineRunning.value = false; refreshQtaiSjStatus(); return@launch }
+var firstRound = true
+                    var testedCount = 0  // ★★ 进度计数器（避免每模型全表 count 扫描 O(n)）★★
+                    while (_pipelineRunning.value) {
+                        val enabledList = database.aiModelDao().getEnabledModelsList().filter { it.isEnabled }
+                        if (enabledList.isEmpty()) { _pipelineRunning.value = false; refreshQtaiSjStatus(); return@launch }
 
-                    // 保留旧测速结果，新模型加入等待中
-                    val oldStatus = _pipelineStatus.value
-                    val oldMap = oldStatus.associateBy { it.selectionKey }
-                    _pipelineStatus.value = enabledList.map { model ->
-                        oldMap[model.routeKey]?.copy(
-                            modelName = model.customAlias.ifBlank { model.displayName },
-                            providerId = model.providerId,
-                            ) ?: PipelineTestItem(
-                            modelId = model.modelId,
-                            modelName = model.customAlias.ifBlank { model.displayName },
-                            providerId = model.providerId,
-                                status = "等待中"
-                        )
-                    }
-
-                    val sortedList = if (firstRound) enabledList
-                    else {
-                        val speedMap = _pipelineStatus.value.associate { it.selectionKey to it.latencyMs }
-                        enabledList.sortedBy { speedMap[it.routeKey] ?: Long.MAX_VALUE }
-                    }
-
-                    for (model in sortedList) {
-                        if (!_pipelineRunning.value) break
-                        val realIdx = _pipelineStatus.value.indexOfFirst { it.selectionKey == model.routeKey }
-                        if (realIdx < 0) continue
-                        if (!_pipelineRunning.value) break
-                        // ★★ 更新进度 ★★
-                        val testedCount = _pipelineStatus.value.count { it.status.startsWith("✅") || it.status.startsWith("❌") }
-                        val total = _pipelineStatus.value.size
-                        _pipelineProgress.value = if (total > 0) testedCount.toFloat() / total.toFloat() else 0f
-
-                        val cur = _pipelineStatus.value.toMutableList()
-                        cur[realIdx] = cur[realIdx].copy(status = "⏳ 测速中...", isCurrent = true)
-                        for (i in cur.indices) { if (i != realIdx) cur[i] = cur[i].copy(isCurrent = false) }
-                        _pipelineStatus.value = cur
-
-                        val provider = database.providerDao().getProviderById(model.providerId)
-                        if (provider == null || !provider.isEnabled) {
-                            val sk = _pipelineStatus.value.toMutableList()
-                            sk[realIdx] = sk[realIdx].copy(status = "23edFe0f 8df38fc7", latencyMs = Long.MAX_VALUE, isCurrent = false)
-                            _pipelineStatus.value = sk; continue
+                        // 保留旧测速结果，新模型加入等待中
+                        val oldStatus = _pipelineStatus.value
+                        val oldMap = oldStatus.associateBy { it.selectionKey }
+                        _pipelineStatus.value = enabledList.map { model ->
+                            oldMap[model.routeKey]?.copy(
+                                modelName = model.customAlias.ifBlank { model.displayName },
+                                providerId = model.providerId,
+                                ) ?: PipelineTestItem(
+                                modelId = model.modelId,
+                                modelName = model.customAlias.ifBlank { model.displayName },
+                                providerId = model.providerId,
+                                    status = "等待中"
+                            )
                         }
 
-                        // ★★ 三指标测速（TTFT / TPS / 总耗时） ★★
-                        var success = false; var latency = 0L; var errorMsg = ""
-                        var ttft = 0L; var tps = 0.0; var tokens = 0
-                        try {
-                            withContext(Dispatchers.IO) {
-                                val resolvedUrl = provider.resolvedBaseUrl.trimEnd('/')
-                                val metrics = speedTester.measure(model.modelId, resolvedUrl, provider.apiKey, provider.chatPath)
-                                latency = metrics.totalMs
-                                ttft = metrics.ttftMs
-                                tps = metrics.tps
-                                tokens = metrics.tokenCount
-                                if (metrics.ttftMs >= 0) {
-                                    success = true
-                                    if (tokens == 0) errorMsg = "· 无输出"
-                                } else {
-                                    errorMsg = "测速失败"
-                                }
+                        val sortedList = if (firstRound) enabledList
+                        else {
+                            val speedMap = _pipelineStatus.value.associate { it.selectionKey to it.latencyMs }
+                            enabledList.sortedBy { speedMap[it.routeKey] ?: Long.MAX_VALUE }
+                        }
+
+                        for (model in sortedList) {
+                            if (!_pipelineRunning.value) break
+                            val realIdx = _pipelineStatus.value.indexOfFirst { it.selectionKey == model.routeKey }
+                            if (realIdx < 0) continue
+                            if (!_pipelineRunning.value) break
+                            // ★★ 更新轻量测速中状态（不重排大列表，避免卡顿）★★
+                            _pipelineTestingModel.value = model.customAlias.ifBlank { model.displayName }
+                            val total = _pipelineStatus.value.size
+                            _pipelineProgress.value = if (total > 0 && testedCount > 0) testedCount.toFloat() / total.toFloat() else 0f
+
+                            val provider = database.providerDao().getProviderById(model.providerId)
+                            if (provider == null || !provider.isEnabled) {
+                                val sk = _pipelineStatus.value.toMutableList()
+                                sk[realIdx] = sk[realIdx].copy(status = "⏹ 服务商已禁用", latencyMs = Long.MAX_VALUE, isCurrent = false)
+                                _pipelineStatus.value = sk
+                                testedCount++
+                                _pipelineTestingModel.value = null
+                                continue
                             }
-                        } catch (e: Exception) { errorMsg = e.message?.take(60) ?: "超时" }
 
-                        // ★★ 记录测速历史到数据库（用于趋势图）★★
-                        if (ttft != 0L || tps != 0.0) {
-                            val modelName = model.customAlias.ifBlank { model.displayName }
-                            recordSpeedHistory(model.routeKey, modelName, model.providerId,
-                                SpeedMetrics(ttftMs = ttft, tps = tps, totalMs = latency, tokenCount = tokens, measuredAt = System.currentTimeMillis()))
-                        }
-
-                        // ★★ 用完返回再发探针检测模型能力（异步，不影响排序）★★
-                                if (success) {
-                                    try {
-                                        ModelCapabilityManager.probeModel(
-                                            model.modelId,
-                                            provider.resolvedBaseUrl,
-                                            provider.apiKey,
-                                            provider.chatPath
-                                        )
-                                    } catch (_: Exception) {}
+                            // ★★ 三指标测速（TTFT / TPS / 总耗时） ★★
+                            var success = false; var latency = 0L; var errorMsg = ""
+                            var ttft = 0L; var tps = 0.0; var tokens = 0
+                            try {
+                                withContext(Dispatchers.IO) {
+                                    val resolvedUrl = provider.resolvedBaseUrl.trimEnd('/')
+                                    val metrics = speedTester.measure(model.modelId, resolvedUrl, provider.apiKey, provider.chatPath)
+                                    latency = metrics.totalMs
+                                    ttft = metrics.ttftMs
+                                    tps = metrics.tps
+                                    tokens = metrics.tokenCount
+                                    if (metrics.ttftMs >= 0) {
+                                        success = true
+                                        if (tokens == 0) errorMsg = "· 无输出"
+                                    } else {
+                                        errorMsg = "测速失败"
+                                    }
                                 }
+                            } catch (e: Exception) { errorMsg = e.message?.take(60) ?: "超时" }
 
-                                val rl = _pipelineStatus.value.toMutableList()
-                        rl[realIdx] = rl[realIdx].copy(
-                            status = if (success) "✅ TTFT=${ttft}ms TPS=${"%.0f".format(tps)} ${latency}ms" else "❌ $errorMsg",
-                            latencyMs = if (success) latency else Long.MAX_VALUE, isCurrent = false
-                        )
-                        _pipelineStatus.value = rl
-                    }
+                            // ★★ 记录测速历史到数据库（用于趋势图）★★
+                            if (ttft != 0L || tps != 0.0) {
+                                val modelName = model.customAlias.ifBlank { model.displayName }
+                                recordSpeedHistory(model.routeKey, modelName, model.providerId,
+                                    SpeedMetrics(ttftMs = ttft, tps = tps, totalMs = latency, tokenCount = tokens, measuredAt = System.currentTimeMillis()))
+                            }
+
+                            // ★★ 用完返回再发探针检测模型能力（异步，不影响排序）★★
+                                    if (success) {
+                                        try {
+                                            ModelCapabilityManager.probeModel(
+                                                model.modelId,
+                                                provider.resolvedBaseUrl,
+                                                provider.apiKey,
+                                                provider.chatPath
+                                            )
+                                        } catch (_: Exception) {}
+                                    }
+
+                                    val rl = _pipelineStatus.value.toMutableList()
+                            rl[realIdx] = rl[realIdx].copy(
+                                status = if (success) "✅ TTFT=${ttft}ms TPS=${"%.0f".format(tps)} ${latency}ms" else "❌ $errorMsg",
+                                latencyMs = if (success) latency else Long.MAX_VALUE, isCurrent = false
+                            )
+                            _pipelineStatus.value = rl
+                            testedCount++
+                            _pipelineTestingModel.value = null
+                        }
 
                     val sorted = _pipelineStatus.value.sortedBy { it.latencyMs }
                     _pipelineStatus.value = sorted
@@ -2668,6 +2683,7 @@ fun clearChatError() {
                 // 外层异常：测速异常中断，仍尝试重启
                 _pipelineRunning.value = false
                 _pipelineCountdown.value = 0
+                _pipelineTestingModel.value = null
                 refreshQtaiSjStatus()
                 // 异常后延迟10秒自动重启
                 kotlinx.coroutines.delay(10000)
@@ -2688,6 +2704,7 @@ fun clearChatError() {
     fun stopPipelineTest() {
         _pipelineRunning.value = false
         _pipelineCountdown.value = 0
+        _pipelineTestingModel.value = null
         pipelineJob?.cancel()
         refreshQtaiSjStatus()
     }
