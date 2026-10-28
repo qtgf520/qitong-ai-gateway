@@ -44,14 +44,15 @@ object LocalModelManager {
     private const val MODELS_DIR_NAME = "llama_models"
 
     /** llama.cpp GitHub release 下载源（Android arm64 预编译） */
-    private const val LLAMA_RELEASE_URL =
-        "https://github.com/ggml-org/llama.cpp/releases/latest/download/llama-bin-android-arm64.zip"
+    private const val LLAMA_NIGHTLY_TAG_URL =
+        "https://github.com/ggml-org/llama.cpp/releases/latest/download/nightly-tag.txt"
     private const val LLAMA_RELEASE_TAG_URL =
         "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest"
 
-    /** HuggingFace 商城 API */
-    private const val HF_SEARCH_API = "https://huggingface.co/api/models"
-    private const val HF_RESOLVE = "https://huggingface.co"
+    /** HuggingFace 商城 API（列表双源：优先镜像 API，失败回退官方 API） + 下载走国内镜像 hf-mirror.com */
+    private const val HF_SEARCH_API_OFFICIAL = "https://huggingface.co/api/models"
+    private const val HF_SEARCH_API_MIRROR = "https://hf-mirror.com/api/models"
+    private const val HF_RESOLVE = "https://hf-mirror.com"
 
     /** 自愈重启时使用的模型（无 context 场景） */
     @Volatile
@@ -214,56 +215,65 @@ object LocalModelManager {
         return out.contains("-") && !out.contains("No such")
     }
 
-    /** 下载并部署 llama-server 引擎（GitHub release android-arm64） */
+    /** 下载并部署 llama-server 引擎（GitHub nightly android-arm64 tar.gz） */
     suspend fun installEngine(): Boolean = withContext(Dispatchers.IO) {
         _engineStatus.value = "下载引擎..."
         return@withContext try {
-            // 1. 查最新 release tag（获取准确下载地址）
-            val latestUrl = try {
-                val req = Request.Builder().url(LLAMA_RELEASE_TAG_URL).build()
+            // 1. 获取最新 nightly tag（如 b11960）
+            var tag = ""
+            try {
+                val req = Request.Builder().url(LLAMA_NIGHTLY_TAG_URL).build()
                 client.newCall(req).execute().use { resp ->
                     if (resp.isSuccessful) {
-                        val j = JSONObject(resp.body?.string() ?: "{}")
-                        j.optString("tag_name", "")
-                    } else ""
+                        tag = resp.body?.string()?.trim() ?: ""
+                    }
                 }
-            } catch (_: Exception) { "" }
+            } catch (_: Exception) {}
+            if (tag.isBlank()) {
+                // 兜底：从 GitHub API 拿 latest release 的 nightly-tag asset
+                try {
+                    val req = Request.Builder().url(LLAMA_RELEASE_TAG_URL).build()
+                    client.newCall(req).execute().use { resp ->
+                        if (resp.isSuccessful) {
+                            val j = JSONObject(resp.body?.string() ?: "{}")
+                            j.optString("tag_name", "").let { if (it.isNotBlank()) tag = it }
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+            if (tag.isBlank()) { _engineStatus.value = "获取版本号失败"; return@withContext false }
 
-            val zipUrl = if (latestUrl.isNotBlank()) {
-                "https://github.com/ggml-org/llama.cpp/releases/download/$latestUrl/llama-b${latestUrl.removePrefix("b")}-bin-android-arm64.zip"
-            } else LLAMA_RELEASE_URL
-
-            Log.i(TAG, "下载引擎: $zipUrl")
-            // 2. 下载 zip 到缓存
-            val zipFile = File.createTempFile("llama", ".zip")
-            val req = Request.Builder().url(zipUrl).build()
+            // 2. 下载 tar.gz（Android arm64）
+            val url = "https://github.com/ggml-org/llama.cpp/releases/download/$tag/llama-$tag-bin-android-arm64.tar.gz"
+            Log.i(TAG, "下载引擎: $url")
+            val tarFile = File.createTempFile("llama", ".tar.gz")
+            val req = Request.Builder().url(url).build()
             client.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) {
                     _engineStatus.value = "引擎下载失败 HTTP ${resp.code}"
                     return@withContext false
                 }
                 resp.body?.byteStream()?.use { input ->
-                    zipFile.outputStream().use { output -> input.copyTo(output, 8192) }
+                    tarFile.outputStream().use { output -> input.copyTo(output, 64 * 1024) }
                 }
             }
-            if (zipFile.length() < 100_000) {
-                _engineStatus.value = "引擎包异常(太小)"
-                zipFile.delete()
+            if (tarFile.length() < 1_000_000) {
+                _engineStatus.value = "引擎包异常(太小 ${tarFile.length()})"
+                tarFile.delete()
                 return@withContext false
             }
 
-            // 3. 解压 llama-server 到可执行目录
+            // 3. 解压 tar.gz 提取 llama-server → /data/local/tmp/llama/llama-server
             val out = shCommand(
                 "mkdir -p $ENGINE_DIR && " +
-                "unzip -o ${zipFile.absolutePath} -d $ENGINE_DIR '*/llama-server' '*' 2>/dev/null; " +
+                "tar -xzf ${tarFile.absolutePath} -C $ENGINE_DIR --wildcards '*/llama-server' 2>/dev/null; " +
                 "find $ENGINE_DIR -name 'llama-server' -type f | head -1 | xargs -I{} cp {} $SERVER_BIN 2>/dev/null; " +
                 "chmod 755 $SERVER_BIN; ls -l $SERVER_BIN"
             )
-            zipFile.delete()
+            tarFile.delete()
             val ok = out != null && out.contains("llama-server") && !out.contains("No such")
             _engineStatus.value = if (ok) "已就绪" else "引擎部署失败"
             if (ok) {
-                // 部署成功 → 顺便把 models 目录权限开放给 shell 读取
                 shCommand("chmod 755 ${ENGINE_DIR} 2>/dev/null; echo ok")
             }
             ok
@@ -400,16 +410,26 @@ object LocalModelManager {
     }
 
     // ==================== 商城（HuggingFace） ====================
-    /** 拉取 GGUF 模型商城列表（HuggingFace 搜索） */
+    /** 拉取 GGUF 模型商城列表（HuggingFace 双源：镜像优先，官方兜底） */
     suspend fun loadStore(search: String = "gguf", limit: Int = 30): Boolean = withContext(Dispatchers.IO) {
         _storeLoading.value = true
         try {
-            val url = "$HF_SEARCH_API?search=${android.net.Uri.encode(search)}&limit=$limit&full=true"
-            val req = Request.Builder().url(url).build()
-            val body = client.newCall(req).execute().use { resp ->
-                if (!resp.isSuccessful) { _storeLoading.value = false; return@withContext false }
-                resp.body?.string() ?: "[]"
+            val query = "search=${android.net.Uri.encode(search)}&limit=$limit&full=true"
+            // 1. 先试镜像 API
+            var body: String? = null
+            for (base in listOf(HF_SEARCH_API_MIRROR, HF_SEARCH_API_OFFICIAL)) {
+                try {
+                    val url = "$base?$query"
+                    val req = Request.Builder().url(url).build()
+                    val respBody = client.newCall(req).execute().use { resp ->
+                        if (resp.isSuccessful) resp.body?.string() else null
+                    }
+                    if (respBody != null && respBody.trim().startsWith("[")) {
+                        body = respBody; Log.i(TAG, "商城 API 用 $base"); break
+                    }
+                } catch (_: Exception) {}
             }
+            if (body == null) { _storeLoading.value = false; return@withContext false }
             val arr = JSONArray(body)
             val list = mutableListOf<StoreModel>()
             for (i in 0 until arr.length()) {
