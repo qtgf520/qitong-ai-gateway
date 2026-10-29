@@ -132,10 +132,6 @@ fun MainScreen(
                                 onClick = { selectedTab = 4; menuExpanded = false }
                             )
                             DropdownMenuItem(
-                                text = { Text("🧠 ${localizedText("本地模型", "Local model")}") },
-                                onClick = { selectedTab = 8; menuExpanded = false }
-                            )
-                            DropdownMenuItem(
                                 text = { Text("⚙️ ${tr("nav_manage")}") },
                                 onClick = { selectedTab = 5; menuExpanded = false }
                             )
@@ -186,10 +182,10 @@ fun MainScreen(
             when (selectedTab) {
                 0 -> HomeScreen(viewModel)
                 1 -> ProvidersScreen(viewModel)
-                2 -> ModelsScreen(viewModel)
+                2 -> ModelsScreen(viewModel, onOpenLocalModel = { selectedTab = 8 })
                 3 -> ChatScreen(viewModel)
                 4 -> StatsScreen(viewModel)
-                5 -> DataManagementScreen(viewModel, onOpenLocalModel = { selectedTab = 8 })
+                5 -> DataManagementScreen(viewModel)
                 6 -> AboutScreen(viewModel)
                 7 -> InstancesScreen(viewModel)
                 8 -> LocalModelScreen()
@@ -1827,7 +1823,7 @@ private fun getLocalIpAddress(): String {
 // ============================================================
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ModelsScreen(viewModel: GatewayViewModel) {
+fun ModelsScreen(viewModel: GatewayViewModel, onOpenLocalModel: () -> Unit = {}) {
     val languageTick = TranslationManager.currentLanguageFlow.collectAsState().value
     val models by viewModel.models.collectAsState()
     val providers by viewModel.providers.collectAsState()
@@ -1909,6 +1905,26 @@ fun ModelsScreen(viewModel: GatewayViewModel) {
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
+        // 🧠 本地模型入口（模型页顶部）
+        item {
+            Card(
+                onClick = { onOpenLocalModel() },
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+            ) {
+                Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("🧠", style = MaterialTheme.typography.headlineMedium)
+                    Spacer(Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(localizedText("本地模型", "Local model"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text(localizedText("手机端跑 GGUF 大模型 · 引擎管理 · 模型商城下载 · 支持思考/工具调用", "Run GGUF LLM on-device · engine mgmt · model marketplace · thinking & tool calls"),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Text("›", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
+                }
+            }
+        }
         // 搜索框 + 标签筛选
         item {
             Row(

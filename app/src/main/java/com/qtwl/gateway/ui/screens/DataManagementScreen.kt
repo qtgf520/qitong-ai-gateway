@@ -94,8 +94,7 @@ private fun PersonaSlider(label: String, value: Int, range: IntRange, onChange: 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DataManagementScreen(
-    viewModel: GatewayViewModel = viewModel(factory = GatewayViewModel.Factory()),
-    onOpenLocalModel: () -> Unit = {}
+    viewModel: GatewayViewModel = viewModel(factory = GatewayViewModel.Factory())
 ) {
     TranslationManager.currentLanguageFlow.collectAsState().value
     val context = LocalContext.current
@@ -168,26 +167,6 @@ fun DataManagementScreen(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(modifier = Modifier.height(8.dp))
-
-            // 🧠 本地模型入口（管理/统计中间）
-            Card(
-                onClick = onOpenLocalModel,
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
-            ) {
-                Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("🧠", style = MaterialTheme.typography.headlineMedium)
-                    Spacer(Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(localizedText("本地模型", "Local model"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Text(localizedText("手机端跑 GGUF 大模型 · 引擎管理 · 模型商城下载 · 支持思考/工具调用", "Run GGUF LLM on-device · engine mgmt · model marketplace · thinking & tool calls"),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    Text("›", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
-                }
-            }
-            Spacer(modifier = Modifier.height(4.dp))
 
             // 自启管理 + 隐藏多任务
             Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
