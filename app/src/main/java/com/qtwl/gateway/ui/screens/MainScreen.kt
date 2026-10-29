@@ -1870,11 +1870,30 @@ fun ModelsScreen(viewModel: GatewayViewModel, onOpenLocalModel: () -> Unit = {})
     }
 
     if (models.isEmpty()) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
+        Column(
+            modifier = Modifier.fillMaxSize().padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            // 🧠 本地模型入口（空态也显示）
+            Card(
+                onClick = { onOpenLocalModel() },
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+            ) {
+                Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("🧠", style = MaterialTheme.typography.headlineMedium)
+                    Spacer(Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(localizedText("本地模型", "Local model"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text(localizedText("手机端跑 GGUF 大模型 · 引擎管理 · 模型商城下载 · 支持思考/工具调用", "Run GGUF LLM on-device · engine mgmt · model marketplace · thinking & tool calls"),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Text("›", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
+                }
+            }
+            Spacer(Modifier.weight(1f))
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                 Text("🤖", fontSize = MaterialTheme.typography.displayLarge.fontSize)
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
@@ -1897,6 +1916,7 @@ fun ModelsScreen(viewModel: GatewayViewModel, onOpenLocalModel: () -> Unit = {})
                     )
                 }
             }
+            Spacer(Modifier.weight(2f))
         }
     } else {
     LazyColumn(

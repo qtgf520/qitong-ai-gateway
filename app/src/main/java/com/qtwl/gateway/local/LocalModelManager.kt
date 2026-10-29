@@ -40,8 +40,9 @@ object LocalModelManager {
     private const val ENGINE_DIR = "/data/local/tmp/llama"
     private const val SERVER_BIN = "$ENGINE_DIR/llama-server"
 
-    /** 模型存放目录：沙盒私有（引擎通过 Shizuku 读取） */
+    /** 模型存放目录：公共 Download 目录（shell 可直接读，避免 app 私有目录权限问题） */
     private const val MODELS_DIR_NAME = "llama_models"
+    private const val MODELS_PUBLIC_DIR = "/sdcard/Download/QiTongGateway/$MODELS_DIR_NAME"
 
     /** llama.cpp GitHub release 下载源（Android arm64 预编译） */
     private const val LLAMA_NIGHTLY_TAG_URL =
@@ -115,12 +116,26 @@ object LocalModelManager {
     val lastLog: StateFlow<String> = _lastLog.asStateFlow()
 
     // ==================== HTTP 客户端 ====================
+    /**
+     * OkHttp 客户端（★自动适配系统代理★）
+     * - 手机开了 VPN/代理 App 时，OkHttp 默认不走系统代理 → github/hf 下载必失败
+     * - 这里读取 ConnectivityManager.defaultProxy，让下载走代理
+     */
     private val client: OkHttpClient by lazy {
-        OkHttpClient.Builder()
-            .connectTimeout(20, TimeUnit.SECONDS)
-            .readTimeout(60, TimeUnit.SECONDS)
-            .writeTimeout(60, TimeUnit.SECONDS)
-            .build()
+        val builder = OkHttpClient.Builder()
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(180, TimeUnit.SECONDS)
+            .writeTimeout(180, TimeUnit.SECONDS)
+        try {
+            val cm = com.qtwl.gateway.GatewayApplication.getInstance()
+                .getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+            val p = cm.defaultProxy
+            if (p != null && p.host.isNotBlank()) {
+                Log.i(TAG, "使用系统代理 ${p.host}:${p.port}")
+                builder.proxy(java.net.Proxy(java.net.Proxy.Type.HTTP, java.net.InetSocketAddress(p.host, p.port)))
+            }
+        } catch (_: Throwable) {}
+        builder.build()
     }
 
     // ==================== Shizuku 执行 ====================
@@ -169,18 +184,18 @@ object LocalModelManager {
     }
 
     // ==================== 模型目录 ====================
-    /** 获取沙盒模型目录 */
-    fun modelsDir(context: Context): File =
-        File(context.getExternalFilesDir(null) ?: context.filesDir, MODELS_DIR_NAME).apply { mkdirs() }
-
-    /** 模型目录绝对路径（自愈用，无 context） */
-    private fun modelsDirPath(): String {
+    /** 获取模型目录：公共 Download/QiTongGateway/llama_models（shell 可直接读） */
+    fun modelsDir(context: Context): File {
+        // 优先公共目录（llama-server 以 shell 身份运行，必须能读）
         return try {
-            "/storage/emulated/0/Android/data/${com.qtwl.gateway.GatewayApplication.getInstance().packageName}/files/$MODELS_DIR_NAME"
+            File(MODELS_PUBLIC_DIR).apply { mkdirs() }
         } catch (_: Throwable) {
-            "/storage/emulated/0/Android/data/com.qtwl.gateway/files/$MODELS_DIR_NAME"
+            File(context.getExternalFilesDir(null) ?: context.filesDir, MODELS_DIR_NAME).apply { mkdirs() }
         }
     }
+
+    /** 模型目录绝对路径（自愈用，无 context） */
+    private fun modelsDirPath(): String = MODELS_PUBLIC_DIR
 
     /** 模型文件是否存在（Shizuku shell 探测） */
     private fun modelFileExists(fileName: String): Boolean {
@@ -264,11 +279,12 @@ object LocalModelManager {
             }
 
             // 3. 解压 tar.gz 提取 llama-server → /data/local/tmp/llama/llama-server
+            // ★ toybox tar 不支持 --wildcards，必须全量解压再 find（否则"不能安装"）★
             val out = shCommand(
                 "mkdir -p $ENGINE_DIR && " +
-                "tar -xzf ${tarFile.absolutePath} -C $ENGINE_DIR --wildcards '*/llama-server' 2>/dev/null; " +
-                "find $ENGINE_DIR -name 'llama-server' -type f | head -1 | xargs -I{} cp {} $SERVER_BIN 2>/dev/null; " +
-                "chmod 755 $SERVER_BIN; ls -l $SERVER_BIN"
+                "tar -xzf ${tarFile.absolutePath} -C $ENGINE_DIR 2>/dev/null; " +
+                "find $ENGINE_DIR -name 'llama-server' -type f | head -1 | xargs -I{} cp -f {} $SERVER_BIN 2>/dev/null; " +
+                "chmod 755 $SERVER_BIN 2>/dev/null; ls -l $SERVER_BIN"
             )
             tarFile.delete()
             val ok = out != null && out.contains("llama-server") && !out.contains("No such")
@@ -382,13 +398,14 @@ object LocalModelManager {
         _engineStatus.value = if (ready) "运行中" else "自愈失败"
     }
 
-    /** 通过 Shizuku 查找模型绝对路径（支持沙盒私有目录） */
+    /** 通过 Shizuku 查找模型绝对路径（支持公共 + 私有目录） */
     private fun findModelAbsolutePath(fileName: String): String? {
-        // 常见位置：/storage/emulated/0/Android/data/<pkg>/files/llama_models/
+        // 优先公共目录（下载即在此，shell 可直接读）
         val candidates = listOf(
-            "/storage/emulated/0/Android/data/${getAppId()}/files/$MODELS_DIR_NAME/$fileName",
-            "/data/user/0/${getAppId()}/files/$MODELS_DIR_NAME/$fileName",
-            "/data/local/tmp/llama/models/$fileName"
+            "$MODELS_PUBLIC_DIR/$fileName",
+            "/storage/emulated/0/Download/QiTongGateway/llama/$fileName",
+            "/data/local/tmp/llama/models/$fileName",
+            "/data/user/0/${getAppId()}/files/$MODELS_DIR_NAME/$fileName"
         )
         for (c in candidates) {
             val out = shCommand("ls \"$c\" 2>/dev/null || echo NO")
@@ -488,6 +505,7 @@ object LocalModelManager {
                 }
                 val total = resp.body?.contentLength() ?: store.size
                 var downloaded = 0L
+                var lastUpdate = 0L
                 resp.body?.byteStream()?.use { input ->
                     target.outputStream().use { output ->
                         val buf = ByteArray(64 * 1024)
@@ -496,9 +514,13 @@ object LocalModelManager {
                             if (n <= 0) break
                             output.write(buf, 0, n)
                             downloaded += n
-                            _download.value = DownloadTask(
-                                fileName = store.fileName, totalBytes = total, downloadedBytes = downloaded, active = true
-                            )
+                            // ★ 进度节流：每 2MB 更新一次，避免大文件下载时高频重组卡死 ★
+                            if (downloaded - lastUpdate >= 2L * 1024 * 1024 || downloaded >= total) {
+                                lastUpdate = downloaded
+                                _download.value = DownloadTask(
+                                    fileName = store.fileName, totalBytes = total, downloadedBytes = downloaded, active = true
+                                )
+                            }
                         }
                     }
                 }
