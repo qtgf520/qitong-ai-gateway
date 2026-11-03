@@ -60,6 +60,16 @@ import com.qtwl.gateway.utils.ModelSpeedTester
 import com.qtwl.gateway.data.model.SpeedMetrics
 import com.qtwl.gateway.data.model.ModelCapabilities
 import com.qtwl.gateway.data.model.CapabilityTag
+// ==================== Agent 自动化系统 ====================
+import com.qtwl.gateway.agent.AgentConfig
+import com.qtwl.gateway.agent.AgentExecutor
+import com.qtwl.gateway.agent.AgentTool
+import com.qtwl.gateway.agent.ToolCallRecord
+import com.qtwl.gateway.agent.ContextUsage
+import com.qtwl.gateway.agent.ReasoningEffort
+import com.qtwl.gateway.agent.NetworkTools
+import com.qtwl.gateway.agent.SkillTools
+import com.qtwl.gateway.agent.AgentRunResult
 
 /**
  * 网关应用的主 ViewModel —— 管理全部业务状态
@@ -591,6 +601,208 @@ fun cancelSend() {
     /** 选中的模型 */
     private val _selectedModel = MutableStateFlow<AiModel?>(null)
     val selectedModel: StateFlow<AiModel?> = _selectedModel.asStateFlow()
+
+    // ==================== Agent 自动化模式 ====================
+    /** Agent 模式开关 */
+    private val _agentMode = MutableStateFlow(false)
+    val agentMode: StateFlow<Boolean> = _agentMode.asStateFlow()
+    /** Agent 是否正在执行 */
+    private val _agentRunning = MutableStateFlow(false)
+    val agentRunning: StateFlow<Boolean> = _agentRunning.asStateFlow()
+    /** 当前轮次（1-based） */
+    private val _agentRound = MutableStateFlow(0)
+    val agentRound: StateFlow<Int> = _agentRound.asStateFlow()
+    /** 执行轨迹：每一步工具调用记录 */
+    private val _agentTrace = MutableStateFlow<List<ToolCallRecord>>(emptyList())
+    val agentTrace: StateFlow<List<ToolCallRecord>> = _agentTrace.asStateFlow()
+    /** Agent 状态提示文案 */
+    private val _agentStatus = MutableStateFlow<String?>(null)
+    val agentStatus: StateFlow<String?> = _agentStatus.asStateFlow()
+    /** 最大工具调用轮次 */
+    private val _agentMaxRounds = MutableStateFlow(6)
+    val agentMaxRounds: StateFlow<Int> = _agentMaxRounds.asStateFlow()
+    /** Agent 运行配置 */
+    private val _agentConfig = MutableStateFlow(AgentConfig.Default)
+    val agentConfig: StateFlow<AgentConfig> = _agentConfig.asStateFlow()
+    /** 上下文使用情况 */
+    private val _agentContext = MutableStateFlow(ContextUsage(0, 128000, 0))
+    val agentContext: StateFlow<ContextUsage> = _agentContext.asStateFlow()
+    /** 流式实时文本（打字机效果） */
+    private val _agentLiveText = MutableStateFlow("")
+    val agentLiveText: StateFlow<String> = _agentLiveText.asStateFlow()
+    /** Agent 任务协程，便于取消 */
+    private var agentJob: kotlinx.coroutines.Job? = null
+
+    /** 切换 Agent 模式 */
+    fun setAgentMode(enabled: Boolean) {
+        _agentMode.value = enabled
+        if (!enabled) {
+            _agentTrace.value = emptyList()
+            _agentStatus.value = null
+            _agentRound.value = 0
+        }
+    }
+    /** 设置最大轮次 */
+    fun setAgentMaxRounds(rounds: Int) {
+        _agentMaxRounds.value = rounds.coerceIn(1, 20)
+    }
+    /** 设置推理强度 */
+    fun setReasoningEffort(effort: ReasoningEffort) {
+        _agentConfig.value = _agentConfig.value.copy(reasoningEffort = effort)
+    }
+    /** 设置上下文窗口大小 */
+    fun setContextWindow(tokens: Int) {
+        _agentConfig.value = _agentConfig.value.copy(
+            contextWindow = tokens.coerceIn(2_000, 2_000_000)
+        )
+    }
+    /** 设置压缩阈值（0.3~0.95） */
+    fun setCompactThreshold(ratio: Float) {
+        _agentConfig.value = _agentConfig.value.copy(
+            compactThreshold = ratio.coerceIn(0.3f, 0.95f)
+        )
+    }
+    /** 设置压缩后保留的消息条数 */
+    fun setKeepRecentMessages(count: Int) {
+        _agentConfig.value = _agentConfig.value.copy(
+            keepRecentMessages = count.coerceIn(2, 40)
+        )
+    }
+    /** 开关流式输出 */
+    fun setAgentStreaming(enabled: Boolean) {
+        _agentConfig.value = _agentConfig.value.copy(streaming = enabled)
+    }
+    /** 开关自动续跑 */
+    fun setAgentAutoContinue(enabled: Boolean) {
+        _agentConfig.value = _agentConfig.value.copy(autoContinue = enabled)
+    }
+    /** 设置最大工具轮次（同时写入 config） */
+    fun setMaxRounds(rounds: Int) {
+        val r = rounds.coerceIn(1, 20)
+        _agentMaxRounds.value = r
+        _agentConfig.value = _agentConfig.value.copy(maxRounds = r)
+    }
+    /** 取消正在执行的 Agent 任务 */
+    fun cancelAgent() {
+        agentJob?.cancel()
+        agentJob = null
+        _agentRunning.value = false
+        _agentStatus.value = "已取消"
+        _agentRound.value = 0
+    }
+    /** 清空执行轨迹 */
+    fun clearAgentTrace() {
+        _agentTrace.value = emptyList()
+        _agentStatus.value = null
+        _agentRound.value = 0
+    }
+    /** 执行一次 Agent 任务（ReAct 循环，模型可多次调用工具） */
+    fun sendAgentMessage() {
+        val text = _inputText.value.trim()
+        if (text.isBlank() || _agentRunning.value) return
+        val model = _selectedModel.value
+        if (model == null) {
+            _chatError.value = "⚠️ 请先选择一个模型"
+            return
+        }
+        agentJob?.cancel()
+        agentJob = viewModelScope.launch {
+            _agentRunning.value = true
+            _chatError.value = null
+            _agentTrace.value = emptyList()
+            _agentRound.value = 0
+            _agentLiveText.value = ""
+            _agentStatus.value = "正在思考..."
+            try {
+                val conversation = ensureConversation()
+                // 保存用户消息
+                val userMsg = ChatMessage(
+                    conversationId = conversation.id,
+                    role = "user",
+                    content = text,
+                    modelId = model.modelId,
+                    providerId = model.providerId
+                )
+                val userMsgId = database.chatMessageDao().insert(userMsg)
+                _currentMessages.value = _currentMessages.value + userMsg.copy(id = userMsgId)
+                _inputText.value = ""
+                // 取 Provider 配置
+                val provider = database.providerDao().getProviderById(model.providerId)
+                if (provider == null) {
+                    _chatError.value = "找不到模型对应的服务商配置"
+                    _agentRunning.value = false
+                    return@launch
+                }
+                // 组装历史（最近 10 条，避免上下文过长）
+                val history = _currentMessages.value
+                    .filter { it.role == "user" || it.role == "assistant" }
+                    .takeLast(10)
+                    .map { it.role to it.content }
+                val executor = AgentExecutor(
+                    baseUrl = provider.baseUrl.trimEnd('/'),
+                    apiKey = provider.apiKey.orEmpty(),
+                    modelId = model.modelId,
+                    chatPath = provider.chatPath ?: "/v1/chat/completions",
+                    // 关键：跟随模型的代理设置，否则国内中转站会连不上
+                    useProxy = model.useProxy,
+                    // 上下文窗口优先用模型自身配置，未配置时才用全局默认
+                    config = _agentConfig.value.copy(
+                        contextWindow = if (model.contextWindow > 0)
+                            model.contextWindow
+                        else
+                            _agentConfig.value.contextWindow
+                    ),
+                    tools = AgentExecutor.defaultTools() + NetworkTools.all(model.useProxy) + SkillTools.all(),
+                    onRoundStart = { round ->
+                        _agentRound.value = round
+                    },
+                    onToolCall = { record ->
+                        _agentTrace.value = _agentTrace.value + record
+                    },
+                    onStatus = { msg ->
+                        _agentStatus.value = msg
+                    },
+                    onContextUsage = { usage ->
+                        _agentContext.value = usage
+                    },
+                    onStreamDelta = { delta ->
+                        _agentLiveText.value = _agentLiveText.value + delta
+                    }
+                )
+                val result: AgentRunResult = executor.run(text, history)
+                // 保存最终回答
+                val answerContent = buildString {
+                    append(result.answer)
+                    if (result.toolCalls.isNotEmpty()) {
+                        append("\n\n---\n")
+                        append("工具调用 ${result.toolCalls.size} 次，共 ${result.rounds} 轮")
+                    }
+                }
+                val assistantMsg = ChatMessage(
+                    conversationId = conversation.id,
+                    role = "assistant",
+                    content = answerContent,
+                    modelId = model.modelId,
+                    providerId = model.providerId
+                )
+                val asstId = database.chatMessageDao().insert(assistantMsg)
+                _currentMessages.value = _currentMessages.value + assistantMsg.copy(id = asstId)
+                _agentStatus.value = if (result.success) {
+                    "完成（${result.rounds} 轮，${result.toolCalls.size} 次工具调用）"
+                } else {
+                    "执行失败"
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                _agentStatus.value = "已取消"
+                throw e
+            } catch (e: Exception) {
+                _chatError.value = "Agent 执行出错：${e.message ?: e.javaClass.simpleName}"
+                _agentStatus.value = "出错"
+            } finally {
+                _agentRunning.value = false
+            }
+        }
+    }
 
     // ==================== Token 统计 ====================
 val allTokenUsage: StateFlow<List<TokenUsage>> = database.tokenUsageDao()

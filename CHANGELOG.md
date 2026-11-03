@@ -1,7 +1,50 @@
 # 綦桐AI网关 完整更新日志
 > 包名：com.qtwl.gateway
 > 签名证书：qitong.jks (别名: qitong)
-> 最后更新：2026-11-03
+> 最后更新：2026-11-04
+---
+## 🔄 v3.18.27（正式发布）
+
+### 🎨 Agent 自动化 UI 完整接入（迁移朋友更新包 UI 层，修正上版遗漏）
+- **✅ ChatScreen 内置 Agent 模式开关条** — `AgentToggleBar`（🤖 一键切换普通对话 / Agent 自动化模式），开启后输入框上方显示 Agent 控制条（开关 + 状态 + 轮次 + 工具数 + 设置按钮）
+- **✅ Agent 执行轨迹面板** — `AgentTracePanel` 实时展示每一步工具调用记录（可展开/收起），运行中可见流式实时预览（打字机效果）
+- **✅ Agent 设置弹窗** — `AgentSettingsDialog` 完整参数调节：推理强度（low/medium/high）、上下文窗口（2K~2M）、压缩阈值（0.3~0.95）、保留消息数、流式开关、自动续跑开关、最大工具轮次（1~20）
+- **✅ ViewModel 全套 Agent 状态与方法** — agentMode / agentRunning / agentRound / agentTrace / agentStatus / agentLiveText + sendAgentMessage（ReAct 循环，模型可多次调工具，最终答案入库会话）+ cancelAgent / clearAgentTrace / 全部 setter
+- **✅ 发送按钮分支** — Agent 模式下点发送自动走 `sendAgentMessage()`，普通模式不变
+
+### 🪟 玻璃拟态 & 双主题 UI 组件（纯 Compose，零第三方依赖）
+- **✅ GlassEffect.kt** — 液态玻璃卡片 `GlassCard`（Android 12+ 模糊 + 顶部高光 + 玻璃边框）+ 渐变背景 `gradientBackground` + 发光按钮 `GlowButton` + 霓虹状态点 `NeonDot`
+- **✅ ThemeStyle.kt** — 双主题系统：MIUI/HyperOS 风色板（HyperOS 蓝 #3482FF）+ Apple 风色板（iOS 系统蓝 #007AFF 全套浅深色），供后续设置页主题切换
+- **✅ AppIcons / IconLabel** — 矢量图标工具集 + 图文标签行组件（依赖 PipelineStatusMark 已补齐）
+- **✅ StatusMark.kt** — 流水线状态纯文本标记（[OK]/[FAIL]/[WAIT]/[TEST]），剥离 emoji 可机读
+
+### 🤖 Agent 核心系统（v3.18.26 已迁，v3.18.27 完整可用）
+- AgentExecutor（ReAct 循环 429行）/ BuiltinTools（时间/计算器/MathEvaluator 表达式解析/单位换算）/ NetworkTools / SkillTools / AppKnowledge 知识库 / SseParser / GroupChatOrchestrator 群聊编排
+- AgentTools 682行 / AgentLoop（指纹去重防死循环）/ AgentSettings / AgentToolBridge / ModelMaxOutputProber 模型最大输出探测器
+- **输出截断自动续写**：finish_reason=length 自动再请求合并（非流式 JSON 合并 + 流式 SSE 追加，续写拿满模型输出上限）
+
+### 🧭 本地模型方案决策（重要说明）
+- 朋友更新包的 LocalLlmEngine 实为 llama.cpp 路线（jniLibs 打包 6 个 .so 进 APK，约 74MB，免 Shizuku）
+- **暂不迁移 jniLibs**：会让 APK 从 25MB 暴增到 ~100MB；我方已有 Shizuku + /data/local/tmp 下载 llama-server 方案（功能已具备）
+- 后续可做「免 Shizuku 第二通道」优化（设置里二选一），本次不引入体积代价
+
+### 📌 未迁移项
+- LiquidGlassBottomNav（600行玻璃拟态底部导航）：依赖 kyant 第三方库（backdrop-android/capsule/shapes），离线拉不到依赖，已备份至 /tmp，后续可自行实现替代
+- HyperOsComponents：依赖朋友 ThemeState 架构（我方 Theme 结构不同），已备份
+
+### ✅ 双轨版本
+- 正式版：`3.18.27`（包名 com.qtwl.gateway）
+- 测试版：`3.18.27-13`（包名 com.qtwl.gateway.cs）
+- versionCode=216，qitong.jks 签名
+### ✅ 验证
+- 双轨编译 BUILD SUCCESSFUL（assembleCsDebug + assembleFormalDebug）
+- 测试版已安装验证（versionName=3.18.27-13, versionCode=216）
+### 📜 版本链路（本次与之前更新汇总）
+- **v3.18.24** 预测式自动切换：思考阶段预判下一模型，提前预热 TCP/TLS/HTTP2 连接，切换零感知
+- **v3.18.25** 朋友安全补丁 8 项：局域网免密钥绕过修复 / /chat/completions 漏鉴权 / HTTPS 代理 trust-all 移除 / tool_calls 空 content 修复 / /v1/completions stream 包装 / /v1/messages Claude 格式重写 / 访问日志真实耗时 / 404 一致性
+- **v3.18.26** Agent 核心系统迁移 + 输出截断自动续写（服务层）
+- **v3.18.27**（本版）Agent 自动化 UI 完整接入 + 玻璃拟态/双主题组件 + 本地模型决策落地
+
 ---
 ## 🔄 v3.18.26（正式发布）
 

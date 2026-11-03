@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -35,6 +37,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.qtwl.gateway.data.model.AiModel
 import com.qtwl.gateway.data.model.ChatMessage
+import com.qtwl.gateway.ui.components.AgentSettingsDialog
+import com.qtwl.gateway.ui.components.AgentToggleBar
+import com.qtwl.gateway.ui.components.AgentTracePanel
 import com.qtwl.gateway.ui.theme.Error
 import com.qtwl.gateway.ui.theme.Online
 import com.qtwl.gateway.ui.viewmodel.GatewayViewModel
@@ -62,6 +67,16 @@ fun ChatScreen(viewModel: GatewayViewModel) {
     val selectedModel by viewModel.selectedModel.collectAsState()
     val models by viewModel.models.collectAsState()
     val enabledModels by viewModel.enabledModels.collectAsState()
+    // ★★ Agent 自动化模式状态 ★★
+    val agentMode by viewModel.agentMode.collectAsState()
+    val agentRunning by viewModel.agentRunning.collectAsState()
+    val agentStatus by viewModel.agentStatus.collectAsState()
+    val agentRound by viewModel.agentRound.collectAsState()
+    val agentTrace by viewModel.agentTrace.collectAsState()
+    val agentConfig by viewModel.agentConfig.collectAsState()
+    val agentContext by viewModel.agentContext.collectAsState()
+    val agentLiveText by viewModel.agentLiveText.collectAsState()
+    var showAgentSettings by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
     var showConversationList by remember { mutableStateOf(false) }
@@ -330,6 +345,41 @@ fun ChatScreen(viewModel: GatewayViewModel) {
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(modifier = Modifier.padding(8.dp)) {
+                // ===== Agent 模式控制条 =====
+                AgentToggleBar(
+                    agentMode = agentMode,
+                    running = agentRunning,
+                    status = agentStatus,
+                    round = agentRound,
+                    toolCount = agentTrace.size,
+                    onToggle = { viewModel.setAgentMode(it) },
+                    onCancel = { viewModel.cancelAgent() },
+                    onOpenSettings = { showAgentSettings = true }
+                )
+                // ===== Agent 执行轨迹 =====
+                if (agentTrace.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    AgentTracePanel(records = agentTrace)
+                }
+                // 流式实时预览（仅在 Agent 运行且已有输出时显示）
+                if (agentRunning && agentLiveText.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Surface(
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 140.dp)
+                    ) {
+                        Text(
+                            text = agentLiveText,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier
+                                .padding(10.dp)
+                                .verticalScroll(rememberScrollState())
+                        )
+                    }
+                }
                 if (selectedModel == null && currentConversation != null) {
                     Text(
                         text = localizedText("⚠️ 请点击 🤖 选择模型后再发送消息", "⚠️ Tap 🤖 to select a model before sending"),
@@ -383,8 +433,11 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                         }
                     } else {
                         FilledIconButton(
-                            onClick = { viewModel.sendMessage() },
-                            enabled = inputText.isNotBlank() && selectedModel != null,
+                            onClick = {
+                                if (agentMode) viewModel.sendAgentMessage()
+                                else viewModel.sendMessage()
+                            },
+                            enabled = inputText.isNotBlank() && selectedModel != null && !agentRunning,
                             modifier = Modifier.size(48.dp),
                             shape = CircleShape,
                             colors = IconButtonDefaults.filledIconButtonColors(
@@ -394,7 +447,7 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                         ) {
                             Icon(
                                 Icons.Default.Send,
-                                contentDescription = localizedText("发送", "Send"),
+                                contentDescription = if (agentMode) localizedText("发送 (Agent)", "Send (Agent)") else localizedText("发送", "Send"),
                                 tint = if (inputText.isNotBlank() && selectedModel != null)
                                     MaterialTheme.colorScheme.onPrimary
                                 else
@@ -569,6 +622,21 @@ fun ChatScreen(viewModel: GatewayViewModel) {
             },
             confirmButton = { Button(onClick = { viewModel.saveModelAlias(editingModel!!, aliasText); viewModel.hideEditModelAlias() }) { Text(localizedText("保存", "Save")) } },
             dismissButton = { TextButton(onClick = { viewModel.hideEditModelAlias() }) { Text(localizedText("取消", "Cancel")) } }
+        )
+    }
+    // ==================== Agent 设置对话框 ====================
+    if (showAgentSettings) {
+        AgentSettingsDialog(
+            config = agentConfig,
+            contextUsage = agentContext,
+            onDismiss = { showAgentSettings = false },
+            onReasoningEffort = { viewModel.setReasoningEffort(it) },
+            onContextWindow = { viewModel.setContextWindow(it) },
+            onCompactThreshold = { viewModel.setCompactThreshold(it) },
+            onKeepRecent = { viewModel.setKeepRecentMessages(it) },
+            onStreaming = { viewModel.setAgentStreaming(it) },
+            onAutoContinue = { viewModel.setAgentAutoContinue(it) },
+            onMaxRounds = { viewModel.setMaxRounds(it) }
         )
     }
 }
