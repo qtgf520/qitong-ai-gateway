@@ -39,6 +39,24 @@ internal object OpenAiStreamCompat {
         "data: {\"type\":\"error\",\"error\":{\"message\":\"Upstream returned an empty SSE stream\"}}\n\n"
             .toByteArray(Charsets.UTF_8)
 
+    /** Parse SSE stream into list of JSON objects */
+    fun parseSseFrames(payload: String): List<JsonObject> {
+        val frames = mutableListOf<JsonObject>()
+        payload.lineSequence().forEach { line ->
+            val trimmed = line.trim()
+            if (trimmed.startsWith("data:")) {
+                val data = trimmed.substringAfter("data:").trim()
+                if (data.isNotEmpty() && data != "[DONE]") {
+                    try {
+                        val element = json.parseToJsonElement(data)
+                        if (element is JsonObject) frames.add(element)
+                    } catch (_: Exception) { }
+                }
+            }
+        }
+        return frames
+    }
+
     /** Convert a regular chat.completion JSON body into a complete SSE sequence. */
     fun chatCompletionJsonToSse(body: String): ByteArray {
         val root = json.parseToJsonElement(body).jsonObject
@@ -49,7 +67,11 @@ internal object OpenAiStreamCompat {
         val message = firstChoice["message"]?.jsonObject
         val content = message?.get("content").toText()
             .ifBlank { firstChoice["text"].toText() }
-        if (content.isBlank()) {
+        // ★ Bug 修复 v3.18.23-p1：tool_calls-only 响应（content 为空）是函数调用的合法形态，
+        //   旧代码直接抛异常 → 触发故障转移 → 函数调用在"上游忽略stream"场景必失败。
+        val toolCalls = message?.get("tool_calls") as? JsonArray
+        val hasToolCalls = toolCalls != null && toolCalls.isNotEmpty()
+        if (content.isBlank() && !hasToolCalls) {
             throw IllegalArgumentException("Upstream JSON response contains no assistant text")
         }
 
@@ -58,6 +80,7 @@ internal object OpenAiStreamCompat {
         val created = root["created"]?.jsonPrimitive?.contentOrNull?.toLongOrNull()
             ?: System.currentTimeMillis() / 1000
         val model = root["model"]?.jsonPrimitive?.contentOrNull.orEmpty()
+        val finishReason = if (hasToolCalls) "tool_calls" else (firstChoice["finish_reason"]?.jsonPrimitive?.contentOrNull ?: "stop")
 
         val contentChunk = buildJsonObject {
             put("id", JsonPrimitive(id))
@@ -68,7 +91,8 @@ internal object OpenAiStreamCompat {
                 put("index", JsonPrimitive(0))
                 put("delta", buildJsonObject {
                     put("role", JsonPrimitive("assistant"))
-                    put("content", JsonPrimitive(content))
+                    if (content.isNotBlank()) put("content", JsonPrimitive(content))
+                    if (hasToolCalls) put("tool_calls", toolCalls)
                 })
                 put("finish_reason", JsonNull)
             })))
@@ -81,7 +105,7 @@ internal object OpenAiStreamCompat {
             put("choices", JsonArray(listOf(buildJsonObject {
                 put("index", JsonPrimitive(0))
                 put("delta", buildJsonObject {})
-                put("finish_reason", JsonPrimitive(firstChoice["finish_reason"]?.jsonPrimitive?.contentOrNull ?: "stop"))
+                put("finish_reason", JsonPrimitive(finishReason))
             })))
         }
 

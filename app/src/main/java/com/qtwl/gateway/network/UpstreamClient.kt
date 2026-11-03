@@ -77,20 +77,11 @@ object UpstreamClient {
                         }
                     }
 
-                    // HTTPS 代理需要 SSL 支持
-                    if (config.type.uppercase() == "HTTPS") {
-                        try {
-                            val trustAllCerts = arrayOf<javax.net.ssl.X509TrustManager>(object : javax.net.ssl.X509TrustManager {
-                                override fun checkClientTrusted(chain: Array<java.security.cert.X509Certificate>?, authType: String?) {}
-                                override fun checkServerTrusted(chain: Array<java.security.cert.X509Certificate>?, authType: String?) {}
-                                override fun getAcceptedIssuers(): Array<java.security.cert.X509Certificate> = arrayOf()
-                            })
-                            val sslContext = javax.net.ssl.SSLContext.getInstance("TLS")
-                            sslContext.init(null, trustAllCerts, java.security.SecureRandom())
-                            builder.sslSocketFactory(sslContext.socketFactory, trustAllCerts[0])
-                            builder.hostnameVerifier { _, _ -> true }
-                        } catch (_: Exception) { }
-                    }
+                    // ★ 安全修复 v3.18.23-p1：移除 trust-all TrustManager + hostnameVerifier{true}。
+                    // 旧实现使 HTTPS 代理下所有上游证书校验被跳过，中间人可截获上游 API Key。
+                    // 现恢复 OkHttp 系统默认校验（证书链 + 域名匹配）。
+                    // 说明：java.net.Proxy 本身不支持"到代理的 TLS"，原 trust-all 也并未实现
+                    // 真正的 HTTPS 代理，仅是关闭了校验；如需抓包调试请使用系统级代理工具。
                 }
                 "SOCKS5", "SOCKS" -> {
                     // 使用自定义 Socks5SocketFactory（支持 RFC 1929 认证）

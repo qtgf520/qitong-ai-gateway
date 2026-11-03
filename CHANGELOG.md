@@ -6,6 +6,32 @@
 
 ---
 
+## 🔄 v3.18.25（正式发布）
+
+### 🔒 安全修复（迁移自朋友 v3.18.23-p1 补丁，共 8 项）
+- **局域网免密钥绕过（严重）** — `KeyManager.isLocalRequest()` 旧实现把 `192.168.*/10.*/172.16.*` 全视为本地免密钥，同一 WiFi 下任意设备可无密钥调用网关。现**仅回环地址（127.0.0.1/::1/localhost）免密钥**，局域网设备必须携带 API Key
+- **`POST /chat/completions` 漏鉴权（严重）** — 该无 /v1 前缀主端点此前无 `validateApiKey` 检查，可去前缀绕过验证。现补上与其它端点一致的密钥验证
+- **HTTPS 代理关闭全部 TLS 校验（严重）** — `UpstreamClient.createClient()` 对 HTTPS 代理安装 trust-all TrustManager + `hostnameVerifier{true}`，中间人可截获上游 API Key。现移除 trust-all，恢复 OkHttp 系统默认证书校验（证书链+域名匹配）
+- **tool_calls 空 content 误判故障（严重功能）** — OpenAI 系模型函数调用常返回 `content:""`+非空 `tool_calls`，旧代码一律抛"blank content"异常错误触发故障转移。现先检查 tool_calls 非空则视为成功，SSE 兼容层输出 tool_calls delta，finish_reason 映射为 tool_calls
+- **`/v1/completions` stream=true 静默空内容（严重功能）** — 旧代码把 stream 原样传上游再把 SSE 当 JSON 解析 → 200 空内容。现强制上游非流式，客户端要流式时由网关包装成 OpenAI completions 兼容 SSE（`text_completion.chunk` + `[DONE]`）
+- **`/v1/messages` Claude 格式半成品（严重功能）** — 整段重写：system 兼容字符串/数组/null；Claude tools → OpenAI function 完整转换；tool_use/tool_result 消息完整映射；tool_choice（auto/any/tool）适配；响应 tool_calls → tool_use 块 + stop_reason 映射（tool_calls→tool_use, length→max_tokens）；流式包装成 Claude 兼容 SSE（message_start/content_block_*/message_delta/message_stop）
+- **访问日志耗时为垃圾数据（中）** — `/v1/completions`、`/v1/embeddings` 用 `now - body["created"]` 算耗时（请求体无 created 字段恒为 0）。改为入口记 `startMs` 真实耗时
+- **`/v1/messages` 模型不存在返回 404（一致性）** — 明确返回 404 而非静默换模型
+
+### 🧩 迁移说明
+- 朋友补丁标注 `v3.18.23-p1`（11 处，4 个文件），已全部融合进 **v3.18.25**
+- 保留我方 v3.18.24 预测式自动切换（prewarmConnection/getSpeedRanking/PredictivePrewarmManager）
+
+### ✅ 双轨版本
+- 正式版：`3.18.25`（包名 com.qtwl.gateway）
+- 测试版：`3.18.25-11`（包名 com.qtwl.gateway.cs）
+- versionCode=214，qitong.jks 签名
+
+### ✅ 验证
+- 编译验证：`./gradlew assembleFormalDebug` → `BUILD SUCCESSFUL`
+
+---
+
 ## 🔄 v3.18.24（正式发布）
 
 ### ✨ 新增

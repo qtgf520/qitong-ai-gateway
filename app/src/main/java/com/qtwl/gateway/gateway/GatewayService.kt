@@ -56,6 +56,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Call
@@ -293,6 +294,13 @@ class GatewayService(private val database: AppDatabase) {
                 // ★★★ 兼容不带 /v1 前缀的路径 ★★★
                 post("/chat/completions") {
                     corsResponse(call)
+                    // ★ 安全修复 v3.18.23-p1：补上鉴权（旧代码此端点漏验证，
+                    //   开启密钥验证后局域网设备可去掉 /v1 前缀绕过）
+                    if (!validateApiKey(call)) {
+                        val (s, b) = openAIError(HttpStatusCode.Unauthorized, "Invalid or missing API key", "invalid_api_key")
+                        call.respondText(contentType = ContentType.Application.Json, status = s, text = b)
+                        return@post
+                    }
                     proxyRequest(call, database)
                 }
 
@@ -304,6 +312,7 @@ class GatewayService(private val database: AppDatabase) {
                         return@post
                     }
                     try {
+                        val startMs = System.currentTimeMillis()
                         val rawBytes = call.receive<ByteArray>()
                         GatewayForegroundService.trafficUploadBytes.addAndGet(rawBytes.size.toLong())
                         GatewayForegroundService.totalUploadBytes.addAndGet(rawBytes.size.toLong())
@@ -316,7 +325,11 @@ class GatewayService(private val database: AppDatabase) {
                         } else modelId
                         modelId = realModelId
                         val prompt = body["prompt"] ?: throw Exception("prompt is required")
-                        val stream = body["stream"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false
+                        // ★ Bug 修复 v3.18.23-p1：此端点不支持 SSE 透传，旧代码把 stream=true 原样传给上游，
+                        //   再把 SSE 文本当 JSON 解析 → 客户端静默收到空内容。现强制上游非流式，
+                        //   由网关把完整结果包装成 SSE 返回给要求流式的客户端。
+                        val clientWantsStream = body["stream"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false
+                        val stream = false
                         val promptText = try { prompt.jsonPrimitive.content } catch (_: Exception) { prompt.jsonArray.joinToString("\n") { it.jsonPrimitive.content } }
                         // 转换为 chat 格式后转发
                         val chatBody = buildJsonObject {
@@ -354,6 +367,7 @@ class GatewayService(private val database: AppDatabase) {
                         // 将 chat 响应转回 completions 格式
                         val chatResp = try { proxyJson.parseToJsonElement(respBody).jsonObject } catch (_: Exception) { null }
                         val text = try { chatResp?.get("choices")?.jsonArray?.get(0)?.jsonObject?.get("message")?.jsonObject?.get("content")?.jsonPrimitive?.content ?: "" } catch (_: Exception) { "" }
+                        val finishReason = try { chatResp?.get("choices")?.jsonArray?.get(0)?.jsonObject?.get("finish_reason")?.jsonPrimitive?.content ?: "stop" } catch (_: Exception) { "stop" }
                         val completionsResp = buildJsonObject {
                             put("id", JsonPrimitive("cmpl-${UUID.randomUUID().toString().take(8)}"))
                             put("object", JsonPrimitive("text_completion"))
@@ -362,12 +376,46 @@ class GatewayService(private val database: AppDatabase) {
                             put("choices", JsonArray(listOf(buildJsonObject {
                                 put("text", JsonPrimitive(text))
                                 put("index", JsonPrimitive(0))
-                                put("finish_reason", JsonPrimitive(chatResp?.get("choices")?.jsonArray?.get(0)?.jsonObject?.get("finish_reason")?.jsonPrimitive?.content ?: "stop"))
+                                put("finish_reason", JsonPrimitive(finishReason))
                             })))
                             chatResp?.get("usage")?.let { put("usage", it) }
                         }
-                        call.respondText(completionsResp.toString(), ContentType.Application.Json.withCharset(Charsets.UTF_8))
-                        logAccess(call, modelId, 200, System.currentTimeMillis() - (try { body["created"]?.jsonPrimitive?.content?.toLongOrNull() ?: System.currentTimeMillis() } catch (_: Exception) { System.currentTimeMillis() }))
+                        if (clientWantsStream) {
+                            // ★ v3.18.23-p1：客户端要求流式时，包装成 OpenAI completions 兼容 SSE
+                            val chunkId = completionsResp["id"]?.jsonPrimitive?.content ?: "cmpl-${UUID.randomUUID().toString().take(8)}"
+                            val chunkCreated = completionsResp["created"] ?: JsonPrimitive(System.currentTimeMillis() / 1000)
+                            val firstChunk = buildJsonObject {
+                                put("id", JsonPrimitive(chunkId))
+                                put("object", JsonPrimitive("text_completion.chunk"))
+                                put("created", chunkCreated)
+                                put("model", JsonPrimitive(modelId))
+                                put("choices", JsonArray(listOf(buildJsonObject {
+                                    put("text", JsonPrimitive(text))
+                                    put("index", JsonPrimitive(0))
+                                    put("finish_reason", JsonNull)
+                                })))
+                            }
+                            val stopChunk = buildJsonObject {
+                                put("id", JsonPrimitive(chunkId))
+                                put("object", JsonPrimitive("text_completion.chunk"))
+                                put("created", chunkCreated)
+                                put("model", JsonPrimitive(modelId))
+                                put("choices", JsonArray(listOf(buildJsonObject {
+                                    put("text", JsonPrimitive(""))
+                                    put("index", JsonPrimitive(0))
+                                    put("finish_reason", JsonPrimitive(finishReason))
+                                })))
+                            }
+                            val sse = buildString {
+                                append("data: ").append(firstChunk.toString()).append("\n\n")
+                                append("data: ").append(stopChunk.toString()).append("\n\n")
+                                append("data: [DONE]\n\n")
+                            }
+                            call.respondText(sse, ContentType.Text.EventStream.withCharset(Charsets.UTF_8))
+                        } else {
+                            call.respondText(completionsResp.toString(), ContentType.Application.Json.withCharset(Charsets.UTF_8))
+                        }
+                        logAccess(call, modelId, 200, System.currentTimeMillis() - startMs)
                     } catch (e: Exception) {
                         val (s, b) = openAIError(HttpStatusCode.InternalServerError, e.message ?: "Completions failed", "server_error")
                         call.respondText(contentType = ContentType.Application.Json, status = s, text = b)
@@ -393,39 +441,137 @@ class GatewayService(private val database: AppDatabase) {
                             if (active.isNotBlank()) modelId = active
                         }
                         val claudeMsgs = body["messages"]?.jsonArray ?: throw Exception("messages is required")
-                        val stream = body["stream"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false
+                        val startMs = System.currentTimeMillis()
+                        // ★ Bug 修复 v3.18.23-p1：本端点不支持 SSE 透传，强制上游非流式，由网关包装 Claude SSE
+                        val clientWantsStream = body["stream"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false
+                        val stream = false
                         val maxTokens = body["max_tokens"]?.jsonPrimitive?.content?.toIntOrNull() ?: 1024
-                        val systemPrompt = body["system"]?.jsonPrimitive?.content ?: ""
-                        // 转换 Claude 消息为 OpenAI 格式
+                        // ★ Bug 修复 v3.18.23-p1：system 可以是 string 也可以是 content block 数组（Claude Code 发数组），
+                        //   旧代码 jsonPrimitive 直接抛异常 → 500
+                        val systemText = when (val sys = body["system"]) {
+                            null -> ""
+                            is kotlinx.serialization.json.JsonNull -> ""
+                            is kotlinx.serialization.json.JsonPrimitive -> sys.content
+                            is kotlinx.serialization.json.JsonArray -> sys.mapNotNull { pp ->
+                                try { (pp as? kotlinx.serialization.json.JsonObject)?.get("text")?.jsonPrimitive?.contentOrNull } catch (_: Exception) { null }
+                            }.joinToString("\n")
+                            else -> ""
+                        }
+                        // 转换 Claude 消息为 OpenAI 格式（★ 修复：支持 tool_use / tool_result / image 占位）
                         val openaiMsgs = mutableListOf<JsonObject>()
-                        if (systemPrompt.isNotBlank()) {
-                            openaiMsgs.add(buildJsonObject { put("role", JsonPrimitive("system")); put("content", JsonPrimitive(systemPrompt)) })
+                        if (systemText.isNotBlank()) {
+                            openaiMsgs.add(buildJsonObject { put("role", JsonPrimitive("system")); put("content", JsonPrimitive(systemText)) })
                         }
                         for (msg in claudeMsgs) {
-                            val obj = msg.jsonObject
+                            val obj = try { msg.jsonObject } catch (_: Exception) { continue }
                             val role = obj["role"]?.jsonPrimitive?.content ?: "user"
-                            val content = obj["content"]
-                            if (content != null) {
-                                // Claude content 可以是 string 或 array
-                                val text = try { content.jsonPrimitive.content } catch (_: Exception) {
-                                    content.jsonArray.mapNotNull { part ->
-                                        try { val p = part.jsonObject; if (p["type"]?.jsonPrimitive?.content == "text") p["text"]?.jsonPrimitive?.content else null } catch (_: Exception) { null }
-                                    }.joinToString("\n")
+                            val content = obj["content"] ?: continue
+                            if (content is kotlinx.serialization.json.JsonPrimitive) {
+                                openaiMsgs.add(buildJsonObject {
+                                    put("role", JsonPrimitive(if (role == "assistant") "assistant" else "user"))
+                                    put("content", JsonPrimitive(content.content))
+                                })
+                                continue
+                            }
+                            val blocks = try { content.jsonArray } catch (_: Exception) { continue }
+                            val textParts = mutableListOf<String>()
+                            val pendingCalls = mutableListOf<Triple<String, String, String>>() // (id, name, argumentsJson)
+                            val toolResults = mutableListOf<Pair<String, String>>() // (tool_use_id, text)
+                            for (part in blocks) {
+                                val pblk = try { part.jsonObject } catch (_: Exception) { continue }
+                                when (pblk["type"]?.jsonPrimitive?.contentOrNull) {
+                                    "text" -> textParts.add(pblk["text"]?.jsonPrimitive?.contentOrNull ?: "")
+                                    "image" -> textParts.add("[image omitted]")
+                                    "tool_use" -> {
+                                        val inputObj = pblk["input"] as? kotlinx.serialization.json.JsonObject ?: kotlinx.serialization.json.JsonObject(emptyMap())
+                                        pendingCalls.add(Triple(
+                                            pblk["id"]?.jsonPrimitive?.contentOrNull ?: "",
+                                            pblk["name"]?.jsonPrimitive?.contentOrNull ?: "",
+                                            inputObj.toString()
+                                        ))
+                                    }
+                                    "tool_result" -> {
+                                        val tid = pblk["tool_use_id"]?.jsonPrimitive?.contentOrNull ?: ""
+                                        val tcontent = pblk["content"]
+                                        val ttext = when (tcontent) {
+                                            null -> ""
+                                            is kotlinx.serialization.json.JsonPrimitive -> tcontent.content
+                                            is kotlinx.serialization.json.JsonArray -> tcontent.mapNotNull { q ->
+                                                try { (q as? kotlinx.serialization.json.JsonObject)?.get("text")?.jsonPrimitive?.contentOrNull } catch (_: Exception) { null }
+                                            }.joinToString("\n")
+                                            else -> ""
+                                        }
+                                        toolResults.add(tid to ttext)
+                                    }
                                 }
-                                openaiMsgs.add(buildJsonObject { put("role", JsonPrimitive(if (role == "assistant") "assistant" else "user")); put("content", JsonPrimitive(text)) })
+                            }
+                            if (role == "assistant") {
+                                if (pendingCalls.isNotEmpty()) {
+                                    openaiMsgs.add(buildJsonObject {
+                                        put("role", JsonPrimitive("assistant"))
+                                        if (textParts.isNotEmpty()) put("content", JsonPrimitive(textParts.joinToString("\n"))) else put("content", JsonNull)
+                                        put("tool_calls", JsonArray(pendingCalls.map { tcall ->
+                                            buildJsonObject {
+                                                put("id", JsonPrimitive(tcall.first))
+                                                put("type", JsonPrimitive("function"))
+                                                put("function", buildJsonObject {
+                                                    put("name", JsonPrimitive(tcall.second))
+                                                    put("arguments", JsonPrimitive(tcall.third))
+                                                })
+                                            }
+                                        }))
+                                    })
+                                } else if (textParts.isNotEmpty()) {
+                                    openaiMsgs.add(buildJsonObject { put("role", JsonPrimitive("assistant")); put("content", JsonPrimitive(textParts.joinToString("\n"))) })
+                                }
+                            } else {
+                                for (tres in toolResults) {
+                                    openaiMsgs.add(buildJsonObject {
+                                        put("role", JsonPrimitive("tool"))
+                                        put("tool_call_id", JsonPrimitive(tres.first))
+                                        put("content", JsonPrimitive(tres.second))
+                                    })
+                                }
+                                val pureText = textParts.filter { it.isNotBlank() }.joinToString("\n")
+                                if (pureText.isNotBlank()) {
+                                    openaiMsgs.add(buildJsonObject { put("role", JsonPrimitive("user")); put("content", JsonPrimitive(pureText)) })
+                                }
                             }
                         }
-                        // 构造 OpenAI chat 请求
+                        // tools：Claude {name, description, input_schema} → OpenAI {type:"function", function:{...}}
+                        val openaiTools = (body["tools"] as? kotlinx.serialization.json.JsonArray)?.map { t ->
+                            val tobj = t as? kotlinx.serialization.json.JsonObject ?: kotlinx.serialization.json.JsonObject(emptyMap())
+                            buildJsonObject {
+                                put("type", JsonPrimitive("function"))
+                                put("function", buildJsonObject {
+                                    put("name", JsonPrimitive(tobj["name"]?.jsonPrimitive?.contentOrNull ?: ""))
+                                    tobj["description"]?.let { put("description", it) }
+                                    tobj["input_schema"]?.let { put("parameters", it) }
+                                })
+                            }
+                        }
+                        val openaiToolChoice: kotlinx.serialization.json.JsonElement? = when (val chc = body["tool_choice"]) {
+                            is kotlinx.serialization.json.JsonObject -> when (chc["type"]?.jsonPrimitive?.contentOrNull) {
+                                "any" -> JsonPrimitive("required")
+                                "auto" -> JsonPrimitive("auto")
+                                "tool" -> chc["name"]?.jsonPrimitive?.contentOrNull?.let { nm ->
+                                    buildJsonObject { put("type", JsonPrimitive("function")); put("function", buildJsonObject { put("name", JsonPrimitive(nm)) }) }
+                                }
+                                else -> null
+                            }
+                            else -> null
+                        }
+                        // 构造 OpenAI chat 请求（stream 恒为 false，见上）
                         val chatBody = buildJsonObject {
                             put("model", JsonPrimitive(modelId))
                             put("messages", JsonArray(openaiMsgs))
                             put("max_tokens", JsonPrimitive(maxTokens))
-                            put("stream", JsonPrimitive(stream))
+                            put("stream", JsonPrimitive(false))
                             body["temperature"]?.let { put("temperature", it) }
                             body["top_p"]?.let { put("top_p", it) }
                             body["stop_sequences"]?.let { put("stop", it) }
-                            body["tools"]?.let { put("tools", it) }
-                            body["tool_choice"]?.let { put("tool_choice", it) }
+                            if (!openaiTools.isNullOrEmpty()) put("tools", JsonArray(openaiTools))
+                            openaiToolChoice?.let { put("tool_choice", it) }
                         }
                         // 查找模型并转发
                         val models = database.aiModelDao().getEnabledModelsList()
@@ -446,19 +592,43 @@ class GatewayService(private val database: AppDatabase) {
                         GatewayForegroundService.totalDownloadBytes.addAndGet(respBody.length.toLong())
                         GatewayForegroundService.trafficDownloadBytes.addAndGet(respBody.length.toLong())
                         // 将 OpenAI chat 响应转换为 Claude 格式
+                        // ★ Bug 修复 v3.18.23-p1：tool_calls → tool_use 块、finish_reason → stop_reason 完整映射
                         val chatResp = try { proxyJson.parseToJsonElement(respBody).jsonObject } catch (_: Exception) { null }
-                        val contentText = try { chatResp?.get("choices")?.jsonArray?.get(0)?.jsonObject?.get("message")?.jsonObject?.get("content")?.jsonPrimitive?.content ?: "" } catch (_: Exception) { "" }
-                        val stopReason = try { chatResp?.get("choices")?.jsonArray?.get(0)?.jsonObject?.get("finish_reason")?.jsonPrimitive?.content?.let { if (it == "stop") "end_turn" else it } ?: "end_turn" } catch (_: Exception) { "end_turn" }
+                        val firstMsg = try { chatResp?.get("choices")?.jsonArray?.get(0)?.jsonObject?.get("message")?.jsonObject } catch (_: Exception) { null }
+                        val contentText = try { firstMsg?.get("content")?.jsonPrimitive?.content ?: "" } catch (_: Exception) { "" }
+                        val respToolCalls = try { firstMsg?.get("tool_calls")?.jsonArray ?: kotlinx.serialization.json.JsonArray(emptyList()) } catch (_: Exception) { kotlinx.serialization.json.JsonArray(emptyList()) }
+                        val rawFinish = try { chatResp?.get("choices")?.jsonArray?.get(0)?.jsonObject?.get("finish_reason")?.jsonPrimitive?.content ?: "stop" } catch (_: Exception) { "stop" }
+                        val stopReason = when (rawFinish) {
+                            "tool_calls", "function_call" -> "tool_use"
+                            "length" -> "max_tokens"
+                            "stop" -> "end_turn"
+                            else -> rawFinish
+                        }
                         val promptTokens = try { chatResp?.get("usage")?.jsonObject?.get("prompt_tokens")?.jsonPrimitive?.content?.toIntOrNull() ?: 0 } catch (_: Exception) { 0 }
                         val completionTokens = try { chatResp?.get("usage")?.jsonObject?.get("completion_tokens")?.jsonPrimitive?.content?.toIntOrNull() ?: 0 } catch (_: Exception) { 0 }
+                        val contentBlocks = mutableListOf<JsonObject>()
+                        if (contentText.isNotBlank()) {
+                            contentBlocks.add(buildJsonObject { put("type", JsonPrimitive("text")); put("text", JsonPrimitive(contentText)) })
+                        }
+                        for (tc in respToolCalls) {
+                            val tco = try { tc.jsonObject } catch (_: Exception) { continue }
+                            val fnObj = tco["function"] as? kotlinx.serialization.json.JsonObject
+                            val inputJson = try { proxyJson.parseToJsonElement(fnObj?.get("arguments")?.jsonPrimitive?.content ?: "{}") } catch (_: Exception) { kotlinx.serialization.json.JsonObject(emptyMap()) }
+                            contentBlocks.add(buildJsonObject {
+                                put("type", JsonPrimitive("tool_use"))
+                                put("id", JsonPrimitive(tco["id"]?.jsonPrimitive?.contentOrNull ?: "toolu_${UUID.randomUUID().toString().take(8)}"))
+                                put("name", JsonPrimitive(fnObj?.get("name")?.jsonPrimitive?.contentOrNull ?: ""))
+                                put("input", inputJson)
+                            })
+                        }
+                        if (contentBlocks.isEmpty()) {
+                            contentBlocks.add(buildJsonObject { put("type", JsonPrimitive("text")); put("text", JsonPrimitive("")) })
+                        }
                         val claudeResp = buildJsonObject {
                             put("id", JsonPrimitive("msg_${UUID.randomUUID().toString().take(8)}"))
                             put("type", JsonPrimitive("message"))
                             put("role", JsonPrimitive("assistant"))
-                            put("content", JsonArray(listOf(buildJsonObject {
-                                put("type", JsonPrimitive("text"))
-                                put("text", JsonPrimitive(contentText))
-                            })))
+                            put("content", JsonArray(contentBlocks))
                             put("model", JsonPrimitive(modelId))
                             put("stop_reason", JsonPrimitive(stopReason))
                             put("usage", buildJsonObject {
@@ -466,8 +636,68 @@ class GatewayService(private val database: AppDatabase) {
                                 put("output_tokens", JsonPrimitive(completionTokens))
                             })
                         }
-                        call.respondText(claudeResp.toString(), ContentType.Application.Json.withCharset(Charsets.UTF_8))
-                        logAccess(call, modelId, 200, System.currentTimeMillis() - (try { body["created"]?.jsonPrimitive?.content?.toLongOrNull() ?: System.currentTimeMillis() } catch (_: Exception) { System.currentTimeMillis() }))
+                        if (clientWantsStream) {
+                            // ★ v3.18.23-p1：包装成 Claude 兼容 SSE（message_start / content_block_* / message_delta / message_stop）
+                            val msgId = claudeResp["id"]?.jsonPrimitive?.content ?: "msg_${UUID.randomUUID().toString().take(8)}"
+                            val sse = buildString {
+                                append("event: message_start\ndata: ")
+                                append(buildJsonObject {
+                                    put("type", JsonPrimitive("message_start"))
+                                    put("message", buildJsonObject {
+                                        put("id", JsonPrimitive(msgId)); put("type", JsonPrimitive("message")); put("role", JsonPrimitive("assistant"))
+                                        put("content", JsonArray(emptyList()))
+                                        put("model", JsonPrimitive(modelId))
+                                        put("usage", buildJsonObject { put("input_tokens", JsonPrimitive(promptTokens)); put("output_tokens", JsonPrimitive(0)) })
+                                    })
+                                }.toString()).append("\n\n")
+                                var blockIdx = 0
+                                for (blk in contentBlocks) {
+                                    val btype = blk["type"]?.jsonPrimitive?.content
+                                    append("event: content_block_start\ndata: ")
+                                    append(buildJsonObject {
+                                        put("type", JsonPrimitive("content_block_start"))
+                                        put("index", JsonPrimitive(blockIdx))
+                                        put("content_block", if (btype == "tool_use") buildJsonObject {
+                                            put("type", JsonPrimitive("tool_use"))
+                                            blk["id"]?.let { put("id", it) }
+                                            blk["name"]?.let { put("name", it) }
+                                            put("input", kotlinx.serialization.json.JsonObject(emptyMap()))
+                                        } else buildJsonObject {
+                                            put("type", JsonPrimitive("text")); put("text", JsonPrimitive(""))
+                                        })
+                                    }.toString()).append("\n\n")
+                                    append("event: content_block_delta\ndata: ")
+                                    append(buildJsonObject {
+                                        put("type", JsonPrimitive("content_block_delta"))
+                                        put("index", JsonPrimitive(blockIdx))
+                                        put("delta", if (btype == "tool_use") buildJsonObject {
+                                            put("type", JsonPrimitive("input_json_delta"))
+                                            put("partial_json", JsonPrimitive((blk["input"] ?: kotlinx.serialization.json.JsonObject(emptyMap())).toString()))
+                                        } else buildJsonObject {
+                                            put("type", JsonPrimitive("text_delta"))
+                                            put("text", JsonPrimitive(blk["text"]?.jsonPrimitive?.content ?: ""))
+                                        })
+                                    }.toString()).append("\n\n")
+                                    append("event: content_block_stop\ndata: ")
+                                    append(buildJsonObject {
+                                        put("type", JsonPrimitive("content_block_stop")); put("index", JsonPrimitive(blockIdx))
+                                    }.toString()).append("\n\n")
+                                    blockIdx++
+                                }
+                                append("event: message_delta\ndata: ")
+                                append(buildJsonObject {
+                                    put("type", JsonPrimitive("message_delta"))
+                                    put("delta", buildJsonObject { put("stop_reason", JsonPrimitive(stopReason)); put("stop_sequence", JsonNull) })
+                                    put("usage", buildJsonObject { put("output_tokens", JsonPrimitive(completionTokens)) })
+                                }.toString()).append("\n\n")
+                                append("event: message_stop\ndata: ")
+                                append(buildJsonObject { put("type", JsonPrimitive("message_stop")) }.toString()).append("\n\n")
+                            }
+                            call.respondText(sse, ContentType.Text.EventStream.withCharset(Charsets.UTF_8))
+                        } else {
+                            call.respondText(claudeResp.toString(), ContentType.Application.Json.withCharset(Charsets.UTF_8))
+                        }
+                        logAccess(call, modelId, 200, System.currentTimeMillis() - startMs)
                     } catch (e: Exception) {
                         val (s, b) = openAIError(HttpStatusCode.InternalServerError, e.message ?: "Messages failed", "server_error")
                         call.respondText(contentType = ContentType.Application.Json, status = s, text = b)
@@ -482,6 +712,7 @@ class GatewayService(private val database: AppDatabase) {
                         return@post
                     }
                     try {
+                        val startMs = System.currentTimeMillis()
                         val rawBytes = call.receive<ByteArray>()
                         GatewayForegroundService.trafficUploadBytes.addAndGet(rawBytes.size.toLong())
                         GatewayForegroundService.totalUploadBytes.addAndGet(rawBytes.size.toLong())
@@ -513,7 +744,7 @@ class GatewayService(private val database: AppDatabase) {
                         GatewayForegroundService.totalDownloadBytes.addAndGet(respBody.length.toLong())
                         GatewayForegroundService.trafficDownloadBytes.addAndGet(respBody.length.toLong())
                         call.respondText(respBody, ContentType.Application.Json.withCharset(Charsets.UTF_8), status = HttpStatusCode.fromValue(resp.code.takeIf { it > 0 } ?: 200))
-                        logAccess(call, modelId, resp.code, System.currentTimeMillis() - (try { body["created"]?.jsonPrimitive?.content?.toLongOrNull() ?: System.currentTimeMillis() } catch (_: Exception) { System.currentTimeMillis() }))
+                        logAccess(call, modelId, resp.code, System.currentTimeMillis() - startMs) //  修复 v3.18.23-p1：真实耗时（旧代码用 body["created"] 计算是垃圾数据）
                     } catch (e: Exception) {
                         val (s, b) = openAIError(HttpStatusCode.InternalServerError, e.message ?: "Embeddings failed", "server_error")
                         call.respondText(contentType = ContentType.Application.Json, status = s, text = b)

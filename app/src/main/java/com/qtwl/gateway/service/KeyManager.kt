@@ -108,6 +108,9 @@ object KeyManager {
     
     /** 判断是否为本地请求（免密钥） */
     fun isLocalRequest(ip: String): Boolean {
-        return ip == "localhost" || ip == "127.0.0.1" || ip == "::1" || ip == "0.0.0.0" || ip.startsWith("192.168.") || ip.startsWith("10.") || ip.startsWith("172.16.")
+        // ★ 安全修复 v3.18.23-p1：仅回环地址免密钥。
+        // 旧实现把 192.168.*/10.*/172.16.* 全部视为"本地"，导致开启密钥验证后
+        // 同一局域网内的任意设备仍可无密钥调用网关（等于没有验证）。
+        return ip == "localhost" || ip == "127.0.0.1" || ip == "::1" || ip == "::ffff:127.0.0.1" || ip == "0.0.0.0"
     }
 }
