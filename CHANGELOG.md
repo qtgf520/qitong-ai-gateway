@@ -2,7 +2,28 @@
 
 > 包名：com.qtwl.gateway
 > 签名证书：qitong.jks (别名: qitong)
-> 最后更新：2026-10-03
+> 最后更新：2026-11-03
+
+---
+
+## 🔄 v3.18.24（正式发布）
+
+### ✨ 新增
+- **🔮 预测式自动切换（思考阶段预热，切换零感知）** — 在 qtai-sj「思考」阶段提前预判下一模型并预热连接：
+  - **思考阶段介入** — brain 请求发出时（ThinkingConfigManager 思考引导触发），自动记录当前模型特征（modelId/providerId/requestType）
+  - **智能预测** — 基于 ①强制故障池下一个模型 ②测速排行榜下一个 ③兜底 qtai-sj 三级预测策略，选出最可能的下一个目标模型
+  - **连接预建** — `prewarmConnection()` 对预测目标模型预发轻量 HEAD 请求，提前完成 TCP + TLS + HTTP/2 三次握手（超时5秒，OkHttp 连接池复用，预热成功后真实请求直接复用连接）
+  - **切换零感知** — 故障转移时连接已就绪，不再等待握手，切换到下一个模型毫秒级完成
+  - **生命周期管理** — 预热管理器挂在网关前台服务，切换完成自动清理状态，不影响正常路由
+
+### ✅ 双轨版本
+- 正式版：`3.18.24`（包名 com.qtwl.gateway）
+- 测试版：`3.18.24-10`（包名 com.qtwl.gateway.cs）
+- versionCode=213，qitong.jks 签名
+
+### ✅ 验证
+- 编译验证：`./gradlew assembleFormalDebug` → `BUILD SUCCESSFUL`
+- 编译验证：`./gradlew assembleCsDebug` → `BUILD SUCCESSFUL`
 
 ---
 

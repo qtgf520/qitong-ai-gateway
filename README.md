@@ -9,7 +9,7 @@
 > Recommended: Uninstall old version OR clear app data → Install new version → Import backup.
 
 > **包名 / Package：** `com.qtwl.gateway`  
-> **最新版本 / Latest：** v3.18.23 (versionCode=203)  
+> **最新版本 / Latest：** v3.18.24 (versionCode=213)  
 > **开源协议 / License：** Apache 2.0  
 > **语言 / Languages：** 🌐 15 languages (CN/EN/JP/KR/FR/DE/ES/RU/PT/VN/TH/AR/HI/ID)
 > **官方QQ群 / QQ Group：** [1007488535](https://qm.qq.com/q/1007488535) 💬
@@ -179,6 +179,7 @@ See [CHANGELOG.md](CHANGELOG.md) for full changelog.
 
 | Version | Key Features |
 |:--------|:-------------|
+| **v3.18.24** | 🔮 **预测式自动切换（思考阶段预热）** — qtai-sj 思考阶段提前预判下一模型并预热连接：基于 ①强制故障池下一个 ②测速榜下一个 ③兜底qtai-sj 三级预测策略，`prewarmConnection()` 预建 TCP/TLS/HTTP/2 连接（超时5s、OkHttp连接池复用），故障切换毫秒级零感知；预热管理器挂网关前台服务，切换完成自动清理 |
 | **v3.18.23** | 🐛 **强制故障池重启丢失修复** — 修复 `saveForcedModel("")` 连带清空整个强制池的bug（开启qtai-sj自动化/取消强制切换/重启都会误清），清空强制模型时保留用户多选的故障转移列表，重启不再丢失 |
 | **v3.18.22** | 🏷️ **pID自定义ID UI完整实现 + qtai-sj转接模型真实统计** — 服务商添加/编辑对话框新增"自定义ID"输入框（保存/回填）；qtai-sj路由后的真实模型（如DeepSeek）正确写入TokenUsage统计；DEV_GUIDE新增终端失联紧急处理（无障碍服务） |
 | **v3.18.21** | ⚡ **性能优化+修复启动闪退** — 修复ViewModel init构造期NPE闪退（协程延迟启动避开构造期）；跑马灯改3秒低频快照消除每800ms全页重组卡顿；LazyColumn滚动更流畅；首页测速区域精简合并；pID服务商ID可自定义；自动测速状态持久化恢复 |

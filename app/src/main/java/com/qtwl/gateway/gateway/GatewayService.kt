@@ -58,6 +58,10 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.Response
+import java.io.IOException
 import java.net.SocketTimeoutException
 import java.net.ConnectException
 import java.util.UUID
@@ -807,6 +811,70 @@ class GatewayService(private val database: AppDatabase) {
     }
 
     val isRunning: Boolean get() = server != null
+
+    // ============================================================
+    // ★★ 预测式预热连接池 —— 思考阶段预判模型，提前建立 TCP/TLS/HTTP/2 连接 ★★
+    // ============================================================
+
+    /**
+     * 预热连接：为指定模型预建 TCP/TLS/HTTP/2 连接
+     * @param modelId 目标模型ID
+     * @param timeoutMs 预热超时时间（毫秒），默认 5000ms
+     */
+    suspend fun prewarmConnection(modelId: String, timeoutMs: Long = 5000) {
+        try {
+            val models = database.aiModelDao().getEnabledModelsList()
+            val targetModel = models.find { it.modelId == modelId } ?: return
+            val provider = database.providerDao().getProviderById(targetModel.providerId) ?: return
+            if (!provider.isEnabled) return
+            val upstreamUrl = provider.resolvedBaseUrl.trimEnd('/')
+            val client = UpstreamClient.getClientForModel(targetModel.useProxy)
+            // 发送一个轻量 HEAD 请求预热连接（TCP + TLS + HTTP/2 握手）
+            val req = okhttp3.Request.Builder()
+                .url("$upstreamUrl" + (provider.chatPath?.let { if (it.startsWith("/")) it else "/$it" } ?: "/v1/chat/completions"))
+                .head()
+                .apply { if (!provider.apiKey.isNullOrBlank()) header("Authorization", "Bearer ${provider.apiKey}") }
+                .build()
+            val call = client.newCall(req)
+            call.enqueue(object : okhttp3.Callback {
+                override fun onFailure(call: okhttp3.Call, e: IOException) {
+                    if (GatewayForegroundService.getDebugMode()) {
+                        GatewayForegroundService.addDebugLog("🔮 预热失败 $modelId: ${e.message}")
+                    }
+                }
+                override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
+                    response.close()
+                    if (GatewayForegroundService.getDebugMode()) {
+                        GatewayForegroundService.addDebugLog("🔮 预热成功 $modelId (HTTP ${response.code})")
+                    }
+                }
+            })
+            // 等待预热完成或超时
+            kotlinx.coroutines.withTimeoutOrNull(timeoutMs) {
+                kotlinx.coroutines.delay(timeoutMs)
+            }
+        } catch (_: Exception) {
+            // 预热失败不抛出，静默忽略
+        }
+    }
+
+    /**
+     * 获取测速排行榜（供预测预热使用）
+     * 返回按速度排序的模型列表，每项包含 modelId 和 latencyMs
+     */
+    data class SpeedRankEntry(
+        val modelId: String,
+        val latencyMs: Long
+    )
+
+    fun getSpeedRanking(): List<SpeedRankEntry> {
+        return GatewayScheduler.pipelineSortedModelKeys.mapNotNull { key ->
+            val health = GatewayScheduler.healthCache[key]
+            if (health != null && health.isHealthy && health.latencyMs != Long.MAX_VALUE) {
+                SpeedRankEntry(health.modelId, health.latencyMs)
+            } else null
+        }.sortedBy { it.latencyMs }
+    }
 }
 
 // ================== 通用代理转发核心 ==================
@@ -1605,7 +1673,13 @@ ${SkillRegistry.buildSkillPrompt()}
 - 例如：用户说"查排行"→ 你回复"当前排行是这样的：1.xxx 2.xxx" 同时末尾加【指令:600002】
 
 记住：你是${customName.ifBlank { "綦小桐" }}，要有自己的思考和个性，像真人一样回复用户。""" + ThinkingConfigManager.buildThinkingPrompt()
-
+                            // ★★ 思考阶段：预测预热下一模型连接（切换零感知）★★
+                            val curGw = GatewayForegroundService.currentGatewayService
+                            if (curGw != null) {
+                                try {
+                                    GatewayForegroundService.notifyThinkingStarted(curGw, brainModel.modelId, brainProvider.id, "brain")
+                                } catch (_: Exception) { }
+                            }
                             val brainBody = """{"model":"${brainModel.modelId}","messages":[{"role":"system","content":${proxyJson.encodeToString(JsonPrimitive(brainPrompt))}},{"role":"user","content":${proxyJson.encodeToString(JsonPrimitive(userMsg))}}],"max_tokens":500,"stream":${stream},"temperature":0.7}"""
 
                             try {
@@ -2471,7 +2545,7 @@ private suspend fun pipeStreamResponse(
                     isStream = true
                 )
             }
-            withContext(Dispatchers.IO) { try { bodyStream.close(); response.close() } catch (_: Exception) { } }
+withContext(Dispatchers.IO) { try { bodyStream.close(); response.close() } catch (_: Exception) { } }
         }
     }
 }

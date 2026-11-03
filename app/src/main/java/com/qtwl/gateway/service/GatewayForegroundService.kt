@@ -72,6 +72,7 @@ class GatewayForegroundService : Service() {
 
         val app = application as GatewayApplication
         gatewayService = GatewayService(app.database)
+        currentGatewayService = gatewayService  // ★★ 暴露当前网关实例（供预测预热/远程调用）★★
         wakeEnabled = getWakeEnabled()
         // ★★★ 恢复持久化的总流量统计（APP内使用）★★★ 通知栏流量不从持久化恢复，重启即清零
         totalUploadBytes.set(getSavedTraffic("total_upload"))
@@ -362,6 +363,7 @@ val trafficDownloadBytes = java.util.concurrent.atomic.AtomicLong(0L) // ★ 通
 val totalUploadBytes = java.util.concurrent.atomic.AtomicLong(0L)     // ★ APP内总统计（持久化不重置）
 val totalDownloadBytes = java.util.concurrent.atomic.AtomicLong(0L)   // ★ APP内总统计（持久化不重置）
         @Volatile var isServiceRunning: Boolean = false  // 由 start/stop 同步更新
+        @Volatile var currentGatewayService: GatewayService? = null  // ★★ 当前网关实例（供预测预热/远程调用）★★
 
         @Volatile var activeNodeName: String = ""
         @Volatile var activeNodeProviderId: Long = 0L  // ★ 当前活跃模型的服务商ID（通知栏显示P服务商ID·模型名）
@@ -735,5 +737,100 @@ val totalDownloadBytes = java.util.concurrent.atomic.AtomicLong(0L)   // ★ APP
 
         // ★★ 后台保活优化：常驻前台服务 + 高版本Android稳定 ★★
         @Volatile var isKeepAliveOptimized = false
+
+        // ============================================================
+        // ★★ 预测式预热管理器 —— 思考阶段预判下一模型，提前预热连接 ★★
+        // ============================================================
+        private class PredictivePrewarmManager(
+            private val gatewayService: GatewayService,
+            private val serviceScope: CoroutineScope
+        ) {
+            private var lastThinkingModel: String? = null
+            private var lastThinkingProvider: Long = 0L
+            private var lastRequestType: String? = null
+            private var prewarmJob: Job? = null
+
+            /** 思考开始：记录当前模型特征，预测下一模型并启动预热 */
+            fun onThinkingStarted(modelId: String, providerId: Long, requestType: String) {
+                lastThinkingModel = modelId
+                lastThinkingProvider = providerId
+                lastRequestType = requestType
+                predictAndPrewarm()
+            }
+
+            /** 基于强制池/测速榜预测下一模型并预热连接 */
+            private fun predictAndPrewarm() {
+                val nextModel = predictNextModel()
+                    ?: return
+
+                prewarmJob?.cancel()
+                prewarmJob = serviceScope.launch {
+                    gatewayService.prewarmConnection(nextModel, timeoutMs = 5000)
+                }
+                addDebugLog("🔮 预测预热: 下一模型 $nextModel → 已启动连接预热")
+            }
+
+            /** 预测策略：①强制池下一个 ②测速榜下一个 ③兜底 qtai-sj */
+            private fun predictNextModel(): String? {
+                val forcedPool = getForcedPool()
+                if (forcedPool.isNotEmpty()) {
+                    val currentIdx = forcedPool.indexOfFirst { it == lastThinkingModel }
+                    if (currentIdx >= 0 && currentIdx + 1 < forcedPool.size) {
+                        return forcedPool[currentIdx + 1]
+                    }
+                    // 当前不在池里或是最后一个，取池首
+                    return forcedPool.firstOrNull()
+                }
+                // 无强制池：回退测速榜（需 GatewayService 暴露）
+                val speedRank = gatewayService.getSpeedRanking()
+                if (speedRank.isNotEmpty()) {
+                    val currentIdx = speedRank.indexOfFirst { it.modelId == lastThinkingModel }
+                    if (currentIdx >= 0 && currentIdx + 1 < speedRank.size) {
+                        return speedRank[currentIdx + 1].modelId
+                    }
+                    return speedRank.firstOrNull()?.modelId
+                }
+                // 兜底：qtai-sj
+                return if (getQtaiSjEnabled()) "qtai-sj" else null
+            }
+
+            /** 切换完成：清理状态 */
+            fun onSwitchCompleted() {
+                prewarmJob?.cancel()
+                prewarmJob = null
+                lastThinkingModel = null
+                lastThinkingProvider = 0L
+                lastRequestType = null
+            }
+
+            /** 销毁 */
+            fun destroy() {
+                prewarmJob?.cancel()
+                prewarmJob = null
+            }
+        }
+
+        @Volatile private var predictivePrewarmManager: PredictivePrewarmManager? = null
+
+        /**
+         * 思考阶段通知：记录当前模型特征 → 预测下一模型 → 预热连接
+         * 供 GatewayService qtai-sj 大脑思考段调用
+         */
+        fun notifyThinkingStarted(gatewayService: GatewayService, modelId: String, providerId: Long, requestType: String) {
+            try {
+                val mgr = predictivePrewarmManager
+                    ?: PredictivePrewarmManager(gatewayService, CoroutineScope(SupervisorJob() + Dispatchers.IO)).also {
+                        predictivePrewarmManager = it
+                    }
+                mgr.onThinkingStarted(modelId, providerId, requestType)
+            } catch (_: Exception) { }
+        }
+
+        /** 切换完成：清理预热状态 */
+        fun notifySwitchCompleted() {
+            try {
+                predictivePrewarmManager?.onSwitchCompleted()
+            } catch (_: Exception) { }
+        }
     }
 }
