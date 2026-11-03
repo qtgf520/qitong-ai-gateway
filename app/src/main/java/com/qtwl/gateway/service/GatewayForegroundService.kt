@@ -341,6 +341,7 @@ class GatewayForegroundService : Service() {
         private const val KEY_AUTO_FAILOVER = "auto_failover"
         private const val KEY_FAILOVER_MODEL = "failover_model"
         private const val KEY_QTAI_SJ_ENABLED = "qtai_sj_enabled"
+        private const val KEY_AUTO_CONTINUE_ON_LENGTH = "auto_continue_on_length"
         private const val KEY_QTAI_SJ_BRAIN = "qtai_sj_brain_model"
         private const val KEY_QTAI_SJ_NAME = "qtai_sj_name"
         private const val KEY_FORCED_MODEL = "forced_model"
@@ -438,6 +439,12 @@ val totalDownloadBytes = java.util.concurrent.atomic.AtomicLong(0L)   // ★ APP
             GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).edit().putBoolean(KEY_AUTO_FAILOVER, enabled).apply()
         }
         fun getAutoFailover(): Boolean = GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).getBoolean(KEY_AUTO_FAILOVER, false)
+
+        /** v3.18.26：输出截断自动续写开关（finish_reason=length 时自动再请求一次） */
+        fun saveAutoContinueOnLength(enabled: Boolean) {
+            GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).edit().putBoolean(KEY_AUTO_CONTINUE_ON_LENGTH, enabled).apply()
+        }
+        fun getAutoContinueOnLength(): Boolean = GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).getBoolean(KEY_AUTO_CONTINUE_ON_LENGTH, false)
 
         fun saveQtaiSjEnabled(enabled: Boolean) {
             GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).edit().putBoolean(KEY_QTAI_SJ_ENABLED, enabled).apply()

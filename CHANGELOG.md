@@ -1,11 +1,34 @@
 # 綦桐AI网关 完整更新日志
-
 > 包名：com.qtwl.gateway
 > 签名证书：qitong.jks (别名: qitong)
 > 最后更新：2026-11-03
+---
+## 🔄 v3.18.26（正式发布）
+
+### 🤖 Agent 自动化系统迁移（来自朋友更新包，未写入补丁 md 的隐藏功能）
+- **✅ Agent 核心系统已内置** — 迁移朋友 `agent/` 目录完整 ReAct 循环执行器（AgentExecutor 429行：组装系统提示→检查上下文→请求模型→执行工具→回灌结果→自动续跑）+ BuiltinTools（时间/计算器/文本转换/随机数/单位换算 + MathEvaluator 自研表达式解析器）+ NetworkTools + SkillTools + AppKnowledge 软件知识库 + SseParser + GroupChatOrchestrator 群聊编排
+- **✅ 工具层已内置** — AgentTools 682行工具集 + AgentLoop（工具结果以 tool 角色回传、指纹去重防死循环）+ AgentSettings + AgentToolBridge + ModelMaxOutputProber 模型最大输出探测器
+- **✅ 新增「输出截断自动续写」** — 检测到 `finish_reason=length` 时自动追加一次请求并合并内容，长文输出不中断：
+  - 非流式：合并后的完整 JSON 响应返回客户端，usage 累计
+  - 流式：续写内容作为新的 SSE chunk 追加（在 `[DONE]` 帧之前）
+  - 续写请求强制非流式（避免上游 SSE 流无法 JSON 解析）
+  - 续写时使用 ModelMaxOutputProber 探测值拿满上限（≤32768），无探测时按 1.5 倍扩展（≤16384）
+  - 开关：`getAutoContinueOnLength()`（默认关闭，需在设置中开启）
+- **✅ 红线清理** — 移除 GatewayService 中一处含外部项目名的注释（SSE 兼容层说明）
+
+### 🧩 迁移说明
+- 朋友包版本 3.65.0（vC=265），比 md 记录的 8 项补丁多出整个 Agent 自动化系统（26 个新文件 + 23 个公共文件改动）
+- 依赖第三方库的 UI（LiquidGlassBottomNav 需 kyant 库 / HyperOsComponents 需 ThemeState）与本项目本地引擎冲突的（LocalLlmEngine MediaPipe 版）暂不迁移，保留备份
+- 保留我方 v3.18.24 预测式自动切换 + v3.18.25 全部安全补丁
+### ✅ 双轨版本
+- 正式版：`3.18.26`（包名 com.qtwl.gateway）
+- 测试版：`3.18.26-12`（包名 com.qtwl.gateway.cs）
+- versionCode=215，qitong.jks 签名
+### ✅ 验证
+- 双轨编译 BUILD SUCCESSFUL（assembleCsDebug + assembleFormalDebug）
+- 测试版已安装验证（versionName=3.18.26-12, versionCode=215）
 
 ---
-
 ## 🔄 v3.18.25（正式发布）
 
 ### 🔒 安全修复（迁移自朋友 v3.18.23-p1 补丁，共 8 项）

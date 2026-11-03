@@ -28,6 +28,7 @@ import io.ktor.server.application.install
 import com.qtwl.gateway.utils.ToolAction
 import com.qtwl.gateway.utils.ToolExecutor
 import com.qtwl.gateway.utils.SkillRegistry
+import com.qtwl.gateway.utils.ModelMaxOutputProber
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
@@ -2532,9 +2533,48 @@ private suspend fun pipeNormalResponse(
         }
 
         // 成功响应，写回客户端
-        call.respondBytesWriter(contentType = ContentType.parse(contentType), status = statusCode) {
-            writeFully(respBytes)
-            flush()
+        // ★★ v3.18.26：检测 finish_reason=length（输出截断）时自动续写并合并响应 ★★
+        val wantsAutoContinue = path.contains("chat/completions") && GatewayForegroundService.getAutoContinueOnLength()
+        var mergedRespBytes: ByteArray? = null
+        if (wantsAutoContinue) {
+            try {
+                val respJson = proxyJson.parseToJsonElement(respBytes.decodeToString()).jsonObject
+                val finishReason = respJson["choices"]?.jsonArray?.firstOrNull()?.jsonObject?.get("finish_reason")?.jsonPrimitive?.content
+                if (finishReason == "length") {
+                    GatewayForegroundService.addDebugLog(" 检测到输出截断(finish_reason=length)，自动继续请求...")
+                    val originalBodyStr = rawBody.decodeToString()
+                    val bodyJson = proxyJson.parseToJsonElement(originalBodyStr).jsonObject
+                    val previousContent = extractContentFromResponse(respJson)
+                    val usage = respJson["usage"]?.jsonObject
+                    val completionTokensSoFar = usage?.get("completion_tokens")?.jsonPrimitive?.content?.toIntOrNull() ?: 0
+                    if (previousContent.isNotBlank()) {
+                        mergedRespBytes = withContext(Dispatchers.IO) {
+                            performAutoContinue(
+                                call = call,
+                                provider = provider,
+                                originalBody = rawBody,
+                                bodyJson = bodyJson,
+                                previousContent = previousContent,
+                                completionTokensSoFar = completionTokensSoFar,
+                                path = path,
+                                database = database,
+                                useProxy = useProxy
+                            )
+                        }
+                    }
+                }
+            } catch (_: Exception) { }
+        }
+        if (mergedRespBytes != null) {
+            call.respondBytesWriter(contentType = ContentType.Application.Json.withCharset(Charsets.UTF_8), status = statusCode) {
+                writeFully(mergedRespBytes)
+                flush()
+            }
+        } else {
+            call.respondBytesWriter(contentType = ContentType.parse(contentType), status = statusCode) {
+                writeFully(respBytes)
+                flush()
+            }
         }
 
         // ★★ 记入最优模型（用真实请求耗时作为延迟参考）
@@ -2644,7 +2684,7 @@ private suspend fun pipeStreamResponse(
 
     // Some OpenAI-compatible upstreams ignore stream=true and return a normal
     // JSON chat.completion.  Passing that body through with application/json
-    // leaves SSE-only clients (including Hermes Agent) waiting with no text.
+    // leaves SSE-only clients waiting with no text.
     if (path.contains("chat/completions") && !OpenAiStreamCompat.isEventStream(ct)) {
         val responseBytes = withContext(Dispatchers.IO) {
             response.use { it.body?.bytes() ?: byteArrayOf() }
@@ -2724,6 +2764,81 @@ private suspend fun pipeStreamResponse(
                     GatewayForegroundService.trafficDownloadBytes.addAndGet(errorFrame.size.toLong())
                     GatewayForegroundService.totalDownloadBytes.addAndGet(errorFrame.size.toLong())
                 }
+                // ★★ v3.18.26：流式检测 finish_reason=length，自动续写并追加 SSE 帧（在 DONE 之前）★★
+                if (GatewayForegroundService.getAutoContinueOnLength()) {
+                    try {
+                        val sseFrames = OpenAiStreamCompat.parseSseFrames(fullStream)
+                        val lastChoice = sseFrames.lastOrNull { it.containsKey("choices") }
+                            ?.get("choices")?.jsonArray?.lastOrNull()?.jsonObject
+                        val finishReason = lastChoice?.get("finish_reason")?.jsonPrimitive?.content
+                        if (finishReason == "length") {
+                            val usageMatch = Regex(""""usage"\s*:\s*\{[^{}]+\}""").find(fullStream)
+                            val usageStr = usageMatch?.value
+                            val ctok = if (usageStr != null) Regex(""""completion_tokens"\s*:\s*(\d+)""").find(usageStr)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0 else 0
+                            val fullContent = sseFrames.mapNotNull { frame ->
+                                frame["choices"]?.jsonArray?.mapNotNull { choice ->
+                                    choice?.jsonObject?.get("delta")?.jsonObject
+                                        ?.get("content")?.jsonPrimitive?.contentOrNull
+                                }
+                            }.flatten().joinToString("")
+                            if (fullContent.isNotBlank()) {
+                                GatewayForegroundService.addDebugLog(" 流式检测到输出截断(finish_reason=length)，自动续写...")
+                                val bodyJson = proxyJson.parseToJsonElement(rawBody.decodeToString()).jsonObject
+                                val contResp = performAutoContinue(
+                                    call = call,
+                                    provider = provider,
+                                    originalBody = rawBody,
+                                    bodyJson = bodyJson,
+                                    previousContent = fullContent,
+                                    completionTokensSoFar = ctok,
+                                    path = path,
+                                    database = database,
+                                    useProxy = useProxy
+                                )
+                                if (contResp != null) {
+                                    val contJson = proxyJson.parseToJsonElement(contResp.decodeToString()).jsonObject
+                                    val contText = extractContentFromResponse(contJson)
+                                    val contFinish = contJson["choices"]?.jsonArray
+                                        ?.firstOrNull()?.jsonObject?.get("finish_reason")?.jsonPrimitive?.content ?: "stop"
+                                    if (contText.isNotBlank()) {
+                                        // 把续写内容作为新的 SSE 帧追加到已打开的响应流中（在 DONE 之前）
+                                        val chunkId = contJson["id"]?.jsonPrimitive?.contentOrNull ?: "chatcmpl-cont"
+                                        val created = contJson["created"]?.jsonPrimitive?.contentOrNull
+                                            ?: (System.currentTimeMillis() / 1000).toString()
+                                        val contChunk = proxyJson.encodeToString(buildJsonObject {
+                                            put("id", JsonPrimitive(chunkId))
+                                            put("object", JsonPrimitive("chat.completion.chunk"))
+                                            put("created", JsonPrimitive(created))
+                                            put("model", JsonPrimitive(contJson["model"]?.jsonPrimitive?.contentOrNull ?: modelId))
+                                            put("choices", JsonArray(listOf(buildJsonObject {
+                                                put("index", JsonPrimitive(0))
+                                                put("delta", buildJsonObject { put("content", JsonPrimitive(contText)) })
+                                                put("finish_reason", JsonNull)
+                                            })))
+                                        })
+                                        writeFully(("data: $contChunk\n\n").toByteArray())
+                                        val stopChunk = proxyJson.encodeToString(buildJsonObject {
+                                            put("id", JsonPrimitive(chunkId))
+                                            put("object", JsonPrimitive("chat.completion.chunk"))
+                                            put("created", JsonPrimitive(created))
+                                            put("model", JsonPrimitive(contJson["model"]?.jsonPrimitive?.contentOrNull ?: modelId))
+                                            put("choices", JsonArray(listOf(buildJsonObject {
+                                                put("index", JsonPrimitive(0))
+                                                put("delta", buildJsonObject {})
+                                                put("finish_reason", JsonPrimitive(contFinish))
+                                            })))
+                                        })
+                                        writeFully(("data: $stopChunk\n\n").toByteArray())
+                                        flush()
+                                        GatewayForegroundService.addDebugLog(" 流式续写完成，追加 ${contText.length} 字符")
+                                    }
+                                }
+                            }
+                        }
+                    } catch (ce: Exception) {
+                        GatewayForegroundService.addDebugLog(" 流式续写失败: ${ce.message}")
+                    }
+                }
                 if (!OpenAiStreamCompat.hasDoneFrame(fullStream)) {
                     val doneFrame = OpenAiStreamCompat.doneFrame()
                     writeFully(doneFrame)
@@ -2779,4 +2894,151 @@ private suspend fun pipeStreamResponse(
 withContext(Dispatchers.IO) { try { bodyStream.close(); response.close() } catch (_: Exception) { } }
         }
     }
+}
+
+/**
+ * ★★ 执行自动继续请求并返回合并后的响应体 ★★
+ * 在检测到 finish_reason=length（输出截断）时自动追加一次请求，
+ * 把续写内容合并进完整响应，让长文输出不中断。
+ * @return 合并后的完整响应 JSON bytes，失败返回 null
+ */
+private suspend fun performAutoContinue(
+    call: ApplicationCall,
+    provider: Provider,
+    originalBody: ByteArray,
+    bodyJson: JsonObject,
+    previousContent: String,
+    completionTokensSoFar: Int,
+    path: String,
+    database: AppDatabase,
+    useProxy: Boolean = true
+): ByteArray? {
+    try {
+        val messages = bodyJson["messages"]?.jsonArray ?: return null
+        // ★★ 将上一轮助手回复追加到 messages 中 ★★
+        val updatedMessages = messages.toMutableList()
+        updatedMessages.add(buildJsonObject {
+            put("role", JsonPrimitive("assistant"))
+            put("content", JsonPrimitive(previousContent))
+        })
+        // ★★ 构建新的请求体 ★★
+        val newBody = buildJsonObject {
+            put("model", bodyJson["model"] ?: JsonPrimitive(""))
+            put("messages", JsonArray(updatedMessages))
+            bodyJson["temperature"]?.let { put("temperature", it) }
+            bodyJson["top_p"]?.let { put("top_p", it) }
+            // ★★ 续写请求强制非流式：统一走 JSON 解析合并，避免上游 SSE 流无法解析 ★★
+            put("stream", JsonPrimitive(false))
+            // ★★ v3.18.26：续写时使用探测到的模型最大输出值，让续写轮次尽可能拿满上限 ★★
+            val modelIdStr = bodyJson["model"]?.jsonPrimitive?.content ?: ""
+            val probedMax = if (modelIdStr.isNotBlank()) ModelMaxOutputProber.getCached(modelIdStr) else null
+            val originalMaxTokens = bodyJson["max_tokens"]?.jsonPrimitive?.content?.toIntOrNull() ?: 1024
+            val continuedMaxTokens = when {
+                probedMax != null && probedMax > originalMaxTokens -> probedMax.coerceAtMost(32768)
+                else -> (originalMaxTokens * 1.5).toInt().coerceAtMost(16384)
+            }
+            put("max_tokens", JsonPrimitive(continuedMaxTokens))
+            bodyJson["stop"]?.let { put("stop", it) }
+        }
+        val newBodyBytes = newBody.toString().toByteArray(Charsets.UTF_8)
+        val resolvedUrl = provider.resolvedBaseUrl.trimEnd('/')
+        val upstreamPath = if (path.contains("chat/completions") || path.contains("completions")) {
+            provider.chatPath?.let { if (it.startsWith("/")) it else "/$it" } ?: path
+        } else path
+        val url = resolvedUrl + upstreamPath
+        val request = okhttp3.Request.Builder()
+            .url(url)
+            .post(newBodyBytes.toRequestBody(DEFAULT_CT))
+            .apply {
+                if (!provider.apiKey.isNullOrBlank()) header("Authorization", "Bearer ${provider.apiKey}")
+            }
+            .build()
+        val httpClient = if (useProxy) UpstreamClient.getOkHttpClient() else UpstreamClient.getDirectClient()
+        val result: ByteArray? = withContext(Dispatchers.IO) {
+            val response = executeWithRetry(httpClient, request)
+            response.use { resp ->
+                val respBytes = resp.body?.bytes() ?: byteArrayOf()
+                GatewayForegroundService.trafficDownloadBytes.addAndGet(respBytes.size.toLong())
+                GatewayForegroundService.totalDownloadBytes.addAndGet(respBytes.size.toLong())
+                if (!resp.isSuccessful || respBytes.isEmpty()) {
+                    GatewayForegroundService.addDebugLog(" 自动继续请求失败: ${resp.code}")
+                    return@use null
+                }
+                try {
+                    val respStr = respBytes.decodeToString()
+                    val respJson = proxyJson.parseToJsonElement(respStr).jsonObject
+                    val continueContent = extractContentFromResponse(respJson)
+                    if (continueContent.isNotBlank()) {
+                        val mergedContent = previousContent + continueContent
+                        val mergedFinishReason = respJson["choices"]?.jsonArray
+                            ?.firstOrNull()?.jsonObject?.get("finish_reason")?.jsonPrimitive?.content ?: "stop"
+                        val originalUsage = bodyJson["usage"]?.jsonObject
+                        val continueUsage = respJson["usage"]?.jsonObject
+                        val mergedResponse = buildJsonObject {
+                            put("id", JsonPrimitive("chatcmpl-${UUID.randomUUID().toString().take(8)}"))
+                            put("object", JsonPrimitive("chat.completion"))
+                            put("created", JsonPrimitive(System.currentTimeMillis() / 1000))
+                            put("model", JsonPrimitive(bodyJson["model"]?.jsonPrimitive?.content ?: "unknown"))
+                            put("choices", JsonArray(listOf(buildJsonObject {
+                                put("index", JsonPrimitive(0))
+                                put("message", buildJsonObject {
+                                    put("role", JsonPrimitive("assistant"))
+                                    put("content", JsonPrimitive(mergedContent))
+                                })
+                                put("finish_reason", JsonPrimitive(mergedFinishReason))
+                            })))
+                            if (originalUsage != null || continueUsage != null) {
+                                put("usage", buildJsonObject {
+                                    put("prompt_tokens", JsonPrimitive(
+                                        (originalUsage?.get("prompt_tokens")?.jsonPrimitive?.content?.toIntOrNull() ?: 0) +
+                                                (continueUsage?.get("prompt_tokens")?.jsonPrimitive?.content?.toIntOrNull() ?: 0)
+                                    ))
+                                    put("completion_tokens", JsonPrimitive(
+                                        completionTokensSoFar +
+                                                (continueUsage?.get("completion_tokens")?.jsonPrimitive?.content?.toIntOrNull() ?: 0)
+                                    ))
+                                    put("total_tokens", JsonPrimitive(
+                                        (originalUsage?.get("total_tokens")?.jsonPrimitive?.content?.toIntOrNull() ?: 0) +
+                                                (continueUsage?.get("total_tokens")?.jsonPrimitive?.content?.toIntOrNull() ?: 0)
+                                    ))
+                                })
+                            }
+                        }
+                        GatewayForegroundService.addDebugLog(" 自动继续请求完成，追加了 ${continueContent.length} 字符")
+                        return@use mergedResponse.toString().toByteArray(Charsets.UTF_8)
+                    }
+                    null
+                } catch (e: Exception) {
+                    GatewayForegroundService.addDebugLog(" 解析继续响应失败: ${e.message}")
+                    null
+                }
+            }
+        }
+        return result
+    } catch (e: Exception) {
+        GatewayForegroundService.addDebugLog(" 自动继续请求异常: ${e.message}")
+    }
+    return null
+}
+
+/**
+ * 从响应中提取文本内容（支持 message.content 为 string 或 content block 数组）
+ */
+private fun extractContentFromResponse(respJson: JsonObject?): String {
+    if (respJson == null) return ""
+    return try {
+        val choices = respJson["choices"]?.jsonArray
+        if (choices != null && choices.isNotEmpty()) {
+            val firstChoice = choices[0]?.jsonObject
+            val msg = firstChoice?.get("message")?.jsonObject
+            val content = msg?.get("content")
+            when (content) {
+                is JsonPrimitive -> content.content
+                is JsonArray -> content.mapNotNull { part ->
+                    try { (part as? JsonObject)?.get("text")?.jsonPrimitive?.contentOrNull } catch (_: Exception) { null }
+                }.joinToString("\n")
+                else -> ""
+            }
+        } else ""
+    } catch (_: Exception) { "" }
 }
