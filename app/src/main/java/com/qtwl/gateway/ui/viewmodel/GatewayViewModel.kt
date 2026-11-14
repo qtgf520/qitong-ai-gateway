@@ -630,6 +630,100 @@ fun cancelSend() {
     /** 流式实时文本（打字机效果） */
     private val _agentLiveText = MutableStateFlow("")
     val agentLiveText: StateFlow<String> = _agentLiveText.asStateFlow()
+    /** 消息流时间线：正文片段 / 思考片段 / 工具卡片，按发生顺序往下追加 */
+    private val _agentTimeline = MutableStateFlow<List<com.qtwl.gateway.ui.model.AgentItem>>(emptyList())
+    val agentTimeline: StateFlow<List<com.qtwl.gateway.ui.model.AgentItem>> = _agentTimeline.asStateFlow()
+    private val timelineLock = Any()
+    private val timelineBuf = mutableListOf<com.qtwl.gateway.ui.model.AgentItem>()
+    private var lastToolId: String? = null
+    /** 当前思考档位（供设置界面回显） */
+    private val _agentThinking = MutableStateFlow(com.qtwl.gateway.utils.AgentSettings.thinking)
+    val agentThinking: StateFlow<String> = _agentThinking.asStateFlow()
+    /** 思考内容（reasoning_content），与正文分开显示 */
+    private val _agentReasoning = MutableStateFlow("")
+    val agentReasoning: StateFlow<String> = _agentReasoning.asStateFlow()
+
+    private fun tlPublish() {
+        _agentTimeline.value = timelineBuf.toList()
+    }
+    private fun tlReset() {
+        synchronized(timelineLock) {
+            timelineBuf.clear()
+            lastToolId = null
+            tlPublish()
+        }
+    }
+    private fun tlSpeech(delta: String) {
+        if (delta.isEmpty()) return
+        synchronized(timelineLock) {
+            val last = timelineBuf.lastOrNull()
+            if (last is com.qtwl.gateway.ui.model.AgentItem.Speech) {
+                timelineBuf[timelineBuf.size - 1] = last.copy(text = last.text + delta)
+            } else {
+                timelineBuf.add(
+                    com.qtwl.gateway.ui.model.AgentItem.Speech(
+                        id = java.util.UUID.randomUUID().toString(),
+                        text = delta
+                    )
+                )
+            }
+            tlPublish()
+        }
+    }
+    /**
+     * 清掉时间线里的「正文」项（Speech），保留思考与工具卡片。
+     * ★★★「同一段回答出现两次」的根因修复 ★★★
+     * agent 运行时正文按增量流进时间线，运行结束后正文又作为正式消息插入 messages，
+     * 两者都渲染 → 屏幕上出现一模一样的两段。现在结束时清掉正文，正文以正式消息为准。
+     */
+    private fun tlDropSpeech() {
+        synchronized(timelineLock) {
+            if (timelineBuf.isEmpty()) return
+            timelineBuf.removeAll { it is com.qtwl.gateway.ui.model.AgentItem.Speech }
+            tlPublish()
+        }
+    }
+    private fun tlThink(delta: String) {
+        if (delta.isEmpty()) return
+        synchronized(timelineLock) {
+            val last = timelineBuf.lastOrNull()
+            if (last is com.qtwl.gateway.ui.model.AgentItem.Think) {
+                timelineBuf[timelineBuf.size - 1] = last.copy(text = last.text + delta)
+            } else {
+                timelineBuf.add(
+                    com.qtwl.gateway.ui.model.AgentItem.Think(
+                        id = java.util.UUID.randomUUID().toString(),
+                        text = delta
+                    )
+                )
+            }
+            tlPublish()
+        }
+    }
+    private fun tlToolStart(name: String, args: String) {
+        synchronized(timelineLock) {
+            val id = java.util.UUID.randomUUID().toString()
+            lastToolId = id
+            timelineBuf.add(
+                com.qtwl.gateway.ui.model.AgentItem.Tool(id = id, name = name, args = args)
+            )
+            tlPublish()
+        }
+    }
+    private fun tlToolEnd(ok: Boolean, result: String) {
+        synchronized(timelineLock) {
+            val id = lastToolId
+            val idx = timelineBuf.indexOfLast {
+                it is com.qtwl.gateway.ui.model.AgentItem.Tool && it.id == id
+            }
+            if (idx >= 0) {
+                val t = timelineBuf[idx] as com.qtwl.gateway.ui.model.AgentItem.Tool
+                timelineBuf[idx] = t.copy(result = result, ok = ok, running = false)
+            }
+            lastToolId = null
+            tlPublish()
+        }
+    }
     /** Agent 任务协程，便于取消 */
     private var agentJob: kotlinx.coroutines.Job? = null
 
@@ -676,11 +770,21 @@ fun cancelSend() {
     fun setAgentAutoContinue(enabled: Boolean) {
         _agentConfig.value = _agentConfig.value.copy(autoContinue = enabled)
     }
-    /** 设置最大工具轮次（同时写入 config） */
+    /** 设置最大工具轮次（0=无限，写入 config） */
     fun setMaxRounds(rounds: Int) {
-        val r = rounds.coerceIn(1, 20)
+        val r = rounds.coerceIn(0, 100000)
         _agentMaxRounds.value = r
         _agentConfig.value = _agentConfig.value.copy(maxRounds = r)
+        com.qtwl.gateway.utils.AgentSettings.maxRounds = r
+    }
+    /** 设置思考档位（off/low/medium/high） */
+    fun setThinking(level: String) {
+        com.qtwl.gateway.utils.AgentSettings.thinking = level
+        _agentThinking.value = level
+    }
+    /** 设置 Shell 身份（app/adb/root） */
+    fun setShellTier(tier: String) {
+        com.qtwl.gateway.utils.AgentSettings.shellTier = tier
     }
     /** 取消正在执行的 Agent 任务 */
     fun cancelAgent() {
@@ -733,50 +837,123 @@ fun cancelSend() {
                     _agentRunning.value = false
                     return@launch
                 }
+                // ★ 本地模型也能用 Agent：直接打本机 llama-server 的 OpenAI 兼容端点
+                val rawBase = provider.resolvedBaseUrl.ifBlank { provider.baseUrl }
+                val isLocalAgent = rawBase.contains("127.0.0.1") ||
+                        rawBase.contains("localhost") ||
+                        rawBase.contains("0.0.0.0") ||
+                        provider.name.contains("本地")
+                val agentBaseUrl = if (isLocalAgent) {
+                    com.qtwl.gateway.local.LocalModelManager.SERVER_URL
+                } else {
+                    rawBase.trimEnd('/')
+                }
+                val agentChatPath = if (isLocalAgent) "/v1/chat/completions"
+                else (provider.chatPath ?: "/v1/chat/completions")
+                val agentApiKey = if (isLocalAgent) "" else provider.apiKey.orEmpty()
+                val agentUseProxy = if (isLocalAgent) false else model.useProxy
                 // 组装历史（最近 10 条，避免上下文过长）
                 val history = _currentMessages.value
                     .filter { it.role == "user" || it.role == "assistant" }
                     .takeLast(10)
                     .map { it.role to it.content }
-                val executor = AgentExecutor(
-                    baseUrl = provider.baseUrl.trimEnd('/'),
-                    apiKey = provider.apiKey.orEmpty(),
-                    modelId = model.modelId,
-                    chatPath = provider.chatPath ?: "/v1/chat/completions",
-                    // 关键：跟随模型的代理设置，否则国内中转站会连不上
-                    useProxy = model.useProxy,
-                    // 上下文窗口优先用模型自身配置，未配置时才用全局默认
-                    config = _agentConfig.value.copy(
-                        contextWindow = if (model.contextWindow > 0)
-                            model.contextWindow
-                        else
-                            _agentConfig.value.contextWindow
+                // ==================== 全新 Agent 引擎（coagent） ====================
+                com.qtwl.gateway.coagent.Toolkit.workspace =
+                    com.qtwl.gateway.utils.AgentSettings.workspace
+                com.qtwl.gateway.coagent.Shell.defaultUser =
+                    com.qtwl.gateway.coagent.Shell.User.of(
+                        com.qtwl.gateway.utils.AgentSettings.shellTier
+                    )
+                val toolSpecs = com.qtwl.gateway.coagent.Toolkit.all()
+                var lastToolArgs = ""
+                val runner = com.qtwl.gateway.coagent.AgentRunner(
+                    ep = com.qtwl.gateway.coagent.Endpoint(
+                        baseUrl = agentBaseUrl,
+                        path = agentChatPath,
+                        apiKey = agentApiKey,
+                        useProxy = agentUseProxy,
+                        timeoutSeconds = _agentConfig.value.requestTimeoutSeconds
                     ),
-                    tools = AgentExecutor.defaultTools() + NetworkTools.all(model.useProxy) + SkillTools.all(),
-                    onRoundStart = { round ->
-                        _agentRound.value = round
+                    modelId = model.modelId,
+                    systemPrompt = buildString {
+                        append(com.qtwl.gateway.agent.AppKnowledge.systemPrompt())
+                        appendLine()
+                        appendLine("## 可用工具")
+                        appendLine("需要真实操作设备或文件时必须调用工具，不要只用文字描述。")
+                        toolSpecs.forEach { appendLine("- " + it.name + "：" + it.summary) }
+                        appendLine()
+                        appendLine("路径一律使用绝对路径，工作区是 " + com.qtwl.gateway.utils.AgentSettings.workspace)
+                        appendLine()
+                        append(com.qtwl.gateway.agent.AgentGuard.promptBlock())
+                        val userSys = com.qtwl.gateway.utils.AgentSettings.userSystemPrompt
+                        if (userSys.isNotBlank()) {
+                            appendLine()
+                            appendLine("## 用户额外指令")
+                            append(userSys)
+                        }
                     },
-                    onToolCall = { record ->
-                        _agentTrace.value = _agentTrace.value + record
-                    },
-                    onStatus = { msg ->
-                        _agentStatus.value = msg
-                    },
-                    onContextUsage = { usage ->
-                        _agentContext.value = usage
-                    },
-                    onStreamDelta = { delta ->
-                        _agentLiveText.value = _agentLiveText.value + delta
+                    tools = toolSpecs,
+                    thinking = com.qtwl.gateway.coagent.ThinkingLevel.of(
+                        com.qtwl.gateway.utils.AgentSettings.thinking
+                    ),
+                    streaming = _agentConfig.value.streaming,
+                    // 0 = 无限调用：转成 Int.MAX_VALUE
+                    maxRounds = if (_agentMaxRounds.value <= 0) Int.MAX_VALUE else _agentMaxRounds.value,
+                    contextTokens = if (model.contextWindow > 0) model.contextWindow
+                    else _agentConfig.value.contextWindow,
+                    listener = object : com.qtwl.gateway.coagent.AgentRunner.Listener {
+                        override fun onRound(round: Int) {
+                            _agentRound.value = round
+                            if (round == 1) {
+                                _agentLiveText.value = ""
+                                _agentReasoning.value = ""
+                            }
+                        }
+                        override fun onStatus(text: String) {
+                            _agentStatus.value = text
+                        }
+                        override fun onText(delta: String) {
+                            _agentLiveText.value = _agentLiveText.value + delta
+                            tlSpeech(delta)
+                        }
+                        override fun onReasoning(delta: String) {
+                            _agentReasoning.value = _agentReasoning.value + delta
+                            tlThink(delta)
+                        }
+                        override fun onToolStart(name: String, args: String) {
+                            lastToolArgs = args
+                            _agentStatus.value = "调用工具：" + name
+                            tlToolStart(name, args)
+                        }
+                        override fun onToolEnd(name: String, ok: Boolean, result: String) {
+                            tlToolEnd(ok, result)
+                            _agentTrace.value = _agentTrace.value + ToolCallRecord(
+                                id = java.util.UUID.randomUUID().toString(),
+                                toolName = name,
+                                arguments = lastToolArgs,
+                                result = result.take(600),
+                                success = ok,
+                                round = _agentRound.value
+                            )
+                        }
                     }
                 )
-                val result: AgentRunResult = executor.run(text, history)
-                // 保存最终回答
-                val answerContent = buildString {
-                    append(result.answer)
-                    if (result.toolCalls.isNotEmpty()) {
-                        append("\n\n---\n")
-                        append("工具调用 ${result.toolCalls.size} 次，共 ${result.rounds} 轮")
+                tlReset()
+                val outcome = runner.run(text, history)
+                val answerContent = if (outcome.ok) {
+                    buildString {
+                        append(outcome.answer.ifBlank { "（模型没有返回内容）" })
+                        if (outcome.toolCount > 0) {
+                            append("\n\n---\n")
+                            append("工具调用 ")
+                            append(outcome.toolCount)
+                            append(" 次，共 ")
+                            append(outcome.rounds)
+                            append(" 轮")
+                        }
                     }
+                } else {
+                    outcome.error ?: "执行失败"
                 }
                 val assistantMsg = ChatMessage(
                     conversationId = conversation.id,
@@ -787,8 +964,11 @@ fun cancelSend() {
                 )
                 val asstId = database.chatMessageDao().insert(assistantMsg)
                 _currentMessages.value = _currentMessages.value + assistantMsg.copy(id = asstId)
-                _agentStatus.value = if (result.success) {
-                    "完成（${result.rounds} 轮，${result.toolCalls.size} 次工具调用）"
+                // 正文已作为正式消息落地，时间线里的同一段正文必须撤掉，避免重复
+                tlDropSpeech()
+                _agentLiveText.value = ""
+                _agentStatus.value = if (outcome.ok) {
+                    "完成（" + outcome.rounds + " 轮，" + outcome.toolCount + " 次工具调用）"
                 } else {
                     "执行失败"
                 }
@@ -803,7 +983,6 @@ fun cancelSend() {
             }
         }
     }
-
     // ==================== Token 统计 ====================
 val allTokenUsage: StateFlow<List<TokenUsage>> = database.tokenUsageDao()
     .getAllUsage()

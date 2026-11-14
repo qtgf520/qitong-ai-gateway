@@ -19,7 +19,7 @@ data class AgentConfig(
     val keepRecentMessages: Int = 6,
 
     /** 最大工具调用轮次 */
-    val maxRounds: Int = 6,
+    val maxRounds: Int = 200,
 
     /** 是否启用流式输出最终回答 */
     val streaming: Boolean = true,

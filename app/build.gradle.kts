@@ -13,8 +13,8 @@ android {
         applicationId = "com.qtwl.gateway"
         minSdk = 24
         targetSdk = 35
-versionCode = 216
-        versionName = "3.18.27"
+versionCode = 217
+        versionName = "3.18.28"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
@@ -27,12 +27,12 @@ versionCode = 216
         create("formal") {
             dimension = "track"
             applicationId = "com.qtwl.gateway"
-            versionName = "3.18.27"
+            versionName = "3.18.28"
         }
         create("cs") {
             dimension = "track"
             applicationId = "com.qtwl.gateway.cs"
-            versionName = "3.18.27-13"
+            versionName = "3.18.28-14"
         }
     }
 

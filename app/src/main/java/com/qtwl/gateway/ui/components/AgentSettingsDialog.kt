@@ -18,6 +18,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -26,6 +27,11 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -33,6 +39,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.qtwl.gateway.agent.AgentConfig
+import com.qtwl.gateway.agent.AgentGuard
+import com.qtwl.gateway.agent.AgentScope
 import com.qtwl.gateway.agent.ContextUsage
 import com.qtwl.gateway.agent.ReasoningEffort
 
@@ -58,6 +66,10 @@ fun AgentSettingsDialog(
     onCompactThreshold: (Float) -> Unit,
     onKeepRecent: (Int) -> Unit,
     onStreaming: (Boolean) -> Unit,
+    thinking: String = "off",
+    onThinking: (String) -> Unit = {},
+    shellTier: String = "app",
+    onShellTier: (String) -> Unit = {},
     onAutoContinue: (Boolean) -> Unit,
     onMaxRounds: (Int) -> Unit
 ) {
@@ -212,6 +224,52 @@ fun AgentSettingsDialog(
                     checked = config.streaming,
                     onChange = onStreaming
                 )
+
+                // ===== 思考（推理模型专用）=====
+                SectionTitle("思考：${when (thinking) {
+                    "low" -> "快速"
+                    "medium" -> "均衡"
+                    "high" -> "深入"
+                    else -> "关闭"
+                }}")
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    listOf("off" to "关闭", "low" to "快速", "medium" to "均衡", "high" to "深入")
+                        .forEach { pair ->
+                            FilterChip(
+                                selected = thinking == pair.first,
+                                onClick = { onThinking(pair.first) },
+                                label = { Text(pair.second, fontSize = 11.sp) }
+                            )
+                        }
+                }
+                Hint("只有推理模型（o 系列 / gpt-5 / DeepSeek-R1 等）才需要开。若服务商不支持，会自动摘掉该参数并提示，不会把请求打挂")
+
+                // ===== Shell 身份 =====
+                SectionTitle("Shell 身份：${when (shellTier) {
+                    "adb" -> "ADB（UID 2000）"
+                    "root" -> "Root（UID 0）"
+                    else -> "普通用户"
+                }}")
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    listOf("app" to "普通用户", "adb" to "ADB 2000", "root" to "Root")
+                        .forEach { pair ->
+                            FilterChip(
+                                selected = shellTier == pair.first,
+                                onClick = { onShellTier(pair.first) },
+                                label = { Text(pair.second, fontSize = 11.sp) }
+                            )
+                        }
+                }
+                Hint("普通用户身份永远可用；ADB(2000) 和 Root(0) 需要设备已 root 并授权，不可用时会明确报出来。模型也能在单条命令里用 user 参数临时切换")
+
+                // ===== Shizuku（无 root 拿 ADB 权限）=====
+                ShizukuRow()
                 SwitchRow(
                     title = "自动续跑",
                     subtitle = "输出被长度截断时自动接着写",
@@ -221,13 +279,100 @@ fun AgentSettingsDialog(
 
                 // ===== 最大轮次 =====
                 SectionTitle("最大工具轮次：${config.maxRounds}")
-                Slider(
-                    value = config.maxRounds.toFloat(),
-                    onValueChange = { onMaxRounds(it.toInt()) },
-                    valueRange = 1f..20f,
-                    steps = 18
+                // ★ 数字输入 + 无限开关，替代滑条（滑条在大范围下拖不准）
+                var roundsText by remember { mutableStateOf(if (config.maxRounds <= 0) "" else config.maxRounds.toString()) }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    androidx.compose.material3.OutlinedTextField(
+                        value = if (config.maxRounds <= 0) "无限" else roundsText,
+                        onValueChange = { s ->
+                            val digits = s.filter { it.isDigit() }.take(6)
+                            roundsText = digits
+                            onMaxRounds((digits.toIntOrNull() ?: 0).coerceIn(0, 100000))
+                        },
+                        enabled = config.maxRounds > 0,
+                        singleLine = true,
+                        label = { Text("轮数", style = MaterialTheme.typography.labelSmall) },
+                        modifier = Modifier.width(130.dp)
+                    )
+                    Text("无限调用", style = MaterialTheme.typography.bodySmall)
+                    com.qtwl.gateway.ui.components.IosSwitch(
+                        checked = config.maxRounds <= 0,
+                        onCheckedChange = { open ->
+                            roundsText = if (open) "" else "200"
+                            onMaxRounds(if (open) 0 else 200)
+                        }
+                    )
+                }
+                Hint("默认 200 轮。打开「无限调用」= 不设上限，由模型自己判断何时结束（写完整项目建议这样用）")
+
+                // ===== 工具开关 =====
+                SectionTitle("可用工具")
+                var toolTick by remember { mutableStateOf(0) }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    AgentGuard.TOOL_GROUPS.forEach { (id, label) ->
+                        val on = AgentGuard.isGroupEnabled(id)
+                        ScopeChip(label + if (on) " 开" else " 关", on) {
+                            AgentGuard.setGroupEnabled(id, !on)
+                            toolTick++
+                        }
+                    }
+                }
+                Hint("关掉的分组模型不会调用（省 token，也能防它乱删文件）· 已切换 " + toolTick + " 次")
+
+                // ===== 权限与沙盒（Agent 内嵌，不是牢房） =====
+                SectionTitle("访问范围")
+                var scopeSel by remember { mutableStateOf(AgentGuard.scope) }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    ScopeChip("仅工作区", scopeSel == AgentScope.WORKSPACE) {
+                        scopeSel = AgentScope.WORKSPACE
+                        AgentGuard.scope = AgentScope.WORKSPACE
+                        com.qtwl.gateway.utils.AgentSettings.workspaceLocked = true
+                    }
+                    ScopeChip("整机只读", scopeSel == AgentScope.DEVICE_READ) {
+                        scopeSel = AgentScope.DEVICE_READ
+                        AgentGuard.scope = AgentScope.DEVICE_READ
+                        com.qtwl.gateway.utils.AgentSettings.workspaceLocked = false
+                    }
+                    ScopeChip("整机读写", scopeSel == AgentScope.DEVICE_FULL) {
+                        scopeSel = AgentScope.DEVICE_FULL
+                        AgentGuard.scope = AgentScope.DEVICE_FULL
+                        com.qtwl.gateway.utils.AgentSettings.workspaceLocked = false
+                    }
+                }
+                Hint(
+                    when (scopeSel) {
+                        AgentScope.WORKSPACE -> "只能在 " + com.qtwl.gateway.utils.AgentSettings.workspace + " 里读写"
+                        AgentScope.DEVICE_READ -> "整机可读，写只能落回工作区"
+                        AgentScope.DEVICE_FULL -> "整机可读可写，写工作区外会弹确认"
+                    }
                 )
-                Hint("模型最多可以连续调用几轮工具。太少任务可能做不完，太多会费 token")
+
+                Spacer(Modifier.height(4.dp))
+                var needApproval by remember { mutableStateOf(AgentGuard.requireApproval) }
+                SwitchRow(
+                    title = "危险操作需确认",
+                    subtitle = "rm / mv / pm / 重定向 / root 都要你点一下才执行",
+                    checked = needApproval,
+                    onChange = { needApproval = it; AgentGuard.requireApproval = it }
+                )
+                var readOnly by remember { mutableStateOf(AgentGuard.readOnly) }
+                SwitchRow(
+                    title = "只读模式",
+                    subtitle = "禁止任何写入与删除",
+                    checked = readOnly,
+                    onChange = { readOnly = it; AgentGuard.readOnly = it }
+                )
+                var rootOn by remember { mutableStateOf(AgentGuard.allowRoot) }
+                SwitchRow(
+                    title = "Root 指导",
+                    subtitle = "允许模型执行 su -c 探查命令（必须配合确认）",
+                    checked = rootOn,
+                    onChange = { rootOn = it; AgentGuard.allowRoot = it }
+                )
+                Hint("没开 root 时，模型会把需要的命令写进回复，让你自己执行")
             }
         },
         confirmButton = {
@@ -236,6 +381,26 @@ fun AgentSettingsDialog(
             }
         }
     )
+}
+
+@Composable
+private fun ScopeChip(text: String, selected: Boolean, onClick: () -> Unit) {
+    Surface(
+        color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        shape = RoundedCornerShape(50),
+        modifier = Modifier
+            .clickable { onClick() }
+            .padding(0.dp)
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
+        )
+    }
 }
 
 @Composable
@@ -294,4 +459,35 @@ private fun formatTokens(v: Int): String = when {
     v >= 1_000_000 -> "${v / 1_000_000}M"
     v >= 1_000 -> "${v / 1_000}K"
     else -> "$v"
+}
+/**
+ * Shizuku 授权行。
+ *
+ * Shizuku 由用户手动启动（新版可直接在它内部用无线调试启动），
+ * 启动后本应用可以借它拿到 UID 2000 的 shell —— 不需要 root。
+ */
+@Composable
+private fun ShizukuRow() {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    var status by remember { mutableStateOf("") }
+    var msg by remember { mutableStateOf("") }
+    LaunchedEffect(Unit) { status = com.qtwl.gateway.coagent.ShizukuBridge.status(ctx) }
+
+    Column(Modifier.fillMaxWidth()) {
+        SectionTitle("Shizuku（无 root 的 ADB 权限）")
+        Text(status, fontSize = 12.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            androidx.compose.material3.TextButton(onClick = {
+                msg = com.qtwl.gateway.coagent.ShizukuBridge.requestPermission()
+                status = com.qtwl.gateway.coagent.ShizukuBridge.status(ctx)
+            }) { Text("授权", fontSize = 12.sp) }
+            androidx.compose.material3.TextButton(onClick = {
+                msg = com.qtwl.gateway.coagent.ShizukuBridge.openManager(ctx)
+            }) { Text("打开 Shizuku", fontSize = 12.sp) }
+            androidx.compose.material3.TextButton(onClick = {
+                status = com.qtwl.gateway.coagent.ShizukuBridge.status(ctx)
+            }) { Text("刷新", fontSize = 12.sp) }
+        }
+        if (msg.isNotBlank()) Hint(msg)
+    }
 }

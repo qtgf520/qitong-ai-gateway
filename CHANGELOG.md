@@ -1,7 +1,38 @@
 # 綦桐AI网关 完整更新日志
 > 包名：com.qtwl.gateway
 > 签名证书：qitong.jks (别名: qitong)
-> 最后更新：2026-11-04
+> 最后更新：2026-11-14
+---
+## 🔄 v3.18.28（正式发布）
+
+### 🤖 全新协同 Agent 引擎（coagent）—— 朋友 3.87.0 增量迁移
+- **✅ coagent 全套 5 文件内置** — AgentRunner（全新 ReAct 执行器：请求体最小化、400 参数自愈重试、真取消）、Wire（上游端点/SSE 解析/ThinkingLevel）、Toolkit（文件+Shell+扩展工具，schema 由声明自动生成）、Shell（多身份执行 app/adb/root，严格模式白名单）、ShizukuBridge（无 root 拿 ADB 权限）
+- **✅ Agent 权限沙盒 AgentGuard** — 全新权限模型：仅工作区 / 整机只读 / 整机读写三档；危险操作（越界写/rm/pm/root）弹出审批卡片，用户点头才放行；工具分组开关
+- **✅ DeviceTools** — 把文件/命令工具包装成 OpenAI function-calling，Agent 可直接读写工作区
+- **✅ ShellRunner** — 多身份 shell 执行器（默认 app，支持 adb/root 经 AgentGuard 审批）
+- **✅ 时间线系统** — Agent 运行正文/思考/工具卡片按发生顺序在聊天流中追加渲染（AgentTimeline + AgentItem），解决「同一段回答出现两次」的根因
+- **✅ 审批卡片 UI** — ChatScreen 危险操作实时审批（允许/拒绝/本次会话都允许）
+- **✅ 设置增强** — 思考档位（off/low/medium/high）、Shell 身份（app/adb/root）、无限轮数开关（默认 200 轮，0=无限）、Shizuku 状态/授权入口
+- **✅ AgentExecutor 流式工具探测** — 流式工具调用不可用时自动探测并切回非流式，不会退化成纯聊天
+- **✅ maxRounds 默认 6→200** — 写完整 HTML/项目需要几十轮工具调用，不再撞墙
+- **✅ 工具新能力** — read_file 上限 8000→60000 字符；run_shell 支持管道/重定向/多行脚本（需完全放开开关）；新增 run_script/run_background
+
+### 🧭 隧道 & 内网穿透（代码已内置，二进制可选）
+- **✅ TunnelManager / LocalDnsProxy** — cloudflared quick tunnel 公网映射（免账号/免域名），Android DNS 死结解法
+- **✅ 未打包 jniLibs 二进制** — libcloudflared.so（37MB）+ llama .so 系列不入 APK，保持 ~25MB 轻量；后续需要可单独打包
+- **📌 未迁移 SshTunnel** — 依赖 jsch（SSH 库，离线拉不到），代码已备份
+
+### 📌 上版保留功能（v3.18.27 及之前）
+- Agent 核心系统 + 输出截断自动续写 + 玻璃拟态/双主题组件 + 安全补丁 8 项 + 预测式切换
+
+### ✅ 双轨版本
+- 正式版：`3.18.28`（包名 com.qtwl.gateway）
+- 测试版：`3.18.28-14`（包名 com.qtwl.gateway.cs）
+- versionCode=217，qitong.jks 签名
+### ✅ 验证
+- 双轨编译 BUILD SUCCESSFUL（assembleFormalDebug + assembleCsDebug）
+- 测试版已安装验证（versionName=3.18.28-14, versionCode=217）
+
 ---
 ## 🔄 v3.18.27（正式发布）
 

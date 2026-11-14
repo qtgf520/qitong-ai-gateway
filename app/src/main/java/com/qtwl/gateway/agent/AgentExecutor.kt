@@ -60,6 +60,12 @@ class AgentExecutor(
     private val messages = mutableListOf<JsonObject>()
     private val records = mutableListOf<ToolCallRecord>()
 
+    /** 本次运行是否已经做过「流式工具调用」探测 */
+    private var streamProbeDone = false
+
+    /** 服务商确认不支持流式下发的工具调用 → 本次运行一律走非流式 */
+    private var streamToolsUnsupported = false
+
     suspend fun run(
         userMessage: String,
         history: List<Pair<String, String>> = emptyList()
@@ -67,6 +73,8 @@ class AgentExecutor(
 
         messages.clear()
         records.clear()
+        streamProbeDone = false
+        streamToolsUnsupported = false
 
         // 1) 系统提示
         messages += buildJsonObject {
@@ -119,9 +127,9 @@ class AgentExecutor(
 
             onStatus?.invoke("第 $round 轮推理中...")
             val response = try {
-                requestCompletion(toolSchemas, stream = false)
+                fetchCompletion(toolSchemas)
             } catch (e: Exception) {
-                return@withContext fail("请求失败：${e.message ?: e.javaClass.simpleName}", round)
+                return@withContext fail(describeFailure(e), round)
             }
 
             val choice = response["choices"]?.jsonArray?.firstOrNull()?.jsonObject
@@ -164,7 +172,7 @@ class AgentExecutor(
                 }
 
                 val cont = try {
-                    requestCompletion(toolSchemas, stream = false)
+                    fetchCompletion(toolSchemas)
                 } catch (_: Exception) {
                     break
                 }
@@ -345,6 +353,72 @@ class AgentExecutor(
     private fun requestCompletion(toolSchemas: JsonArray, stream: Boolean): JsonObject =
         requestCompletionWith(messages.toList(), toolSchemas, stream)
 
+    /**
+     * 取一次模型响应：优先用配置里的流式开关。
+     *
+     * 两个兜底，保证"流式"这个选项永远不会把对话搞坏：
+     *   ① 请求直接抛异常（有些中转站不支持 text/event-stream）→ 退回非流式
+     *   ② 流式返回了空内容且没有工具调用（端点假装成功）→ 退回非流式
+     */
+    private fun fetchCompletion(toolSchemas: JsonArray): JsonObject {
+        if (!config.streaming || streamToolsUnsupported) {
+            return requestCompletion(toolSchemas, stream = false)
+        }
+        val streamed = try {
+            requestCompletion(toolSchemas, stream = true)
+        } catch (e: Exception) {
+            onStatus?.invoke("流式不可用，已切回非流式")
+            streamToolsUnsupported = true
+            return requestCompletion(toolSchemas, stream = false)
+        }
+        if (isEmptyResponse(streamed)) {
+            onStatus?.invoke("流式返回为空，已切回非流式")
+            streamToolsUnsupported = true
+            return requestCompletion(toolSchemas, stream = false)
+        }
+        // ★ 一次性探测：首轮流式有文字、却没有工具调用时，用非流式再问一次。
+        //   目的是区分两种情况：
+        //     · 模型本来就选择直接回答（正常）
+        //     · 服务商在流式下根本不发 tool_calls（会把 agent 退化成纯聊天）
+        //   后者一旦确认，本次运行剩下的轮次全部改走非流式。
+        if (!streamProbeDone && toolSchemas.isNotEmpty() && !hasToolCalls(streamed)) {
+            streamProbeDone = true
+            val plain = try {
+                requestCompletion(toolSchemas, stream = false)
+            } catch (_: Exception) {
+                null
+            }
+            if (plain != null && hasToolCalls(plain)) {
+                streamToolsUnsupported = true
+                onStatus?.invoke("该服务商不支持流式工具调用，本次已改用非流式")
+                return plain
+            }
+        }
+        return streamed
+    }
+
+    private fun hasToolCalls(resp: JsonObject): Boolean {
+        val msg = resp["choices"]?.jsonArray?.firstOrNull()?.jsonObject
+            ?.get("message")?.jsonObject ?: return false
+        val calls = msg["tool_calls"] as? JsonArray
+        return calls != null && calls.isNotEmpty()
+    }
+
+    private fun isEmptyResponse(resp: JsonObject): Boolean {
+        val msg = resp["choices"]?.jsonArray?.firstOrNull()?.jsonObject
+            ?.get("message")?.jsonObject ?: return true
+        val text = msg["content"]?.jsonPrimitive?.contentOrNull.orEmpty()
+        val calls = msg["tool_calls"] as? JsonArray
+        return text.isBlank() && (calls == null || calls.isEmpty())
+    }
+
+    /**
+     * 发一次补全请求。
+     *
+     * 里面的重试是必要的：中继/代理经常把长连接掐掉，
+     * 表现就是 OkHttp 抛 "Software caused connection abort"（ECONNABORTED）。
+     * 第一次失败后清空连接池、加 Connection: close 再试一次，能救回大部分情况。
+     */
     private fun requestCompletionWith(
         msgs: List<JsonObject>,
         toolSchemas: JsonArray,
@@ -352,7 +426,34 @@ class AgentExecutor(
     ): JsonObject {
         val payload = buildPayload(msgs, toolSchemas, stream)
         val url = baseUrl.trimEnd('/') + chatPath
+        var lastError: Exception? = null
+        for (attempt in 1..2) {
+            try {
+                return doRequest(url, payload, stream, closeConnection = attempt > 1)
+            } catch (e: java.io.IOException) {
+                lastError = e
+                // 清掉可能已经死掉的 keep-alive 连接，避免第二次又复用同一根
+                try {
+                    UpstreamClient.getClientForModel(useProxy).connectionPool.evictAll()
+                } catch (_: Throwable) {
+                }
+                if (attempt == 1) {
+                    try {
+                        Thread.sleep(250)
+                    } catch (_: InterruptedException) {
+                    }
+                }
+            }
+        }
+        throw lastError ?: java.io.IOException("网络错误")
+    }
 
+    private fun doRequest(
+        url: String,
+        payload: JsonObject,
+        stream: Boolean,
+        closeConnection: Boolean
+    ): JsonObject {
         // 关键：按模型配置选择走代理还是直连
         val base = UpstreamClient.getClientForModel(useProxy)
         val client = base.newBuilder()
@@ -362,13 +463,14 @@ class AgentExecutor(
             .retryOnConnectionFailure(true)
             .build()
 
-        val request = Request.Builder()
+        val builder = Request.Builder()
             .url(url)
             .header("Authorization", "Bearer $apiKey")
             .header("Content-Type", "application/json")
             .header("Accept", if (stream) "text/event-stream" else "application/json")
             .post(payload.toString().toRequestBody("application/json".toMediaType()))
-            .build()
+        if (closeConnection) builder.header("Connection", "close")
+        val request = builder.build()
 
         client.newCall(request).execute().use { resp ->
             if (!resp.isSuccessful) {
@@ -383,8 +485,15 @@ class AgentExecutor(
                         add(buildJsonObject {
                             put("message", buildJsonObject {
                                 put("content", outcome.content)
+                                // ★ 流式下工具调用是分片下发的，SseParser 已经拼好；
+                                //   这里必须原样带出去，否则 agent 永远只会聊天、不会调工具
+                                outcome.toolCalls?.let { put("tool_calls", it) }
                             })
-                            put("finish_reason", outcome.finishReason ?: "stop")
+                            put(
+                                "finish_reason",
+                                outcome.finishReason
+                                    ?: if (outcome.toolCalls != null) "tool_calls" else "stop"
+                            )
                         })
                     })
                 }
@@ -393,6 +502,40 @@ class AgentExecutor(
             val bodyText = resp.body?.string().orEmpty()
             if (bodyText.isBlank()) throw IllegalStateException("响应为空")
             return json.parseToJsonElement(bodyText).jsonObject
+        }
+    }
+
+    /** 把异常翻译成能直接照做的提示 */
+    private fun describeFailure(e: Exception): String {
+        val msg = e.message ?: e.javaClass.simpleName
+        val host = try {
+            java.net.URI(baseUrl.trimEnd('/') + chatPath).host ?: "未知"
+        } catch (_: Throwable) {
+            "未知"
+        }
+        val isLocal = host == "127.0.0.1" || host == "localhost" || host == "::1" || host == "0.0.0.0"
+        val hint = when {
+            isLocal ->
+                "连的是本机引擎，但它没在监听 —— 本地模型需要补齐 llama.cpp 原生库后才能启动"
+            msg.contains("abort", ignoreCase = true) ->
+                "上游或代理主动断开了连接（已重试 2 次）"
+            msg.contains("timeout", ignoreCase = true) ->
+                "等待响应超时（可在 Agent 设置里加大超时，或换更快的模型）"
+            msg.contains("HTTP 4") ->
+                "服务商拒绝了请求，多半是模型不支持 tools / function calling"
+            msg.contains("HTTP 5") ->
+                "服务商侧故障"
+            else -> "网络异常"
+        }
+        return buildString {
+            append("请求失败：")
+            append(msg)
+            append("\n[").append(hint).append("]")
+            append("\n地址：").append(host)
+            append("　代理：").append(if (useProxy) "已开启" else "直连")
+            append("　模型：").append(modelId)
+            append("\n排查顺序：① 关掉该模型的「走代理」再试；② 换非流式/换个模型；")
+            append("③ 有些中转站遇到 tools 参数会直接掐连接，换官方端点试试。")
         }
     }
 

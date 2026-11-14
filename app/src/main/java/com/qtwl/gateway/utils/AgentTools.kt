@@ -1,5 +1,6 @@
 package com.qtwl.gateway.utils
 
+import com.qtwl.gateway.agent.AgentGuard
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -62,7 +63,7 @@ object AgentTools {
         ),
         ToolDef(
             name = "read_file",
-            desc = "读取文本文件内容（最多 8000 字符）",
+            desc = "读取文本文件内容（最多 60000 字符）",
             params = mapOf("path" to "文件绝对路径（必须以 / 开头）")
         ),
         ToolDef(
@@ -102,8 +103,28 @@ object AgentTools {
         ),
         ToolDef(
             name = "run_shell",
-            desc = "执行一条 shell 命令并返回输出（工作目录锁定在 Agent 工作区，只允许白名单命令）",
-            params = mapOf("cmd" to "要执行的命令，如 ls -l 或 cat README.md")
+            desc = "执行一条 shell 命令并返回输出。支持管道、重定向、多行脚本（需安全级别为完全放开）",
+            params = mapOf(
+                "cmd" to "要执行的命令，如 ls -l、cat a.txt | grep x、或整段多行脚本",
+                "timeout" to "可选，超时秒数（默认 60，范围 5-600）"
+            )
+        ),
+        ToolDef(
+            name = "run_script",
+            desc = "把内容写成脚本文件并执行（适合多行脚本，避免引号转义问题），返回输出与退出码",
+            params = mapOf(
+                "content" to "脚本全文，第一行可写 #!/system/bin/sh",
+                "path" to "可选，脚本保存路径（绝对路径），默认写到工作区 .agent_scripts/ 下",
+                "timeout" to "可选，超时秒数（默认 60）"
+            )
+        ),
+        ToolDef(
+            name = "run_background",
+            desc = "在后台启动命令，不等待结束，返回后台任务标识。适合启动服务器或长任务",
+            params = mapOf(
+                "cmd" to "要后台执行的命令",
+                "log" to "可选，输出日志文件路径（绝对路径），默认写到工作区 .agent_logs/ 下"
+            )
         )
     )
 
@@ -315,20 +336,28 @@ object AgentTools {
         //   小模型经常把 path 写成 file / dir / filename / 路径。
         //   与其让工具报「缺少 path 参数」，不如在这里先映射一遍。
         val a = normalizeArgs(call.args)
+
+        // ★ 工具开关：被关掉的分组不执行，直接给模型一句明确的说明
+        if (!AgentGuard.isGroupEnabled(AgentGuard.groupOfTool(call.name))) {
+            return AgentGuard.toolDisabledMessage(call.name)
+        }
+
         return try {
             when (call.name) {
                 "list_dir" -> listDir(resolve(a["path"].orEmpty()))
                 "read_file" -> readFile(resolve(a["path"].orEmpty()))
-                "write_file" -> writeFile(resolve(a["path"].orEmpty()), a["content"].orEmpty())
-                "append_file" -> appendFile(resolve(a["path"].orEmpty()), a["content"].orEmpty())
-                "make_dir" -> makeDir(resolve(a["path"].orEmpty()))
-                "delete" -> delete(resolve(a["path"].orEmpty()))
+                "write_file" -> writeFile(resolve(a["path"].orEmpty(), true), a["content"].orEmpty())
+                "append_file" -> appendFile(resolve(a["path"].orEmpty(), true), a["content"].orEmpty())
+                "make_dir" -> makeDir(resolve(a["path"].orEmpty(), true))
+                "delete" -> delete(resolve(a["path"].orEmpty(), true))
                 "file_info" -> fileInfo(resolve(a["path"].orEmpty()))
                 "search_files" -> searchFiles(resolve(a["path"].orEmpty()), a["keyword"].orEmpty())
                 "current_time" -> java.text.SimpleDateFormat(
                     "yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()
                 ).format(java.util.Date())
-                "run_shell" -> runShell(a["cmd"].orEmpty())
+                "run_shell" -> runShell(a["cmd"].orEmpty(), a["timeout"])
+                "run_script" -> runScript(a["content"].orEmpty(), a["path"], a["timeout"])
+                "run_background" -> runBackground(a["cmd"].orEmpty(), a["log"])
                 else -> {
                     // ★ 回退到 AgentTool 完整工具集（BuiltinTools + NetworkTools）
                     //   这样本地模型也能用 calculate / convert_unit / http_request /
@@ -380,127 +409,148 @@ object AgentTools {
         pick("cmd", listOf("command", "shell", "命令"))
         return out
     }
-// ==================== shell 执行 ====================
 
-    /**
-     * 允许的命令白名单（只看命令名，不看参数）。
-     *
-     * 为什么用白名单而不是黑名单：
-     *   shell 的组合能力太强（管道、重定向、$()、反引号），
-     *   黑名单永远列不全。只放行这些只读/低危命令，
-     *   即使模型拼出花来，能做的最坏事情也就是读文件。
-     */
-    private val SHELL_WHITELIST = setOf(
-        "ls", "cat", "echo", "pwd", "head", "tail", "wc",
-        "grep", "find", "du", "df", "stat", "date", "which",
-        "mkdir", "touch", "cp", "mv", "rm", "sed", "awk",
-        "git", "python3", "node", "java", "javac", "kotlinc"
-    )
-
-    /**
-     * 禁止出现的字符组合。
-     * 主要是防止命令替换和后台执行把白名单绕过去。
-     *
-     * 注意：美元符号和花括号必须用 Unicode 转义（\u0024）写在字符串里，
-     * 直接写会开启 Kotlin 字符串模板，把后面的代码当成表达式，编译报错。
-     */
-    private val SHELL_FORBIDDEN = listOf(
-        "\u0060",                 // 反引号
-        "\u0024(",                // $( 命令替换
-        "\u0024{",                // ${ 变量展开
-        "&&", "||", ";", "|&", ">", "<",
-        "sudo", "su ", "sh ", "bash ", "eval", "exec",
-        "chmod", "chown", "curl", "wget", "nc ", "telnet"
-    )
+    // ==================== shell 执行 ====================
 
     /**
      * 执行 shell 命令。
      *
-     * 三道限制：
-     *  1. 工作目录固定为 Agent 工作区，模型无法 read 到别的目录
-     *  2. 命令名必须在白名单内
-     *  3. 禁止命令替换和管道符，防止 `ls | rm -rf` 这类绕过
+     * 真正的执行逻辑在 ShellRunner 里（输出读取、超时、杀进程都在那）。
+     * 这里只负责：取安全级别与超时、定位工作目录、把结果转成模型能读的文本。
      *
-     * 超时 15 秒，输出截断 4000 字符。
+     * 安全模型见 ShellRunner 的类注释：
+     *  严格模式（默认）= 白名单 + 禁管道/重定向
+     *  完全放开       = 任意命令、管道、多行脚本
      */
-    private fun runShell(cmdRaw: String): String {
+    private fun runShell(cmdRaw: String, timeoutSecRaw: String?): String {
         val cmd = cmdRaw.trim()
         if (cmd.isEmpty()) return "错误：缺少 cmd 参数"
+        // ★ 沙盒守卫：root 策略 + 风险分级 + 用户审批
+        AgentGuard.gateCommand(cmd)?.let { return it }
 
-        // 去掉可能带上的代码围栏
-        val clean = cmd
-            .removePrefix("```sh").removePrefix("```bash").removePrefix("```")
-            .removeSuffix("```")
-            .trim()
-
-        // 危险组合检查
-        for (bad in SHELL_FORBIDDEN) {
-            if (clean.contains(bad)) {
-                return "错误：命令中包含不允许的片段「$bad」。\n" +
-                        "为了安全，禁止管道、重定向、命令替换和提权操作。\n" +
-                        "请改用单个简单命令，或使用 write_file / read_file 工具。"
-            }
-        }
-
-        // 命令名白名单检查
-        val firstToken = clean.split(Regex("\\s+")).firstOrNull().orEmpty()
-        // 允许 ./xxx 这种执行工作区内脚本的写法
-        val baseName = if (firstToken.startsWith("./")) {
-            firstToken.substringAfterLast('/')
-        } else {
-            firstToken
-        }
-        val allowed = SHELL_WHITELIST.any { baseName == it } ||
-                baseName.endsWith(".sh") ||
-                baseName.endsWith(".kt")
-        if (!allowed) {
-            return "错误：命令「$baseName」不在允许列表内。\n" +
-                    "允许的命令：${SHELL_WHITELIST.sorted().joinToString(", ")}\n" +
-                    "如果要读写文件，优先用 read_file / write_file 工具。"
-        }
-
-        // 工作目录固定在工作区，越界操作自然失败
         val root = File(AgentSettings.workspace).absoluteFile
         if (!root.exists()) root.mkdirs()
 
+        val timeout = resolveTimeoutMs(timeoutSecRaw)
+        val safety = if (AgentSettings.shellFullAccess) ShellRunner.Safety.FULL
+        else ShellRunner.Safety.STRICT
+
+        val r = ShellRunner.run(cmd, root, timeout, safety)
+        return r.toToolText()
+    }
+
+    /**
+     * 把脚本写成文件再执行。
+     *
+     * 为什么需要独立工具：模型写多行脚本时常被 JSON 字符串转义搞坏
+     * （换行、引号、$ 变量），直接写文件能绕开这一层。
+     */
+    private fun runScript(content: String, pathRaw: String?, timeoutSecRaw: String?): String {
+        val body = content.trim()
+        if (body.isEmpty()) return "错误：缺少 content 参数"
+        AgentGuard.gateCommand(body)?.let { return it }
+
+        val root = File(AgentSettings.workspace).absoluteFile
+        if (!root.exists()) root.mkdirs()
+
+        val scriptFile = try {
+            if (!pathRaw.isNullOrBlank()) {
+                val p = resolve(pathRaw, true)
+                File(p)
+            } else {
+                val dir = File(root, ".agent_scripts")
+                if (!dir.exists()) dir.mkdirs()
+                File(dir, "script_${System.currentTimeMillis()}.sh")
+            }
+        } catch (e: WorkspaceViolation) {
+            return e.message ?: "错误：脚本路径越界"
+        } catch (e: Exception) {
+            return "错误：脚本路径无效：${e.message}"
+        }
+
         return try {
-            val pb = ProcessBuilder("/system/bin/sh", "-c", clean)
+            scriptFile.parentFile?.mkdirs()
+            scriptFile.writeText(body)
+            scriptFile.setExecutable(true)
+
+            val timeout = resolveTimeoutMs(timeoutSecRaw)
+            val safety = if (AgentSettings.shellFullAccess) ShellRunner.Safety.FULL
+            else ShellRunner.Safety.STRICT
+
+            // 用 sh 显式执行，不依赖 shebang 与可执行位
+            val quoted = "\"" + scriptFile.absolutePath.replace("\"", "\\\"") + "\""
+            val r = ShellRunner.run("sh $quoted", root, timeout, safety)
+
+            val head = "脚本已保存：${scriptFile.absolutePath}\n"
+            head + r.toToolText()
+        } catch (e: Exception) {
+            "错误：写脚本失败 ${e.message ?: e.javaClass.simpleName}"
+        }
+    }
+
+    /**
+     * 后台执行命令。
+     *
+     * 用于启动常驻进程（本地服务器、长时间任务）。
+     * 不做超时管理——进程的生命周期由用户或后续命令负责。
+     */
+    private fun runBackground(cmdRaw: String, logRaw: String?): String {
+        val cmd = cmdRaw.trim()
+        if (cmd.isEmpty()) return "错误：缺少 cmd 参数"
+        AgentGuard.gateCommand(cmd)?.let { return it }
+
+        val root = File(AgentSettings.workspace).absoluteFile
+        if (!root.exists()) root.mkdirs()
+
+        val logFile = try {
+            if (!logRaw.isNullOrBlank()) File(resolve(logRaw, true))
+            else {
+                val dir = File(root, ".agent_logs")
+                if (!dir.exists()) dir.mkdirs()
+                File(dir, "bg_${System.currentTimeMillis()}.log")
+            }
+        } catch (e: WorkspaceViolation) {
+            return e.message ?: "错误：日志路径越界"
+        } catch (e: Exception) {
+            return "错误：日志路径无效：${e.message}"
+        }
+
+        return try {
+            logFile.parentFile?.mkdirs()
+            val pb = ProcessBuilder("/system/bin/sh", "-c", cmd)
                 .directory(root)
                 .redirectErrorStream(true)
-            val proc = pb.start()
+                .redirectOutput(ProcessBuilder.Redirect.to(logFile))
+                .redirectInput(ProcessBuilder.Redirect.INHERIT)
+            val p = pb.start()
 
-            // 读输出（单独线程，避免缓冲区满导致子进程阻塞）
-            val sb = StringBuilder()
-            val reader = Thread {
-                try {
-                    proc.inputStream.bufferedReader().use { r ->
-                        var line = r.readLine()
-                        while (line != null && sb.length < 4000) {
-                            sb.append(line).append('\n')
-                            line = r.readLine()
-                        }
-                    }
-                } catch (_: Exception) {
+            // 不等待：给 600ms 观察期，能立刻判断「起得来」还是「秒退」
+            Thread.sleep(600)
+            if (p.isAlive) {
+                "已在后台启动\n" +
+                        "日志：${logFile.absolutePath}\n" +
+                        "如需查看：read_file {\"path\":\"${logFile.absolutePath}\"}\n" +
+                        "如需停止：run_shell {\"cmd\":\"pkill -f 进程名\"}（需完全放开级别）"
+            } else {
+                val code = try { p.exitValue() } catch (_: Throwable) { -1 }
+                val tail = try {
+                    if (logFile.exists()) logFile.readText().takeLast(1500) else ""
+                } catch (_: Throwable) {
+                    ""
                 }
+                "错误：命令立即退出（退出码 $code）\n日志：${logFile.absolutePath}\n" +
+                        if (tail.isNotBlank()) "--- 日志尾部 ---\n$tail" else "（无日志输出）"
             }
-            reader.isDaemon = true
-            reader.start()
-
-            val finished = proc.waitFor(15, java.util.concurrent.TimeUnit.SECONDS)
-            if (!finished) {
-                proc.destroyForcibly()
-                return "错误：命令执行超时（15 秒）已终止：$clean"
-            }
-            reader.join(1000)
-
-            val out = sb.toString().trim()
-            val code = proc.exitValue()
-            val body = out.ifEmpty { "（无输出）" }
-            val clipped = if (body.length > 4000) body.take(4000) + "\n…（输出过长已截断）" else body
-            "退出码：$code\n$clipped"
         } catch (e: Exception) {
-            "错误：${e.message ?: e.javaClass.simpleName}"
+            "错误：后台启动失败 ${e.message ?: e.javaClass.simpleName}"
         }
+    }
+
+    /** 解析超时参数：优先用模型给的值，否则用设置里的默认值 */
+    private fun resolveTimeoutMs(raw: String?): Long {
+        val sec = raw?.trim()?.toIntOrNull()?.coerceIn(5, 600)
+            ?: AgentSettings.shellTimeoutSec
+        return sec * 1000L
     }
 
     // ==================== 工作区沙箱 ====================
@@ -527,7 +577,7 @@ object AgentTools {
      *   3. 工作区锁定时，绝对路径必须落在工作区内（canonicalPath 前缀校验）
      *   4. ../ 逃逸、软链接逃逸一律拒绝
      */
-    private fun resolve(raw: String): String {
+    private fun resolve(raw: String, forWrite: Boolean = false): String {
         val input = raw.trim()
         if (input.isEmpty()) {
             throw WorkspaceViolation(
@@ -560,6 +610,11 @@ object AgentTools {
         } catch (_: Exception) {
             target.absolutePath
         }
+
+        // ★ 权限沙盒：范围（仅工作区/整机只读/整机读写）、只读模式、系统目录
+        AgentGuard.fileCheck(canonicalPath, forWrite)?.let { throw WorkspaceViolation(it) }
+        // ★ 越界写：即使范围放开，也要用户点一次确认
+        if (forWrite) AgentGuard.gateOutsideWrite(canonicalPath)?.let { throw WorkspaceViolation(it) }
 
         // 未锁定工作区：绝对路径直接放行
         if (!AgentSettings.workspaceLocked) return canonicalPath
@@ -606,7 +661,9 @@ object AgentTools {
         if (f.isDirectory) return "错误：这是目录，请用 list_dir"
         if (f.length() > 5 * 1024 * 1024) return "错误：文件过大（${humanSize(f.length())}），暂不支持读取"
         val text = f.readText()
-        return if (text.length > 8000) text.take(8000) + "\n…（内容截断，原长 ${text.length} 字符）"
+        // 原来只读 8000 字符，一个稍大的 HTML 都读不全，模型改不动自己的文件。
+        // 提到 60000 字符（约 60KB），足以覆盖单文件页面。
+        return if (text.length > 60000) text.take(60000) + "\n…（内容截断，原长 ${text.length} 字符）"
         else text
     }
 

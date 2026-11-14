@@ -40,6 +40,9 @@ import com.qtwl.gateway.data.model.ChatMessage
 import com.qtwl.gateway.ui.components.AgentSettingsDialog
 import com.qtwl.gateway.ui.components.AgentToggleBar
 import com.qtwl.gateway.ui.components.AgentTracePanel
+import com.qtwl.gateway.ui.components.AgentTimelineItem
+import com.qtwl.gateway.ui.components.AgentGuardCard
+import com.qtwl.gateway.agent.AgentGuard
 import com.qtwl.gateway.ui.theme.Error
 import com.qtwl.gateway.ui.theme.Online
 import com.qtwl.gateway.ui.viewmodel.GatewayViewModel
@@ -76,6 +79,8 @@ fun ChatScreen(viewModel: GatewayViewModel) {
     val agentConfig by viewModel.agentConfig.collectAsState()
     val agentContext by viewModel.agentContext.collectAsState()
     val agentLiveText by viewModel.agentLiveText.collectAsState()
+    val agentTimeline by viewModel.agentTimeline.collectAsState()
+    val guardPending by AgentGuard.pending.collectAsState()
     var showAgentSettings by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
@@ -290,7 +295,10 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                         }
                     )
                 }
-
+                // ★ Agent 时间线：正文 / 思考 / 工具卡片，按顺序往下追加
+                items(agentTimeline, key = { "tl_" + it.id }) { item ->
+                    AgentTimelineItem(item)
+                }
                 // 流式加载指示器
                 if (isSending && messages.lastOrNull()?.isStreaming == true) {
                     item {
@@ -356,6 +364,25 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                     onCancel = { viewModel.cancelAgent() },
                     onOpenSettings = { showAgentSettings = true }
                 )
+                // 审批卡片仍然贴在输入框上方：需要用户点头的操作不能藏在消息流里
+                guardPending?.let { req ->
+                    Spacer(modifier = Modifier.height(6.dp))
+                    AgentGuardCard(
+                        request = req,
+                        onAllow = { AgentGuard.respond(true) },
+                        onDeny = { AgentGuard.respond(false) },
+                        onAlways = { AgentGuard.respond(true, true) }
+                    )
+                }
+                // 运行时给一行状态，其余内容都在消息流里
+                if (agentRunning) {
+                    Text(
+                        text = (agentStatus ?: "运行中") + " · 第 " + agentRound + " 轮",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
                 // ===== Agent 执行轨迹 =====
                 if (agentTrace.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(6.dp))
@@ -635,6 +662,10 @@ fun ChatScreen(viewModel: GatewayViewModel) {
             onCompactThreshold = { viewModel.setCompactThreshold(it) },
             onKeepRecent = { viewModel.setKeepRecentMessages(it) },
             onStreaming = { viewModel.setAgentStreaming(it) },
+            thinking = viewModel.agentThinking.collectAsState().value,
+            onThinking = { viewModel.setThinking(it) },
+            shellTier = com.qtwl.gateway.utils.AgentSettings.shellTier,
+            onShellTier = { viewModel.setShellTier(it) },
             onAutoContinue = { viewModel.setAgentAutoContinue(it) },
             onMaxRounds = { viewModel.setMaxRounds(it) }
         )

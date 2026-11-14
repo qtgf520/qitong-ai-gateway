@@ -46,7 +46,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.qtwl.gateway.agent.GuardRequest
 import com.qtwl.gateway.agent.ToolCallRecord
+import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Shield
 
 /**
  * Agent 模式开关条
@@ -314,6 +319,62 @@ private fun ToolRecordItem(index: Int, record: ToolCallRecord) {
                         color = MaterialTheme.colorScheme.onSurface
                     )
                 }
+            }
+        }
+    }
+}
+
+
+/**
+ * 沙盒审批卡片：危险操作（越界写 / rm / pm / root）挂在聊天里等用户点。
+ * 和 Agent 是同一套东西 —— 只有一个 Agent 形态，沙盒是它的护栏。
+ */
+@Composable
+fun AgentGuardCard(
+    request: GuardRequest,
+    onAllow: () -> Unit,
+    onDeny: () -> Unit,
+    onAlways: () -> Unit
+) {
+    val color = when (request.risk) {
+        GuardRequest.Risk.High -> Color(0xFFE53935)
+        GuardRequest.Risk.Medium -> Color(0xFFF59E0B)
+        GuardRequest.Risk.Low -> Color(0xFF3B82F6)
+    }
+    Surface(
+        color = color.copy(alpha = 0.10f),
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = if (request.risk == GuardRequest.Risk.High) Icons.Default.Warning else Icons.Default.Shield,
+                    contentDescription = null,
+                    tint = color,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = request.title,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = color
+                )
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = if (request.detail.length > 400) request.detail.take(400) + "…" else request.detail,
+                style = MaterialTheme.typography.bodySmall,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onAllow) { Text("允许", fontSize = 12.sp) }
+                OutlinedButton(onClick = onDeny) { Text("拒绝", fontSize = 12.sp) }
+                OutlinedButton(onClick = onAlways) { Text("本次会话都允许", fontSize = 12.sp) }
             }
         }
     }
