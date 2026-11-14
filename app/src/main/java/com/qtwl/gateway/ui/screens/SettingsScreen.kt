@@ -259,16 +259,14 @@ private fun SettingsEntryRow(
 private fun AppearanceCard() {
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val currentStyle = com.qtwl.gateway.ui.theme.ThemeState.style
-    val currentDark = com.qtwl.gateway.ui.theme.ThemeState.dark
-
-    Card(
+val currentDark = com.qtwl.gateway.ui.theme.ThemeState.dark
+    com.qtwl.gateway.ui.components.GlassSurface(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
+        cornerRadius = 20.dp
     ) {
         Column(
             modifier = Modifier
+                .fillMaxWidth()
                 .fillMaxWidth()
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
