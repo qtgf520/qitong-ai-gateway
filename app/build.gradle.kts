@@ -7,14 +7,14 @@ plugins {
 
 android {
     namespace = "com.qtwl.gateway"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.qtwl.gateway"
         minSdk = 24
         targetSdk = 35
-versionCode = 217
-        versionName = "3.18.28"
+versionCode = 218
+        versionName = "3.18.29"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
@@ -27,12 +27,12 @@ versionCode = 217
         create("formal") {
             dimension = "track"
             applicationId = "com.qtwl.gateway"
-            versionName = "3.18.28"
+            versionName = "3.18.29"
         }
         create("cs") {
             dimension = "track"
             applicationId = "com.qtwl.gateway.cs"
-            versionName = "3.18.28-14"
+            versionName = "3.18.29-15"
         }
     }
 
@@ -144,6 +144,12 @@ dependencies {
     // Shizuku（本地模型保活 + 后台命令）
     implementation(libs.shizuku.api)
     implementation(libs.shizuku.provider)
+    // SSH 隧道（公网映射）
+    implementation("com.github.mwiede:jsch:0.2.20")
+    // LiquidGlass 玻璃拟态（kyant）
+    implementation(libs.kyant.backdrop)
+    implementation(libs.kyant.capsule)
+    implementation(libs.kyant.shapes)
 
     // Test
     testImplementation(libs.junit)
