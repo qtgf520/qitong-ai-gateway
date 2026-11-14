@@ -32,7 +32,7 @@ versionCode = 218
         create("cs") {
             dimension = "track"
             applicationId = "com.qtwl.gateway.cs"
-            versionName = "3.18.29"
+            versionName = "3.18.29-15"
         }
     }
 
