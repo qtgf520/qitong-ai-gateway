@@ -3,6 +3,37 @@
 > 签名证书：qitong.jks (别名: qitong)
 > 最后更新：2026-11-14
 ---
+## 🔄 v3.18.29（正式发布）
+
+### 🪟 界面层完整迁移（朋友 3.87.0 视觉层，修正 v3.18.28 仅迁内核的遗漏）
+- **✅ 液态玻璃底部导航（LiquidGlassBottomNav）** — iOS 26 风格：半透明毛玻璃背景（Android 12+ 真实 blur）、顶部渐变高光、胶囊形圆角、选中项浮动胶囊指示器（弹簧位移动画）、图标 1.2x 缩放；滚动自动隐藏版本 LiquidGlassBottomNavAnimated
+- **✅ iOS 式页面滑动转场** — 按 tab 差值方向横向整页推移（FastOutSlowInEasing），跨页距离自适应时长
+- **✅ 删除顶部标题栏** — 省出 56dp 给内容区，标题/版本号移至设置页顶部
+- **✅ HyperOS 风格设置页** — HyperOsCard / HyperOsItem / HyperOsSectionHeader 分组卡片 + 公网映射入口（cloudflared quick tunnel）+ 界面手感开关（navStretch/glassSurfaces）
+- **✅ 双主题系统** — ThemeState 支持 MIUI/HyperOS 蓝与 Apple 蓝两套色板切换（纯 Material3，移除 MiuixTheme 包装——miuix 库 404 拉不到）
+- **✅ 依赖打通** — kyant backdrop/capsule/shapes 三库（网络恢复，三仓库实测可拉）+ jsch SSH + compileSdk 35→36
+
+### 🤖 v3.18.28 已迁功能内核（本版完整界面呈现）
+- coagent 协同 Agent 引擎（AgentRunner 400参数自愈/Wire/Toolkit/Shell/ShizukuBridge）
+- AgentGuard 权限沙盒（三档范围 + 危险操作审批卡片）+ DeviceTools + ShellRunner
+- Agent 时间线系统（正文/思考/工具卡片流式渲染，修复重复回答）+ 审批卡片 UI
+- 设置增强：思考档位 / Shell 身份 / 无限轮数（默认 200）/ Shizuku 授权
+- AgentExecutor 流式工具探测 + read_file 上限 60000 + run_script/run_background
+- TunnelManager / LocalDnsProxy 内网穿透代码（二进制可选打包）
+
+### 📌 保持我方独立项
+- LocalModelScreen 保留我方 Shizuku 方案版（朋友版依赖未打包的 jniLibs .so）
+- jniLibs 二进制（libcloudflared.so 37MB / llama .so 系列）不入 APK，保持 ~25MB
+
+### ✅ 双轨版本
+- 正式版：`3.18.29`（包名 com.qtwl.gateway）
+- 测试版：`3.18.29-15`（包名 com.qtwl.gateway.cs）
+- versionCode=218，qitong.jks 签名
+### ✅ 验证
+- 双轨编译 BUILD SUCCESSFUL（assembleFormalDebug + assembleCsDebug）
+- 测试版已安装验证（versionName=3.18.29-15, versionCode=218），肉眼可见玻璃导航新界面
+
+---
 ## 🔄 v3.18.28（正式发布）
 
 ### 🤖 全新协同 Agent 引擎（coagent）—— 朋友 3.87.0 增量迁移
