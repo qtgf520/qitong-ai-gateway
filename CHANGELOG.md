@@ -3,6 +3,24 @@
 > 签名证书：qitong.jks (别名: qitong)
 > 最后更新：2026-11-15
 ---
+## 🔄 v3.18.36（正式发布）
+
+### 🔧 崩溃修复 + Toast 置顶 + Android 版本适配
+- **✅ 修复 ForegroundServiceDidNotStartInTimeException 崩溃**（Android 15 前台服务 5 秒超时）
+  - 根因：onCreate 中 startForeground() 抛异常被 catch 后仍把 notificationInitialized = true，后续 updateNotification() 只走 notify() 不调 startForeground() → 系统判定未调 startForeground → 崩溃
+  - 修复：失败时不标记已初始化，仅成功才置 true
+  - start() 改用 ContextCompat.startForegroundService + Android 12+ 后台启动限制兜底
+- **✅ Toast 提示不再被底部玻璃导航盖住** — 全部 2 处 Toast 置顶显示（Gravity.TOP + y=400dp）
+- **✅ Android 6~最新适配** — createNotificationChannel() 加 API 26+ 保护（Android 6/7 跳过，避免 NotificationChannel 不存在的崩溃）
+
+### ✅ 双轨版本
+- 正式版：`3.18.36`（包名 com.qtwl.gateway）
+- 测试版：`3.18.36-22`（包名 com.qtwl.gateway.cs）
+- versionCode=225，qitong.jks 签名
+### ✅ 验证
+- 双轨编译 BUILD SUCCESSFUL
+
+---
 ## 🔄 v3.18.35（正式发布）
 
 ### 🟢 恢复通知栏绿灯 + 上传下载流量指示
