@@ -3,6 +3,21 @@
 > 签名证书：qitong.jks (别名: qitong)
 > 最后更新：2026-11-15
 ---
+## 🔄 v3.18.33（正式发布）
+
+### 🔄 修复服务商列表不能滑动
+- **根因**：ProviderCard 整卡挂 `combinedClickable(onClick = { }空实现)` 抢占触摸事件，把 LazyColumn 的滚动手势吞掉 → 列表滚不动（朋友版拖拽排序实现带进来的手势拦截器，但拖拽未接入只剩长按菜单）
+- **修复**：移除卡片上的 combinedClickable，改为**卡片右侧 ▲▼ 点击式排序按钮**（onMoveUp/onMoveDown）
+- **效果**：服务商列表滑动恢复 100%，排序（上移/下移）功能保留且改为点击操作更直观
+
+### ✅ 双轨版本
+- 正式版：`3.18.33`（包名 com.qtwl.gateway）
+- 测试版：`3.18.33-19`（包名 com.qtwl.gateway.cs）
+- versionCode=222，qitong.jks 签名
+### ✅ 验证
+- 双轨编译 BUILD SUCCESSFUL（assembleFormalDebug + assembleCsDebug）
+
+---
 ## 🔄 v3.18.32（正式发布）
 
 ### 🖥️ UI 全面布局修复 + 系统返回键适配
