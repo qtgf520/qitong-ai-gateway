@@ -1,5 +1,11 @@
 package com.qtwl.gateway.ui.screens
 
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import com.qtwl.gateway.ui.components.AgentSettingsDialog
+import com.qtwl.gateway.ui.components.AgentToggleBar
+import com.qtwl.gateway.ui.components.AgentGuardCard
+import com.qtwl.gateway.ui.components.AgentTracePanel
 import com.qtwl.gateway.data.model.routeKey
 
 import android.content.ClipData
@@ -16,8 +22,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -37,12 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.qtwl.gateway.data.model.AiModel
 import com.qtwl.gateway.data.model.ChatMessage
-import com.qtwl.gateway.ui.components.AgentSettingsDialog
-import com.qtwl.gateway.ui.components.AgentToggleBar
-import com.qtwl.gateway.ui.components.AgentTracePanel
-import com.qtwl.gateway.ui.components.AgentTimelineItem
-import com.qtwl.gateway.ui.components.AgentGuardCard
-import com.qtwl.gateway.agent.AgentGuard
+import com.qtwl.gateway.ui.components.AppIcons
 import com.qtwl.gateway.ui.theme.Error
 import com.qtwl.gateway.ui.theme.Online
 import com.qtwl.gateway.ui.viewmodel.GatewayViewModel
@@ -65,23 +64,26 @@ fun ChatScreen(viewModel: GatewayViewModel) {
     val currentConversation by viewModel.currentConversation.collectAsState()
     val messages by viewModel.currentMessages.collectAsState()
     val inputText by viewModel.inputText.collectAsState()
-    val isSending by viewModel.isSending.collectAsState()
-    val chatError by viewModel.chatError.collectAsState()
-    val selectedModel by viewModel.selectedModel.collectAsState()
-    val models by viewModel.models.collectAsState()
-    val enabledModels by viewModel.enabledModels.collectAsState()
-    // ★★ Agent 自动化模式状态 ★★
+    // Agent 模式状态
     val agentMode by viewModel.agentMode.collectAsState()
     val agentRunning by viewModel.agentRunning.collectAsState()
     val agentStatus by viewModel.agentStatus.collectAsState()
     val agentRound by viewModel.agentRound.collectAsState()
     val agentTrace by viewModel.agentTrace.collectAsState()
+    val guardPending by com.qtwl.gateway.agent.AgentGuard.pending.collectAsState()
     val agentConfig by viewModel.agentConfig.collectAsState()
     val agentContext by viewModel.agentContext.collectAsState()
     val agentLiveText by viewModel.agentLiveText.collectAsState()
+    val agentReasoning by viewModel.agentReasoning.collectAsState()
     val agentTimeline by viewModel.agentTimeline.collectAsState()
-    val guardPending by AgentGuard.pending.collectAsState()
+    val agentThinking by viewModel.agentThinking.collectAsState()
+    var agentShellTier by remember { mutableStateOf(com.qtwl.gateway.utils.AgentSettings.shellTier) }
     var showAgentSettings by remember { mutableStateOf(false) }
+    val isSending by viewModel.isSending.collectAsState()
+    val chatError by viewModel.chatError.collectAsState()
+    val selectedModel by viewModel.selectedModel.collectAsState()
+    val models by viewModel.models.collectAsState()
+    val enabledModels by viewModel.enabledModels.collectAsState()
     val context = LocalContext.current
 
     var showConversationList by remember { mutableStateOf(false) }
@@ -119,7 +121,11 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(onClick = { showConversationList = true }) {
-                    Text("💬", fontSize = 20.sp, color = MaterialTheme.colorScheme.onPrimary)
+                    Icon(
+                        imageVector = AppIcons.get("forum"),
+                        contentDescription = "Conversations",
+                        tint = MaterialTheme.colorScheme.onPrimary
+                    )
                 }
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
@@ -139,16 +145,20 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                     }
                 }
                 val streamEnabled by viewModel.streamEnabled.collectAsState()
-                Text(
-                    text = if (streamEnabled) "🔊" else "🔇",
-                    fontSize = 16.sp,
-                    color = MaterialTheme.colorScheme.onPrimary,
-                    modifier = Modifier
-                        .clickable { viewModel.setStreamEnabled(!streamEnabled) }
-                        .padding(horizontal = 8.dp)
-                )
+                IconButton(onClick = { viewModel.setStreamEnabled(!streamEnabled) }) {
+                    Icon(
+                        imageVector = if (streamEnabled) AppIcons.get("volume_up") else AppIcons.get("volume_off"),
+                        contentDescription = localizedText("流式输出", "Stream output"),
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
                 IconButton(onClick = { showModelSelector = true }) {
-                    Text("🤖", fontSize = 20.sp, color = MaterialTheme.colorScheme.onPrimary)
+                    Icon(
+                        imageVector = AppIcons.get("smart_toy"),
+                        contentDescription = localizedText("选择模型", "Select model"),
+                        tint = MaterialTheme.colorScheme.onPrimary
+                    )
                 }
                 IconButton(onClick = { viewModel.createNewConversation() }) {
                     Icon(Icons.Default.Add, contentDescription = localizedText("新对话", "New chat"), tint = MaterialTheme.colorScheme.onPrimary)
@@ -189,7 +199,7 @@ fun ChatScreen(viewModel: GatewayViewModel) {
         if (editingMessage != null) {
             Column(modifier = Modifier.weight(1f).fillMaxWidth().padding(16.dp)) {
                 Text(
-                    text = localizedText("✏️ 编辑消息", "✏️ Edit message"),
+                    text = localizedText("编辑消息", "Edit message"),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold
                 )
@@ -232,7 +242,12 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                 contentAlignment = Alignment.TopCenter
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("💬", fontSize = 64.sp)
+                    Icon(
+                        imageVector = AppIcons.get("forum"),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                        modifier = Modifier.size(64.dp)
+                    )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
                         text = localizedText("选择或创建对话", "Select or create a conversation"),
@@ -241,14 +256,14 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = localizedText("点击左上角 💬 选择已有对话\\n或点击 ➕ 创建新对话", "Tap 💬 at the top left to select an existing conversation\\nor tap ➕ to create a new conversation"),
+                        text = localizedText("点击左上角会话图标选择已有对话\n或点击加号创建新对话", "Tap the conversation icon at the top left to select an existing conversation\nor tap the plus icon to create a new conversation"),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     if (models.isEmpty()) {
                         Text(
-                            text = localizedText("⚠️ 请先在「服务商」页面添加并同步模型", "⚠️ Add a provider and sync models on the Providers page first"),
+                            text = localizedText("请先在「服务商」页面添加并同步模型", "Add a provider and sync models on the Providers page first"),
                             style = MaterialTheme.typography.bodySmall,
                             color = Error
                         )
@@ -256,6 +271,13 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                 }
             }
         } else {
+            // 有新的时间线内容就滚到底，保证"一直往下"的观感
+            LaunchedEffect(agentTimeline.size, messages.size) {
+                if (agentRunning) {
+                    val last = messages.size + agentTimeline.size
+                    runCatching { listState.animateScrollToItem(if (last > 0) last - 1 else 0) }
+                }
+            }
             // 消息列表
             LazyColumn(
                 modifier = Modifier
@@ -272,7 +294,7 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                         onCopy = {
                             val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                             cm.setPrimaryClip(ClipData.newPlainText(localizedText("AI回复", "AI reply"), message.content))
-                            viewModel.showSnackbar(localizedText("✅ 已复制", "✅ Copied"))
+                            viewModel.showSnackbar(localizedText("已复制", "Copied"))
                         },
                         onShare = {
                             val sendIntent = Intent().apply {
@@ -295,10 +317,12 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                         }
                     )
                 }
+
                 // ★ Agent 时间线：正文 / 思考 / 工具卡片，按顺序往下追加
                 items(agentTimeline, key = { "tl_" + it.id }) { item ->
-                    AgentTimelineItem(item)
+                    com.qtwl.gateway.ui.components.AgentTimelineItem(item)
                 }
+
                 // 流式加载指示器
                 if (isSending && messages.lastOrNull()?.isStreaming == true) {
                     item {
@@ -338,7 +362,7 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    text = localizedText("💭 AI 正在思考... 请耐心等待", "💭 AI is thinking... please wait"),
+                    text = localizedText("AI 正在思考... 请耐心等待", "AI is thinking... please wait"),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
@@ -347,10 +371,18 @@ fun ChatScreen(viewModel: GatewayViewModel) {
         }
 
         // 输入区
-        Surface(
-            tonalElevation = 3.dp,
-            shadowElevation = 8.dp,
-            modifier = Modifier.fillMaxWidth()
+        // ★ 底栏改成悬浮玻璃后不再占布局空间，这里必须自己让出高度，
+        //   否则输入框会被胶囊压住。navigationBarsPadding 处理系统手势条，
+        //   76dp = 胶囊 64 + 上下各 6。
+        com.qtwl.gateway.ui.components.GlassSurface(
+            cornerRadius = 26.dp,
+            // 关掉「液态玻璃质感」时退化成接近实心的板，保持可读
+            alpha = if (com.qtwl.gateway.utils.UiSettings.glassSurfaces) 0.56f else 0.98f,
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 6.dp)
+                .padding(bottom = 84.dp)
         ) {
             Column(modifier = Modifier.padding(8.dp)) {
                 // ===== Agent 模式控制条 =====
@@ -369,9 +401,9 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                     Spacer(modifier = Modifier.height(6.dp))
                     AgentGuardCard(
                         request = req,
-                        onAllow = { AgentGuard.respond(true) },
-                        onDeny = { AgentGuard.respond(false) },
-                        onAlways = { AgentGuard.respond(true, true) }
+                        onAllow = { com.qtwl.gateway.agent.AgentGuard.respond(true) },
+                        onDeny = { com.qtwl.gateway.agent.AgentGuard.respond(false) },
+                        onAlways = { com.qtwl.gateway.agent.AgentGuard.respond(true, true) }
                     )
                 }
                 // 运行时给一行状态，其余内容都在消息流里
@@ -383,33 +415,9 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
-                // ===== Agent 执行轨迹 =====
-                if (agentTrace.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(6.dp))
-                    AgentTracePanel(records = agentTrace)
-                }
-                // 流式实时预览（仅在 Agent 运行且已有输出时显示）
-                if (agentRunning && agentLiveText.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Surface(
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 140.dp)
-                    ) {
-                        Text(
-                            text = agentLiveText,
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier
-                                .padding(10.dp)
-                                .verticalScroll(rememberScrollState())
-                        )
-                    }
-                }
                 if (selectedModel == null && currentConversation != null) {
                     Text(
-                        text = localizedText("⚠️ 请点击 🤖 选择模型后再发送消息", "⚠️ Tap 🤖 to select a model before sending"),
+                        text = localizedText("请先选择模型后再发送消息", "Please select a model before sending"),
                         style = MaterialTheme.typography.labelSmall,
                         color = Error,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
@@ -432,7 +440,7 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                                 else localizedText("请先选择模型", "Please select a model first")
                             )
                         },
-                        enabled = !isSending,
+                        enabled = !isSending && !agentRunning,
                         maxLines = 4,
                         shape = RoundedCornerShape(24.dp),
                         colors = OutlinedTextFieldDefaults.colors(
@@ -474,7 +482,7 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                         ) {
                             Icon(
                                 Icons.Default.Send,
-                                contentDescription = if (agentMode) localizedText("发送 (Agent)", "Send (Agent)") else localizedText("发送", "Send"),
+                                contentDescription = localizedText("发送", "Send"),
                                 tint = if (inputText.isNotBlank() && selectedModel != null)
                                     MaterialTheme.colorScheme.onPrimary
                                 else
@@ -487,6 +495,30 @@ fun ChatScreen(viewModel: GatewayViewModel) {
         }
     }
 
+    // ==================== Agent 设置对话框 ====================
+    if (showAgentSettings) {
+        AgentSettingsDialog(
+            config = agentConfig,
+            contextUsage = agentContext,
+            onDismiss = { showAgentSettings = false },
+            onReasoningEffort = { viewModel.setReasoningEffort(it) },
+            onContextWindow = { viewModel.setContextWindow(it) },
+            onCompactThreshold = { viewModel.setCompactThreshold(it) },
+            onKeepRecent = { viewModel.setKeepRecentMessages(it) },
+            onStreaming = { viewModel.setStreaming(it) },
+            thinking = agentThinking,
+            onThinking = { viewModel.setThinking(it) },
+            shellTier = agentShellTier,
+            onShellTier = {
+                agentShellTier = it
+                com.qtwl.gateway.utils.AgentSettings.shellTier = it
+            },
+            onAutoContinue = { viewModel.setAutoContinue(it) },
+            onMaxRounds = { viewModel.setMaxRounds(it) }
+        )
+    }
+
+
     // ==================== 对话列表侧边栏 ====================
     if (showConversationList) {
         AlertDialog(
@@ -498,8 +530,9 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                         modifier = Modifier.fillMaxWidth().height(200.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = localizedText("暂无对话\\n点击 ➕ 创建新对话", "No conversations yet\\nTap ➕ to create a new conversation"),
+Text(
+                            text = localizedText("暂无对话", "No conversations yet") + "\n" +
+                            localizedText("点击加号创建新对话", "Tap the plus icon to create a new conversation"),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -576,7 +609,7 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                     item(key = "qtai-sj") {
                         val isQtAiSjSelected = selectedModel?.modelId == "qtai-sj"
                         Card(modifier = Modifier.fillMaxWidth().clickable {
-                            viewModel.selectModel(AiModel(id = -1, modelId = "qtai-sj", displayName = localizedText("🔄 自动化切换", "🔄 Auto switch"), providerId = 0, isEnabled = true))
+                            viewModel.selectModel(AiModel(id = -1, modelId = "qtai-sj", displayName = localizedText("自动化切换", "Auto switch"), providerId = 0, isEnabled = true))
                             showModelSelector = false
                         }, colors = CardDefaults.cardColors(containerColor = if (isQtAiSjSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface)) {
                             Row(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -585,7 +618,7 @@ fun ChatScreen(viewModel: GatewayViewModel) {
                                     style = MaterialTheme.typography.titleSmall)
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(localizedText("🔄 自动化切换", "🔄 Auto switch"), style = MaterialTheme.typography.bodyLarge,
+                                    Text(localizedText("自动化切换", "Auto switch"), style = MaterialTheme.typography.bodyLarge,
                                         fontWeight = if (isQtAiSjSelected) FontWeight.Bold else FontWeight.Normal)
                                     Text(localizedText("qtai-sj · 自动选最快模型", "qtai-sj · automatically selects the fastest model"), style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -636,7 +669,7 @@ fun ChatScreen(viewModel: GatewayViewModel) {
         var aliasText by remember { mutableStateOf(editingModel!!.customAlias) }
         AlertDialog(
             onDismissRequest = { viewModel.hideEditModelAlias() },
-            title = { Text(localizedText("✏️ 编辑模型别名", "✏️ Edit model alias"), fontWeight = FontWeight.Bold) },
+            title = { Text(localizedText("编辑模型别名", "Edit model alias"), fontWeight = FontWeight.Bold) },
             text = {
                 Column {
                     Text(localizedText("原始名称: ", "Original name: ") + editingModel!!.displayName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -649,25 +682,6 @@ fun ChatScreen(viewModel: GatewayViewModel) {
             },
             confirmButton = { Button(onClick = { viewModel.saveModelAlias(editingModel!!, aliasText); viewModel.hideEditModelAlias() }) { Text(localizedText("保存", "Save")) } },
             dismissButton = { TextButton(onClick = { viewModel.hideEditModelAlias() }) { Text(localizedText("取消", "Cancel")) } }
-        )
-    }
-    // ==================== Agent 设置对话框 ====================
-    if (showAgentSettings) {
-        AgentSettingsDialog(
-            config = agentConfig,
-            contextUsage = agentContext,
-            onDismiss = { showAgentSettings = false },
-            onReasoningEffort = { viewModel.setReasoningEffort(it) },
-            onContextWindow = { viewModel.setContextWindow(it) },
-            onCompactThreshold = { viewModel.setCompactThreshold(it) },
-            onKeepRecent = { viewModel.setKeepRecentMessages(it) },
-            onStreaming = { viewModel.setAgentStreaming(it) },
-            thinking = viewModel.agentThinking.collectAsState().value,
-            onThinking = { viewModel.setThinking(it) },
-            shellTier = com.qtwl.gateway.utils.AgentSettings.shellTier,
-            onShellTier = { viewModel.setShellTier(it) },
-            onAutoContinue = { viewModel.setAgentAutoContinue(it) },
-            onMaxRounds = { viewModel.setMaxRounds(it) }
         )
     }
 }
@@ -695,7 +709,7 @@ private fun MessageBubble(
     ) {
         if (!isUser) {
             Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.size(32.dp)) {
-                Box(contentAlignment = Alignment.Center) { Text("🤖", fontSize = 16.sp) }
+                Icon(imageVector = AppIcons.get("smart_toy"), contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(16.dp))
             }
             Spacer(modifier = Modifier.width(8.dp))
         }
@@ -739,7 +753,7 @@ private fun MessageBubble(
 
                     if (!isStreaming && message.totalTokens > 0) {
                         Spacer(modifier = Modifier.height(2.dp))
-                        Text("⚡ ${message.totalTokens} tokens", style = MaterialTheme.typography.labelSmall,
+                        Text("${message.totalTokens} tokens", style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
                     }
                 }
@@ -750,18 +764,18 @@ private fun MessageBubble(
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(horizontal = 4.dp)) {
                     AssistChip(onClick = { onCopy(); showActions = false },
-                        label = { Text(localizedText("📋 复制", "📋 Copy"), style = MaterialTheme.typography.labelSmall) }, modifier = Modifier.height(28.dp))
+                        label = { Text(localizedText("复制", "Copy"), style = MaterialTheme.typography.labelSmall) }, modifier = Modifier.height(28.dp))
                     if (isUser) {
                         AssistChip(onClick = { onEdit(); showActions = false },
-                            label = { Text(localizedText("✏️ 编辑", "✏️ Edit"), style = MaterialTheme.typography.labelSmall) }, modifier = Modifier.height(28.dp))
+                            label = { Text(localizedText("编辑", "Edit"), style = MaterialTheme.typography.labelSmall) }, modifier = Modifier.height(28.dp))
                         AssistChip(onClick = { onResend(); showActions = false },
-                            label = { Text(localizedText("🔄 重发", "🔄 Resend"), style = MaterialTheme.typography.labelSmall) }, modifier = Modifier.height(28.dp))
+                            label = { Text(localizedText("重发", "Resend"), style = MaterialTheme.typography.labelSmall) }, modifier = Modifier.height(28.dp))
                     }
                     AssistChip(onClick = { onShare(); showActions = false },
-                        label = { Text(localizedText("📤 分享", "📤 Share"), style = MaterialTheme.typography.labelSmall) }, modifier = Modifier.height(28.dp))
+                        label = { Text(localizedText("分享", "Share"), style = MaterialTheme.typography.labelSmall) }, modifier = Modifier.height(28.dp))
                     if (!isUser) {
                         AssistChip(onClick = { onRegenerate(); showActions = false },
-                            label = { Text(localizedText("🔄 重生成", "🔄 Regenerate"), style = MaterialTheme.typography.labelSmall) }, modifier = Modifier.height(28.dp))
+                            label = { Text(localizedText("重生成", "Regenerate"), style = MaterialTheme.typography.labelSmall) }, modifier = Modifier.height(28.dp))
                     }
                 }
             }
@@ -776,7 +790,7 @@ private fun MessageBubble(
         if (isUser) {
             Spacer(modifier = Modifier.width(8.dp))
             Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp)) {
-                Box(contentAlignment = Alignment.Center) { Text("👤", fontSize = 16.sp) }
+                Box(contentAlignment = Alignment.Center) { Icon(imageVector = AppIcons.get("person"), contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(16.dp)) }
             }
         }
     }

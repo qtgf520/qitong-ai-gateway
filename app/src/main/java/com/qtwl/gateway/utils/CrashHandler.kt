@@ -133,19 +133,19 @@ object CrashHandler : Thread.UncaughtExceptionHandler {
                     conn.outputStream.write(body.toByteArray(Charsets.UTF_8))
                     val code = conn.responseCode
                     val resp = if (code == 201) {
-                        "✅ 崩溃报告已提交到 GitHub Issues"
+                        " 崩溃报告已提交到 GitHub Issues"
                     } else {
                         val err = conn.errorStream?.bufferedReader()?.readText() ?: "未知错误"
-                        "❌ 提交失败 (HTTP $code): $err"
+                        " 提交失败 (HTTP $code): $err"
                     }
                     conn.disconnect()
                     onResult(code == 201, resp)
                 } catch (e: Exception) {
-                    onResult(false, "❌ 提交失败: ${e.message}")
+                    onResult(false, MessageMark.WARN + "提交失败: ${e.message}")
                 }
             }.start()
         } catch (e: Exception) {
-            onResult(false, "❌ 提交失败: ${e.message}")
+            onResult(false, MessageMark.WARN + "提交失败: ${e.message}")
         }
     }
 

@@ -12,10 +12,14 @@ android {
     defaultConfig {
         applicationId = "com.qtwl.gateway"
         minSdk = 24
-        targetSdk = 35
-versionCode = 219
-        versionName = "3.18.30"
+        targetSdk = 36
+versionCode = 220
+        versionName = "3.18.31"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // 只保留 arm64：llama.cpp 等 .so 需要
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+        }
         vectorDrawables {
             useSupportLibrary = true
         }
@@ -27,12 +31,12 @@ versionCode = 219
         create("formal") {
             dimension = "track"
             applicationId = "com.qtwl.gateway"
-            versionName = "3.18.30"
+            versionName = "3.18.31"
         }
         create("cs") {
             dimension = "track"
             applicationId = "com.qtwl.gateway.cs"
-            versionName = "3.18.30-16"
+            versionName = "3.18.31-17"
         }
     }
 
@@ -83,6 +87,10 @@ versionCode = 219
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+        // llama.cpp 运行时以 lib*.so 形式打包，关闭压缩以便安装时解压到 nativeLibraryDir
+        jniLibs {
+            useLegacyPackaging = true
         }
     }
 }
@@ -146,6 +154,8 @@ dependencies {
     implementation(libs.shizuku.provider)
     // SSH 隧道（公网映射）
     implementation("com.github.mwiede:jsch:0.2.20")
+    // Miuix（HyperOS 组件色板）
+    implementation(libs.miuix)
     // LiquidGlass 玻璃拟态（kyant）
     implementation(libs.kyant.backdrop)
     implementation(libs.kyant.capsule)

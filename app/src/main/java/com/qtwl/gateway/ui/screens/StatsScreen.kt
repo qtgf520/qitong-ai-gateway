@@ -144,12 +144,12 @@ fun StatsScreen(viewModel: GatewayViewModel) {
                 .padding(padding)
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
-            contentPadding = PaddingValues(vertical = 16.dp)
+            contentPadding = PaddingValues(top = 16.dp, bottom = 104.dp)
         ) {
             // ==================== 总览卡片 ====================
             item {
                 Text(
-                    text = localizedText("📊 Token 用量总览", "📊 Token usage overview"),
+                    text = localizedText("Token 用量总览", "Token usage overview"),
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold
                 )
@@ -208,31 +208,31 @@ fun StatsScreen(viewModel: GatewayViewModel) {
             item {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Text(localizedText("🌐 网关流量统计", "🌐 Gateway traffic statistics"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text(localizedText("网关流量统计", "Gateway traffic statistics"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.height(8.dp))
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(localizedText("⬆ 上传", "⬆ Upload"), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(localizedText("上传", "Upload"), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(formatBytes(gwUpload), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
                         }
                         Spacer(Modifier.height(4.dp))
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(localizedText("⬇ 下载", "⬇ Download"), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(localizedText("下载", "Download"), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(formatBytes(gwDownload), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
                         }
                         HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(localizedText("📈 总上传", "📈 Total upload"), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(localizedText("总上传", "Total upload"), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(formatBytes(gwTotalUpload), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
                         }
                         Spacer(Modifier.height(4.dp))
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(localizedText("📈 总下载", "📈 Total download"), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(localizedText("总下载", "Total download"), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(formatBytes(gwTotalDownload), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
                         }
                         if (activeModel.isNotBlank()) {
                             Spacer(Modifier.height(4.dp))
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text(localizedText("🧠 当前模型", "🧠 Current model"), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(localizedText("当前模型", "Current model"), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Text(activeModel, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                             }
                         }
@@ -265,7 +265,7 @@ fun StatsScreen(viewModel: GatewayViewModel) {
             if (statsByProvider.isNotEmpty()) {
                 item {
                     Text(
-                        text = localizedText("🏢 按服务商统计", "🏢 By provider"),
+                        text = localizedText("按服务商统计", "By provider"),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(top = 8.dp)
@@ -283,7 +283,7 @@ fun StatsScreen(viewModel: GatewayViewModel) {
             if (apiKeyUsageRows.isNotEmpty()) {
                 item {
                     Text(
-                        text = localizedText("🔑 按API密钥统计", "🔑 By API key"),
+                        text = localizedText("按API密钥统计", "By API key"),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(top = 8.dp)
@@ -301,7 +301,7 @@ fun StatsScreen(viewModel: GatewayViewModel) {
             if (statsByModel.isNotEmpty()) {
                 item {
                     Text(
-                        text = localizedText("🤖 按模型统计 (Top 10)", "🤖 By model (Top 10)"),
+                        text = localizedText("按模型统计 (Top 10)", "By model (Top 10)"),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(top = 8.dp)
@@ -323,7 +323,7 @@ fun StatsScreen(viewModel: GatewayViewModel) {
             if (allTokenUsage.isNotEmpty()) {
                 item {
                     Text(
-                        text = localizedText("📋 最近用量记录", "📋 Recent usage records"),
+                        text = localizedText("最近用量记录", "Recent usage records"),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(top = 8.dp)
@@ -347,7 +347,7 @@ fun StatsScreen(viewModel: GatewayViewModel) {
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("📊", fontSize = 48.sp)
+                            Text("", fontSize = 48.sp)
                             Spacer(modifier = Modifier.height(12.dp))
                             Text(
                                 text = localizedText("暂无用量数据", "No usage data yet"),
@@ -420,7 +420,7 @@ fun StatsScreen(viewModel: GatewayViewModel) {
                         Text(localizedText("清空流量", "Clear traffic"))
                     }
                 }
-                Spacer(modifier = Modifier.height(80.dp))
+                Spacer(modifier = Modifier.height(16.dp))
             }
         }
     }
@@ -472,7 +472,7 @@ fun StatsScreen(viewModel: GatewayViewModel) {
                             else MaterialTheme.colorScheme.surface
                         ) {
                             Text(
-                                text = localizedText("📊 所有模型", "📊 All models"),
+                                text = localizedText("所有模型", "All models"),
                                 modifier = Modifier.padding(12.dp),
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Bold
@@ -532,7 +532,7 @@ private fun SpeedTrendChartCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = localizedText("📈 模型延迟趋势", "📈 Model latency trend"),
+                    text = localizedText("模型延迟趋势", "Model latency trend"),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f)
@@ -712,7 +712,7 @@ private fun ProviderStatCard(summary: ProviderTokenSummary) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "🔌",
+                    text = "",
                     fontSize = 20.sp
                 )
                 Spacer(modifier = Modifier.width(8.dp))
@@ -836,7 +836,7 @@ private fun ModelStatCard(
                 .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("🤖", fontSize = 18.sp)
+            Text("", fontSize = 18.sp)
             Spacer(modifier = Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -907,13 +907,13 @@ private fun UsageRecordCard(
                 Spacer(modifier = Modifier.height(4.dp))
                 Row {
                     Text(
-                        text = "⬆ ${usage.promptTokens}",
+                        text = "${usage.promptTokens}",
                         style = MaterialTheme.typography.labelSmall,
                         color = Online
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "⬇ ${usage.completionTokens}",
+                        text = "${usage.completionTokens}",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary
                     )
@@ -951,7 +951,7 @@ private fun ApiKeyStatCard(row: ApiKeyUsageRow) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "🔑",
+                    text = "",
                     fontSize = 20.sp
                 )
                 Spacer(modifier = Modifier.width(8.dp))
@@ -984,7 +984,7 @@ private fun ApiKeyStatCard(row: ApiKeyUsageRow) {
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = localizedText("⬆ 上传", "⬆ Upload"),
+                    text = localizedText("上传", "Upload"),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -1000,7 +1000,7 @@ private fun ApiKeyStatCard(row: ApiKeyUsageRow) {
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = localizedText("⬇ 下载", "⬇ Download"),
+                    text = localizedText("下载", "Download"),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

@@ -201,6 +201,23 @@ fun GatewayTheme(
     MaterialTheme(
         colorScheme = colorScheme,
         typography = Typography,
-        content = content
+        content = {
+            // ★ MIUIx 风格下再套一层官方的 MiuixTheme
+            //   这样后续用 Miuix 组件（Card / SmallTitle / BasicComponent）
+            //   时会自动拿到官方色板，不需要每个组件单独传色值。
+            //   Apple 风格不套，继续用 Material3。
+            if (style == ThemeStyle.Miui) {
+                top.yukonga.miuix.kmp.theme.MiuixTheme(
+                    colors = if (darkTheme) {
+                        top.yukonga.miuix.kmp.theme.darkColorScheme()
+                    } else {
+                        top.yukonga.miuix.kmp.theme.lightColorScheme()
+                    },
+                    content = content
+                )
+            } else {
+                content()
+            }
+        }
     )
 }

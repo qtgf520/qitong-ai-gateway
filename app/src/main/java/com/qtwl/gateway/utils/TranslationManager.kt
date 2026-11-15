@@ -159,7 +159,7 @@ object TranslationManager {
     /** 获取当前显示的 APP 标题（优先自定义，其次多语言） */
     fun getAppTitle(): String = customAppTitle ?: get("app_name")
 
-    /** 获取翻译文本（fallback链：当前语言 → 英文 → 简体中文 → 返回key） */
+    /** 获取翻译文本（fallback链：当前语言  英文  简体中文  返回key） */
     operator fun get(key: String): String {
         val translationsForKey = translations[key] ?: return key
         return translationsForKey[currentLanguage]
@@ -209,20 +209,6 @@ object TranslationManager {
             AppLanguage.PT to "Chat", AppLanguage.VI to "Trò chuyện", AppLanguage.TH to "แชท",
             AppLanguage.AR to "الدردشة", AppLanguage.HI to "चैट", AppLanguage.ID to "Obrolan"
         ))
-        put("nav_settings", mapOf(
-            AppLanguage.ZH_CN to "设置", AppLanguage.ZH_TW to "設定", AppLanguage.EN to "Settings",
-            AppLanguage.JA to "設定", AppLanguage.KO to "설정", AppLanguage.ES to "Ajustes",
-            AppLanguage.FR to "Paramètres", AppLanguage.DE to "Einstellungen", AppLanguage.RU to "Настройки",
-            AppLanguage.PT to "Configurações", AppLanguage.VI to "Cài đặt", AppLanguage.TH to "การตั้งค่า",
-            AppLanguage.AR to "الإعدادات", AppLanguage.HI to "सेटिंग्स", AppLanguage.ID to "Pengaturan"
-        ))
-        put("clear_brain", mapOf(
-            AppLanguage.ZH_CN to "🧠 清除大脑", AppLanguage.ZH_TW to "🧠 清除大腦", AppLanguage.EN to "🧠 Clear Brain",
-            AppLanguage.JA to "🧠 ブレインをクリア", AppLanguage.KO to "🧠 브레인 초기화", AppLanguage.ES to "🧠 Limpiar cerebro",
-            AppLanguage.FR to "🧠 Effacer le cerveau", AppLanguage.DE to "🧠 Gehirn leeren", AppLanguage.RU to "🧠 Очистить мозг",
-            AppLanguage.PT to "🧠 Limpar cérebro", AppLanguage.VI to "🧠 Xóa não", AppLanguage.TH to "🧠 ล้างสมอง",
-            AppLanguage.AR to "🧠 مسح الذاكرة", AppLanguage.HI to "🧠 मस्तिष्क साफ़ करें", AppLanguage.ID to "🧠 Bersihkan otak"
-        ))
         put("nav_stats", mapOf(
             AppLanguage.ZH_CN to "统计", AppLanguage.ZH_TW to "統計", AppLanguage.EN to "Stats",
             AppLanguage.JA to "統計", AppLanguage.KO to "통계", AppLanguage.ES to "Estadísticas",
@@ -237,6 +223,13 @@ object TranslationManager {
             AppLanguage.PT to "Gerenciar", AppLanguage.VI to "Quản lý", AppLanguage.TH to "จัดการ",
             AppLanguage.AR to "الإدارة", AppLanguage.HI to "प्रबंधन", AppLanguage.ID to "Kelola"
         ))
+        put("nav_settings", mapOf(
+            AppLanguage.ZH_CN to "设置", AppLanguage.ZH_TW to "設定", AppLanguage.EN to "Settings",
+            AppLanguage.JA to "設定", AppLanguage.KO to "설정", AppLanguage.ES to "Ajustes",
+            AppLanguage.FR to "Paramètres", AppLanguage.DE to "Einstellungen", AppLanguage.RU to "Настройки",
+            AppLanguage.PT to "Configurações", AppLanguage.VI to "Cài đặt", AppLanguage.TH to "การตั้งค่า",
+            AppLanguage.AR to "الإعدادات", AppLanguage.HI to "सेटिंग्स", AppLanguage.ID to "Pengaturan"
+        ))
         put("nav_about", mapOf(
             AppLanguage.ZH_CN to "关于", AppLanguage.ZH_TW to "關於", AppLanguage.EN to "About",
             AppLanguage.JA to "について", AppLanguage.KO to "정보", AppLanguage.ES to "Acerca de",
@@ -247,18 +240,18 @@ object TranslationManager {
 
         // ===== 首页 =====
         put("gateway_running", mapOf(
-            AppLanguage.ZH_CN to "🟢 网关运行中", AppLanguage.ZH_TW to "🟢 網關運行中", AppLanguage.EN to "🟢 Gateway Running",
-            AppLanguage.JA to "🟢 ゲートウェイ実行中", AppLanguage.KO to "🟢 게이트웨이 실행 중", AppLanguage.ES to "🟢 Gateway Ejecutándose",
-            AppLanguage.FR to "🟢 Passerelle en cours", AppLanguage.DE to "🟢 Gateway läuft", AppLanguage.RU to "🟢 Шлюз работает",
-            AppLanguage.PT to "🟢 Gateway em execução", AppLanguage.VI to "🟢 Cổng đang chạy", AppLanguage.TH to "🟢 เกตเวย์กำลังทำงาน",
-            AppLanguage.AR to "🟢 البوابة تعمل", AppLanguage.HI to "🟢 गेटवे चल रहा है", AppLanguage.ID to "🟢 Gateway berjalan"
+            AppLanguage.ZH_CN to " 网关运行中", AppLanguage.ZH_TW to " 網關運行中", AppLanguage.EN to " Gateway Running",
+            AppLanguage.JA to " ゲートウェイ実行中", AppLanguage.KO to " 게이트웨이 실행 중", AppLanguage.ES to " Gateway Ejecutándose",
+            AppLanguage.FR to " Passerelle en cours", AppLanguage.DE to " Gateway läuft", AppLanguage.RU to " Шлюз работает",
+            AppLanguage.PT to " Gateway em execução", AppLanguage.VI to " Cổng đang chạy", AppLanguage.TH to " เกตเวย์กำลังทำงาน",
+            AppLanguage.AR to " البوابة تعمل", AppLanguage.HI to " गेटवे चल रहा है", AppLanguage.ID to " Gateway berjalan"
         ))
         put("gateway_stopped", mapOf(
-            AppLanguage.ZH_CN to "🔴 网关已停止", AppLanguage.ZH_TW to "🔴 網關已停止", AppLanguage.EN to "🔴 Gateway Stopped",
-            AppLanguage.JA to "🔴 ゲートウェイ停止", AppLanguage.KO to "🔴 게이트웨이 중지", AppLanguage.ES to "🔴 Gateway Detenido",
-            AppLanguage.FR to "🔴 Passerelle arrêtée", AppLanguage.DE to "🔴 Gateway gestoppt", AppLanguage.RU to "🔴 Шлюз остановлен",
-            AppLanguage.PT to "🔴 Gateway parado", AppLanguage.VI to "🔴 Cổng đã dừng", AppLanguage.TH to "🔴 เกตเวย์หยุดแล้ว",
-            AppLanguage.AR to "🔴 البوابة متوقفة", AppLanguage.HI to "🔴 गेटवे बंद है", AppLanguage.ID to "🔴 Gateway berhenti"
+            AppLanguage.ZH_CN to " 网关已停止", AppLanguage.ZH_TW to " 網關已停止", AppLanguage.EN to " Gateway Stopped",
+            AppLanguage.JA to " ゲートウェイ停止", AppLanguage.KO to " 게이트웨이 중지", AppLanguage.ES to " Gateway Detenido",
+            AppLanguage.FR to " Passerelle arrêtée", AppLanguage.DE to " Gateway gestoppt", AppLanguage.RU to " Шлюз остановлен",
+            AppLanguage.PT to " Gateway parado", AppLanguage.VI to " Cổng đã dừng", AppLanguage.TH to " เกตเวย์หยุดแล้ว",
+            AppLanguage.AR to " البوابة متوقفة", AppLanguage.HI to " गेटवे बंद है", AppLanguage.ID to " Gateway berhenti"
         ))
         put("port_label", mapOf(
             AppLanguage.ZH_CN to "网关监听端口", AppLanguage.ZH_TW to "網關監聽端口", AppLanguage.EN to "Gateway Port",
@@ -298,11 +291,11 @@ object TranslationManager {
 
         // ===== 自动故障转移 =====
         put("auto_failover", mapOf(
-            AppLanguage.ZH_CN to "🔄 自动故障转移", AppLanguage.ZH_TW to "🔄 自動故障轉移", AppLanguage.EN to "🔄 Auto Failover",
-            AppLanguage.JA to "🔄 自動フェイルオーバー", AppLanguage.KO to "🔄 자동 장애 조치", AppLanguage.ES to "🔄 Failover Automático",
-            AppLanguage.FR to "🔄 Basculement automatique", AppLanguage.DE to "🔄 Automatische Umschaltung", AppLanguage.RU to "🔄 Автоматическое переключение",
-            AppLanguage.PT to "🔄 Failover Automático", AppLanguage.VI to "🔄 Chuyển đổi tự động", AppLanguage.TH to "🔄 การสลับอัตโนมัติ",
-            AppLanguage.AR to "🔄 التبديل التلقائي", AppLanguage.HI to "🔄 स्वत: विफलता स्थानांतरण", AppLanguage.ID to "🔄 Failover Otomatis"
+            AppLanguage.ZH_CN to " 自动故障转移", AppLanguage.ZH_TW to " 自動故障轉移", AppLanguage.EN to " Auto Failover",
+            AppLanguage.JA to " 自動フェイルオーバー", AppLanguage.KO to " 자동 장애 조치", AppLanguage.ES to " Failover Automático",
+            AppLanguage.FR to " Basculement automatique", AppLanguage.DE to " Automatische Umschaltung", AppLanguage.RU to " Автоматическое переключение",
+            AppLanguage.PT to " Failover Automático", AppLanguage.VI to " Chuyển đổi tự động", AppLanguage.TH to " การสลับอัตโนมัติ",
+            AppLanguage.AR to " التبديل التلقائي", AppLanguage.HI to " स्वत: विफलता स्थानांतरण", AppLanguage.ID to " Failover Otomatis"
         ))
         put("failover_on", mapOf(
             AppLanguage.ZH_CN to "开启：请求失败自动切换其他可用模型", AppLanguage.ZH_TW to "開啟：請求失敗自動切換其他可用模型", AppLanguage.EN to "On: Auto switch model on failure",
@@ -634,20 +627,20 @@ put("api_key_hint", mapOf(AppLanguage.ZH_CN to "sk-... 或留空（本地服务�
             AppLanguage.ID to "Aktifkan failover untuk beralih model optimal secara otomatis"
         ))
         put("no_thinking_tag", mapOf(
-            AppLanguage.ZH_CN to "⚠️ 思考模式缺少结束标签", AppLanguage.EN to "⚠️ Thinking mode missing end tag",
-            AppLanguage.JA to "⚠️ 思考モードの終了タグがありません",
-            AppLanguage.KO to "⚠️ 사고 모드 종료 태그 누락",
-            AppLanguage.ZH_TW to "⚠️ 思考模式缺少結束標籤",
-            AppLanguage.ES to "⚠️ Falta etiqueta de cierre del modo de pensamiento",
-            AppLanguage.FR to "⚠️ Balise de fin manquante pour le mode réflexion",
-            AppLanguage.DE to "⚠️ Endezeichen des Denkmodus fehlt",
-            AppLanguage.RU to "⚠️ Отсутствует закрывающий тег режима размышления",
-            AppLanguage.PT to "⚠️ Faltando tag de fechamento do modo de pensamento",
-            AppLanguage.VI to "⚠️ Thiếu thẻ kết thúc chế độ suy nghĩ",
-            AppLanguage.TH to "⚠️ แท็กปิดโหมดคิดหายไป",
-            AppLanguage.AR to "⚠️ علامة الإغلاق لوضع التفكير مفقودة",
-            AppLanguage.HI to "⚠️ सोच मोड का अंत टैग गायब है",
-            AppLanguage.ID to "⚠️ Tag penutup mode berpikir hilang"
+            AppLanguage.ZH_CN to " 思考模式缺少结束标签", AppLanguage.EN to " Thinking mode missing end tag",
+            AppLanguage.JA to " 思考モードの終了タグがありません",
+            AppLanguage.KO to " 사고 모드 종료 태그 누락",
+            AppLanguage.ZH_TW to " 思考模式缺少結束標籤",
+            AppLanguage.ES to " Falta etiqueta de cierre del modo de pensamiento",
+            AppLanguage.FR to " Balise de fin manquante pour le mode réflexion",
+            AppLanguage.DE to " Endezeichen des Denkmodus fehlt",
+            AppLanguage.RU to " Отсутствует закрывающий тег режима размышления",
+            AppLanguage.PT to " Faltando tag de fechamento do modo de pensamento",
+            AppLanguage.VI to " Thiếu thẻ kết thúc chế độ suy nghĩ",
+            AppLanguage.TH to " แท็กปิดโหมดคิดหายไป",
+            AppLanguage.AR to " علامة الإغلاق لوضع التفكير مفقودة",
+            AppLanguage.HI to " सोच मोड का अंत टैग गायब है",
+            AppLanguage.ID to " Tag penutup mode berpikir hilang"
         ))
         put("no_provider", mapOf(
             AppLanguage.ZH_CN to "未找到对应的AI服务商",
@@ -679,18 +672,18 @@ put("api_key_hint", mapOf(AppLanguage.ZH_CN to "sk-... 或留空（本地服务�
 
         // ===== 管理页面 =====
         put("data_management", mapOf(
-            AppLanguage.ZH_CN to "📋 数据管理", AppLanguage.ZH_TW to "📋 數據管理", AppLanguage.EN to "📋 Data Management",
-            AppLanguage.JA to "📋 データ管理", AppLanguage.KO to "📋 데이터 관리", AppLanguage.ES to "📋 Gestión de Datos",
-            AppLanguage.FR to "📋 Gestion des données", AppLanguage.DE to "📋 Datenverwaltung", AppLanguage.RU to "📋 Управление данными",
-            AppLanguage.PT to "📋 Gerenciamento de Dados", AppLanguage.VI to "📋 Quản lý dữ liệu", AppLanguage.TH to "📋 การจัดการข้อมูล",
-            AppLanguage.AR to "📋 إدارة البيانات", AppLanguage.HI to "📋 डेटा प्रबंधन", AppLanguage.ID to "📋 Manajemen Data"
+            AppLanguage.ZH_CN to " 数据管理", AppLanguage.ZH_TW to " 數據管理", AppLanguage.EN to " Data Management",
+            AppLanguage.JA to " データ管理", AppLanguage.KO to " 데이터 관리", AppLanguage.ES to " Gestión de Datos",
+            AppLanguage.FR to " Gestion des données", AppLanguage.DE to " Datenverwaltung", AppLanguage.RU to " Управление данными",
+            AppLanguage.PT to " Gerenciamento de Dados", AppLanguage.VI to " Quản lý dữ liệu", AppLanguage.TH to " การจัดการข้อมูล",
+            AppLanguage.AR to " إدارة البيانات", AppLanguage.HI to " डेटा प्रबंधन", AppLanguage.ID to " Manajemen Data"
         ))
         put("language_settings", mapOf(
-            AppLanguage.ZH_CN to "🌐 语言设置", AppLanguage.ZH_TW to "🌐 語言設置", AppLanguage.EN to "🌐 Language Settings",
-            AppLanguage.JA to "🌐 言語設定", AppLanguage.KO to "🌐 언어 설정", AppLanguage.ES to "🌐 Configuración de Idioma",
-            AppLanguage.FR to "🌐 Paramètres de langue", AppLanguage.DE to "🌐 Spracheinstellungen", AppLanguage.RU to "🌐 Настройки языка",
-            AppLanguage.PT to "🌐 Configurações de Idioma", AppLanguage.VI to "🌐 Cài đặt ngôn ngữ", AppLanguage.TH to "🌐 การตั้งค่าภาษา",
-            AppLanguage.AR to "🌐 إعدادات اللغة", AppLanguage.HI to "🌐 भाषा सेटिंग्स", AppLanguage.ID to "🌐 Pengaturan Bahasa"
+            AppLanguage.ZH_CN to " 语言设置", AppLanguage.ZH_TW to " 語言設置", AppLanguage.EN to " Language Settings",
+            AppLanguage.JA to " 言語設定", AppLanguage.KO to " 언어 설정", AppLanguage.ES to " Configuración de Idioma",
+            AppLanguage.FR to " Paramètres de langue", AppLanguage.DE to " Spracheinstellungen", AppLanguage.RU to " Настройки языка",
+            AppLanguage.PT to " Configurações de Idioma", AppLanguage.VI to " Cài đặt ngôn ngữ", AppLanguage.TH to " การตั้งค่าภาษา",
+            AppLanguage.AR to " إعدادات اللغة", AppLanguage.HI to " भाषा सेटिंग्स", AppLanguage.ID to " Pengaturan Bahasa"
         ))
         put("auto_follow_system", mapOf(
             AppLanguage.ZH_CN to "跟随系统", AppLanguage.ZH_TW to "跟隨系統", AppLanguage.EN to "Follow System",
@@ -713,7 +706,7 @@ put("api_key_hint", mapOf(AppLanguage.ZH_CN to "sk-... 或留空（本地服务�
         put("service_status", mapOf(AppLanguage.ZH_CN to "服务状态", AppLanguage.EN to "Service Status", AppLanguage.JA to "サービス状態", AppLanguage.KO to "서비스 상태", AppLanguage.ZH_TW to "服務狀態", AppLanguage.ES to "Estado del servicio", AppLanguage.FR to "État du service", AppLanguage.DE to "Dienststatus", AppLanguage.RU to "Статус сервиса", AppLanguage.PT to "Status do serviço", AppLanguage.VI to "Trạng thái dịch vụ", AppLanguage.TH to "สถานะบริการ", AppLanguage.AR to "حالة الخدمة", AppLanguage.HI to "सेवा की स्थिति", AppLanguage.ID to "Status layanan"))
         put("running", mapOf(AppLanguage.ZH_CN to "运行中", AppLanguage.EN to "Running", AppLanguage.JA to "実行中", AppLanguage.KO to "실행 중", AppLanguage.ZH_TW to "執行中", AppLanguage.ES to "Ejecutándose", AppLanguage.FR to "En cours", AppLanguage.DE to "Läuft", AppLanguage.RU to "Работает", AppLanguage.PT to "Executando", AppLanguage.VI to "Đang chạy", AppLanguage.TH to "กำลังทำงาน", AppLanguage.AR to "يعمل", AppLanguage.HI to "चल रहा है", AppLanguage.ID to "Berjalan"))
         put("stopped", mapOf(AppLanguage.ZH_CN to "已停止", AppLanguage.EN to "Stopped", AppLanguage.JA to "停止", AppLanguage.KO to "중지됨", AppLanguage.ZH_TW to "已停止", AppLanguage.ES to "Detenido", AppLanguage.FR to "Arrêté", AppLanguage.DE to "Gestoppt", AppLanguage.RU to "Остановлен", AppLanguage.PT to "Parado", AppLanguage.VI to "Đã dừng", AppLanguage.TH to "หยุดแล้ว", AppLanguage.AR to "متوقف", AppLanguage.HI to "रुक गया", AppLanguage.ID to "Berhenti"))
-        put("active_model", mapOf(AppLanguage.ZH_CN to "🧠 当前活跃模型", AppLanguage.EN to "🧠 Current Active Model", AppLanguage.JA to "🧠 現在アクティブモデル", AppLanguage.KO to "🧠 현재 활성 모델", AppLanguage.ZH_TW to "🧠 目前活躍模型", AppLanguage.ES to "🧠 Modelo activo actual", AppLanguage.FR to "🧠 Modèle actif actuel", AppLanguage.DE to "🧠 Aktives Modell", AppLanguage.RU to "🧠 Текущая модель", AppLanguage.PT to "🧠 Modelo ativo atual", AppLanguage.VI to "🧠 Mô hình đang hoạt độง", AppLanguage.TH to "🧠 โมเดลที่ใช้งานอยู่", AppLanguage.AR to "🧠 النموذج النشط الحالي", AppLanguage.HI to "🧠 वर्तमान सक्रिय मॉडल", AppLanguage.ID to "🧠 Model aktif saat ini"))
+        put("active_model", mapOf(AppLanguage.ZH_CN to " 当前活跃模型", AppLanguage.EN to " Current Active Model", AppLanguage.JA to " 現在アクティブモデル", AppLanguage.KO to " 현재 활성 모델", AppLanguage.ZH_TW to " 目前活躍模型", AppLanguage.ES to " Modelo activo actual", AppLanguage.FR to " Modèle actif actuel", AppLanguage.DE to " Aktives Modell", AppLanguage.RU to " Текущая модель", AppLanguage.PT to " Modelo ativo atual", AppLanguage.VI to " Mô hình đang hoạt độง", AppLanguage.TH to " โมเดลที่ใช้งานอยู่", AppLanguage.AR to " النموذج النشط الحالي", AppLanguage.HI to " वर्तमान सक्रिय मॉडल", AppLanguage.ID to " Model aktif saat ini"))
         put("sync_models", mapOf(AppLanguage.ZH_CN to "同步模型", AppLanguage.EN to "Sync Models", AppLanguage.JA to "モデル同期", AppLanguage.KO to "모델 동기화", AppLanguage.ZH_TW to "同步模型", AppLanguage.ES to "Sincronizar modelos", AppLanguage.FR to "Synchroniser modèles", AppLanguage.DE to "Modelle synchronisieren", AppLanguage.RU to "Синхронизация моделей", AppLanguage.PT to "Sincronizar modelos", AppLanguage.VI to "Đồng bộ mô hình", AppLanguage.TH to "ซิงค์โมเดล", AppLanguage.HI to "मॉडल सिंक करें", AppLanguage.AR to "مزامنة النماذج", AppLanguage.ID to "Sinkronkan model"))
         put("search_model", mapOf(AppLanguage.ZH_CN to "搜索模型", AppLanguage.EN to "Search Model", AppLanguage.JA to "モデル検索", AppLanguage.KO to "모델 검색", AppLanguage.ZH_TW to "搜尋模型", AppLanguage.ES to "Buscar modelo", AppLanguage.FR to "Rechercher modèle", AppLanguage.DE to "Modell suchen", AppLanguage.RU to "Поиск модели", AppLanguage.PT to "Buscar modelo", AppLanguage.VI to "Tìm mô hình", AppLanguage.TH to "ค้นหาโมเดล", AppLanguage.HI to "मॉडल खोजें", AppLanguage.AR to "البحث عن نموذج", AppLanguage.ID to "Cari model"))
         put("search_hint", mapOf(AppLanguage.ZH_CN to "输入模型名称/ID/别名...", AppLanguage.EN to "Enter model name/ID/alias...", AppLanguage.JA to "モデル名/ID/別名を入力...", AppLanguage.KO to "모델 이름/ID/별칭 입력...", AppLanguage.ZH_TW to "輸入模型名稱/ID/別名...", AppLanguage.ES to "Ingrese nombre/ID/alias...", AppLanguage.FR to "Saisir nom/ID/alias...", AppLanguage.DE to "Modellname/ID/Alias eingeben...", AppLanguage.RU to "Введите имя/ID/псевдоним...", AppLanguage.PT to "Insira nome/ID/alias...", AppLanguage.VI to "Nhập tên/ID/bí danh...", AppLanguage.TH to "ป้อนชื่อ/ID/นามแฝง...", AppLanguage.AR to "أدخل اسم/معرف/اسم مستعار...", AppLanguage.HI to "नाम/ID/उपनाम दर्ज करें...", AppLanguage.ID to "Masukkan nama/ID/alias..."))
@@ -746,129 +739,129 @@ private val runtimeTextReplacements: List<Pair<String, String>> = listOf(
     "Qwen (通义千问)" to "Qwen (Tongyi Qianwen)",
     "Ollama (本地)" to "Ollama (local)",
     "Custom (自定义)" to "Custom",
-    "🔄 自动化切换" to "🔄 Auto switch",
+    " 自动化切换" to " Auto switch",
     "新对话" to "New chat",
     "新代理" to "New proxy",
-    "📤 发送" to "📤 Sending",
-    "💭 思考" to "💭 Thinking",
-    "📥 回复" to "📥 Replying",
-    "⏳ 等待中" to "⏳ Waiting",
+    " 发送" to " Sending",
+    " 思考" to " Thinking",
+    " 回复" to " Replying",
+    " 等待中" to " Waiting",
     "等待中" to "Waiting",
-    "⏳ 测速中..." to "⏳ Testing speed...",
+    " 测速中..." to " Testing speed...",
     "测速中" to "Testing speed",
     "· 无输出" to "· No output",
     "不可用" to "Unavailable",
     "超时" to "Timed out",
     "启动网关失败: " to "Failed to start gateway: ",
     "停止网关失败: " to "Failed to stop gateway: ",
-    "✅ 网关端口已设置为 " to "✅ Gateway port set to ",
-    "⚠️ 端口号范围：1-65535" to "⚠️ Port range: 1–65535",
-    "✅ 代理「" to "✅ Proxy “",
+    " 网关端口已设置为 " to " Gateway port set to ",
+    " 端口号范围：1-65535" to " Port range: 1–65535",
+    " 代理「" to " Proxy “",
     "」已添加" to "” added",
     "」已更新" to "” updated",
     "」已删除" to "” deleted",
     "」已启用（" to "” enabled (",
     "」已关闭" to "” disabled",
-    "🚀 代理「" to "🚀 Proxy “",
-    "🔌 代理「" to "🔌 Proxy “",
-    "🔌 代理已关闭" to "🔌 Proxy disabled",
-    "⚠️ 没有可用的代理配置，请先添加代理" to "⚠️ No usable proxy configuration. Add a proxy first.",
-    "⚠️ 代理配置错误: " to "⚠️ Proxy configuration error: ",
-    "⏳ 正在测试 " to "⏳ Testing ",
-    "⚠️ 仅支持 HTTP/HTTPS/SOCKS5 测速" to "⚠️ Only HTTP/HTTPS/SOCKS5 speed tests are supported",
-    "(🌍 海外)" to "(🌍 international)",
-    "(🇨🇳 国内)" to "(🇨🇳 domestic)",
+    " 代理「" to " Proxy “",
+    " 代理「" to " Proxy “",
+    " 代理已关闭" to " Proxy disabled",
+    " 没有可用的代理配置，请先添加代理" to " No usable proxy configuration. Add a proxy first.",
+    " 代理配置错误: " to " Proxy configuration error: ",
+    " 正在测试 " to " Testing ",
+    " 仅支持 HTTP/HTTPS/SOCKS5 测速" to " Only HTTP/HTTPS/SOCKS5 speed tests are supported",
+    "(海外)" to "(international)",
+    "(国内)" to "(domestic)",
     "国内外均无法访问" to "cannot reach domestic or international endpoints",
     " 测速失败: " to " speed test failed: ",
-    "⏳ 正在获取订阅..." to "⏳ Fetching subscription...",
-    "❌ 订阅获取失败: " to "❌ Failed to fetch subscription: ",
-    "❌ 订阅内容为空" to "❌ Subscription content is empty",
-    "⚠️ 未解析到有效节点" to "⚠️ No valid nodes were parsed",
-    "✅ 成功导入 " to "✅ Successfully imported ",
+    " 正在获取订阅..." to " Fetching subscription...",
+    " 订阅获取失败: " to " Failed to fetch subscription: ",
+    " 订阅内容为空" to " Subscription content is empty",
+    " 未解析到有效节点" to " No valid nodes were parsed",
+    " 成功导入 " to " Successfully imported ",
     " 个节点" to " nodes",
-    "❌ 订阅导入失败: " to "❌ Subscription import failed: ",
-    "❌ 无法解析该代理链接" to "❌ Unable to parse this proxy link",
-    "❌ 解析失败: " to "❌ Parsing failed: ",
-    "⏳ 正在申请后台权限..." to "⏳ Requesting background permissions...",
-    "✅ 后台权限已绑定！请确保已在系统设置中允许自启动" to "✅ Background permissions configured. Ensure auto-start is allowed in system settings.",
-    "⚠️ 部分权限申请失败（可能需要 Root）: " to "⚠️ Some permission requests failed (root may be required): ",
+    " 订阅导入失败: " to " Subscription import failed: ",
+    " 无法解析该代理链接" to " Unable to parse this proxy link",
+    " 解析失败: " to " Parsing failed: ",
+    " 正在申请后台权限..." to " Requesting background permissions...",
+    " 后台权限已绑定！请确保已在系统设置中允许自启动" to " Background permissions configured. Ensure auto-start is allowed in system settings.",
+    " 部分权限申请失败（可能需要 Root）: " to " Some permission requests failed (root may be required): ",
     "请输入服务商名称" to "Enter a provider name",
     "请输入 API 地址" to "Enter an API address",
-    "✅ 服务商「" to "✅ Provider “",
+    " 服务商「" to " Provider “",
     "」添加成功" to "” added successfully",
     "添加失败: " to "Add failed: ",
-    "✅ 服务商已更新" to "✅ Provider updated",
+    " 服务商已更新" to " Provider updated",
     "更新失败: " to "Update failed: ",
-    "🗑️ 服务商「" to "🗑️ Provider “",
+    " 服务商「" to " Provider “",
     "」及关联模型已删除" to "” and its related models deleted",
     "删除失败: " to "Delete failed: ",
     "操作失败: " to "Operation failed: ",
-    "✅ 已加载 " to "✅ Loaded ",
+    " 已加载 " to " Loaded ",
     " 个预设模型" to " preset models",
     "未知错误" to "Unknown error",
-    "❌ 同步失败 " to "❌ Sync failed ",
+    " 同步失败 " to " Sync failed ",
     "模型同步失败: " to "Model sync failed: ",
-    "❌ 响应中未找到模型列表" to "❌ No model list found in the response",
+    " 响应中未找到模型列表" to " No model list found in the response",
     "接口返回格式异常" to "unexpected response format",
-    "⚠️ 服务商返回了空模型列表" to "⚠️ The provider returned an empty model list",
+    " 服务商返回了空模型列表" to " The provider returned an empty model list",
     "同步完成，但未找到模型" to "Sync completed, but no models were found",
-    "✅ 成功同步 " to "✅ Successfully synced ",
+    " 成功同步 " to " Successfully synced ",
     " 个模型" to " models",
-    "✅ 已同步 " to "✅ Synced ",
-    "❌ 同步出错: " to "❌ Sync error: ",
-    "✅ 模型已启用" to "✅ Model enabled",
-    "⏸️ 模型已暂停" to "⏸️ Model paused",
-    "✅ 别名已更新: " to "✅ Alias updated: ",
-    "✅ 已恢复默认名称" to "✅ Default name restored",
-    "❌ 别名保存失败: " to "❌ Failed to save alias: ",
-    "🔄 走代理" to "🔄 Via proxy",
-    "🔗 直连" to "🔗 Direct",
+    " 已同步 " to " Synced ",
+    " 同步出错: " to " Sync error: ",
+    " 模型已启用" to " Model enabled",
+    "⏸ 模型已暂停" to "⏸ Model paused",
+    " 别名已更新: " to " Alias updated: ",
+    " 已恢复默认名称" to " Default name restored",
+    " 别名保存失败: " to " Failed to save alias: ",
+    " 走代理" to " Via proxy",
+    " 直连" to " Direct",
     " 已切换为 " to " switched to ",
-    "❌ 模型代理配置失败: " to "❌ Failed to configure model proxy: ",
-    "🗑️ 对话已删除" to "🗑️ Conversation deleted",
+    " 模型代理配置失败: " to " Failed to configure model proxy: ",
+    " 对话已删除" to " Conversation deleted",
     "重命名失败: " to "Rename failed: ",
-    "⚠️ 请先选择一个模型" to "⚠️ Select a model first",
-    "⚠️ 请先启动测速获取可用模型排行" to "⚠️ Start the speed test first to obtain an available-model ranking",
-    "⚠️ 服务商不可用或已禁用" to "⚠️ Provider is unavailable or disabled",
-    "❌ 请求失败: " to "❌ Request failed: ",
-    "❌ 发送失败: " to "❌ Send failed: ",
+    " 请先选择一个模型" to " Select a model first",
+    " 请先启动测速获取可用模型排行" to " Start the speed test first to obtain an available-model ranking",
+    " 服务商不可用或已禁用" to " Provider is unavailable or disabled",
+    " 请求失败: " to " Request failed: ",
+    " 发送失败: " to " Send failed: ",
     " 失败，自动切换到 " to " failed; automatically switching to ",
     " 重试..." to " and retrying...",
     "用户: " to "User: ",
     "\nAI: " to "\nAI: ",
-    "✅ 用量记录已清除" to "✅ Usage records cleared",
+    " 用量记录已清除" to " Usage records cleared",
     "清除失败: " to "Clear failed: ",
-    "✅ 数据导出成功" to "✅ Data exported successfully",
-    "❌ 导出失败: " to "❌ Export failed: ",
-    "✅ 所有数据已重置" to "✅ All data reset",
-    "❌ 重置失败: " to "❌ Reset failed: ",
-    "❌ 获取模型失败 " to "❌ Failed to fetch models ",
-    "⚠️ 响应中未找到模型列表，但连接成功" to "⚠️ Connected successfully, but no model list was found in the response",
-    "✅ 成功获取 " to "✅ Successfully fetched ",
-    "❌ 获取模型列表失败: " to "❌ Failed to fetch model list: ",
+    " 数据导出成功" to " Data exported successfully",
+    " 导出失败: " to " Export failed: ",
+    " 所有数据已重置" to " All data reset",
+    " 重置失败: " to " Reset failed: ",
+    " 获取模型失败 " to " Failed to fetch models ",
+    " 响应中未找到模型列表，但连接成功" to " Connected successfully, but no model list was found in the response",
+    " 成功获取 " to " Successfully fetched ",
+    " 获取模型列表失败: " to " Failed to fetch model list: ",
     "未找到关联服务商" to "related provider not found",
     " 测试失败: " to " test failed: ",
-    "⏳ 测试 [" to "⏳ Testing [",
-    "✅ 批量测试完成: " to "✅ Batch test complete: ",
+    " 测试 [" to " Testing [",
+    " 批量测试完成: " to " Batch test complete: ",
     " 个通过(已自动启用), " to " passed (automatically enabled), ",
     " 个失败" to " failed",
-    "❌ 批量测试出错: " to "❌ Batch test error: ",
-    "🔍 抓包模式已开启，请求日志将记录" to "🔍 Packet capture enabled; request logs will be recorded",
-    "🔍 抓包模式已关闭" to "🔍 Packet capture disabled",
-    "🔄 自动故障转移已开启，请求失败自动切换模型" to "🔄 Automatic failover enabled; failed requests will switch models automatically",
-    "🔄 自动故障转移已关闭" to "🔄 Automatic failover disabled",
-    "🔄 自动化切换已开启" to "🔄 Automatic switching enabled",
-    "🔄 自动化切换已关闭" to "🔄 Automatic switching disabled",
-    "↩️ 已取消强制切换，回到自动排行模式" to "↩️ Forced switching cancelled; returned to automatic ranking",
-    "🎯 已强制切换到: " to "🎯 Forced switch to: ",
+    " 批量测试出错: " to " Batch test error: ",
+    " 抓包模式已开启，请求日志将记录" to " Packet capture enabled; request logs will be recorded",
+    " 抓包模式已关闭" to " Packet capture disabled",
+    " 自动故障转移已开启，请求失败自动切换模型" to " Automatic failover enabled; failed requests will switch models automatically",
+    " 自动故障转移已关闭" to " Automatic failover disabled",
+    " 自动化切换已开启" to " Automatic switching enabled",
+    " 自动化切换已关闭" to " Automatic switching disabled",
+    " 已取消强制切换，回到自动排行模式" to " Forced switching cancelled; returned to automatic ranking",
+    " 已强制切换到: " to " Forced switch to: ",
     "群聊模式已开启，但未选择参与模型。请在管理页配置。" to "Group chat is enabled, but no participant models are selected. Configure them on the management page.",
-    "📋 **群聊开始**" to "📋 **Group chat started**",
+    " **群聊开始**" to " **Group chat started**",
     "用户提问：" to "User question: ",
     "## 第 " to "## Round ",
     " 轮" to "",
     "（请求失败: " to "(request failed: ",
-    "## 📝 总结报告" to "## 📝 Summary report",
-    "## 📝 总结失败: " to "## 📝 Summary failed: ",
+    "##  总结报告" to "##  Summary report",
+    "##  总结失败: " to "##  Summary failed: ",
 ).sortedByDescending { it.first.length }
 
 
@@ -878,7 +871,7 @@ fun localizeGeneratedName(text: String): String = when (text) {
     "Qwen (通义千问)", "Qwen (Tongyi Qianwen)" -> localizedText("Qwen (通义千问)", "Qwen (Tongyi Qianwen)")
     "Ollama (本地)", "Ollama (local)" -> localizedText("Ollama (本地)", "Ollama (local)")
     "Custom (自定义)", "Custom" -> localizedText("Custom (自定义)", "Custom")
-    "🔄 自动化切换", "🔄 Auto switch" -> localizedText("🔄 自动化切换", "🔄 Auto switch")
+    " 自动化切换", " Auto switch" -> localizedText(" 自动化切换", " Auto switch")
     "新代理", "New proxy" -> localizedText("新代理", "New proxy")
     "未命名代理", "Unnamed proxy" -> localizedText("未命名代理", "Unnamed proxy")
     "新对话", "New chat" -> localizedText("新对话", "New chat")

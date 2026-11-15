@@ -293,7 +293,7 @@ object GatewayScheduler {
                         bestModelSetTime = now
                     }
                     if (GatewayForegroundService.getDebugMode()) {
-                        GatewayForegroundService.addDebugLog("✓ P${model.providerId} · ${model.modelId}: ${latency}ms")
+                        GatewayForegroundService.addDebugLog(" P${model.providerId} · ${model.modelId}: ${latency}ms")
                     }
                 } else {
                     synchronized(healthCache) {

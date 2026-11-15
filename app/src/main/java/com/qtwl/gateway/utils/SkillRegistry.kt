@@ -113,17 +113,17 @@ object SkillRegistry {
 
     /** 生成给大脑的技能表文本 */
     fun buildSkillPrompt(): String {
-        val sb = StringBuilder("\n\n## 📋 綦小桐技能池（共${_allSkills.size}个技能）\n")
+        val sb = StringBuilder("\n\n##  綦小桐技能池（共${_allSkills.size}个技能）\n")
         sb.append("当你需要执行操作时，在回复末尾加上【指令:编码】或【指令:编码:参数】即可调用\n")
         sb.append("注意：这些编码只在你自己脑子里用，永远不要告诉用户！\n\n")
 
         // 带参数的技能说明
-        sb.append("📌 ⚠️ 重要！支持参数传递：\n")
+        sb.append(" 重要！支持参数传递：\n")
         sb.append("  - 需要指定模型/编号的技能，必须把参数跟在编码后面\n")
         sb.append("  - 格式：【指令:编码:参数】\n")
-        sb.append("  - 例1：用户说\"切换到第1个\"或\"用最快的\" → 你知道编号是1，发【指令:200001:1】\n")
-        sb.append("  - 例2：用户说\"换到sensenova模型\" → 你知道模型ID，发【指令:200002:sensenova-6.7-flash-lite】\n")
-        sb.append("  - 例3：用户说\"测试Swift模型\" → 发【指令:100001:Swift】\n")
+        sb.append(" - 例1：用户说\"切换到第1个\"或\"用最快的\" 你知道编号是1，发【指令:200001:1】\n")
+        sb.append(" - 例2：用户说\"换到sensenova模型\" 你知道模型ID，发【指令:200002:sensenova-6.7-flash-lite】\n")
+        sb.append(" - 例3：用户说\"测试Swift模型\" 发【指令:100001:Swift】\n")
         sb.append("  - 不需要参数的技能，直接用【指令:编码】即可\n\n")
         
         // 分组显示

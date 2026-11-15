@@ -2,6 +2,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- Shizuku：请求 ADB（UID 2000）能力 -->
+    <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
+
     <!-- 网络权限 -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -16,17 +19,18 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- 文件存储权限（备份/恢复使用，Android 10+ 用 MediaStore，Android 11+ 需 MANAGE_EXTERNAL_STORAGE） -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <!-- Agent 访问整机存储（Android 11+ 需在系统设置中手动授予所有文件访问） -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:ignore="ScopedStorage" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
     <!-- Android 13+ 媒体文件读取 -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
-    <!-- Shizuku（本地模型后台保活/执行命令） -->
-    <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
 
     <application
         android:name=".GatewayApplication"
         android:allowBackup="true"
+        android:extractNativeLibs="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
@@ -43,6 +47,7 @@
             android:exported="true"
             android:launchMode="singleTask"
             android:label="@string/app_name"
+            android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.MyApplication">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -56,15 +61,14 @@
             android:exported="false"
             android:foregroundServiceType="specialUse" />
 
-        <!-- Shizuku Provider（本地模型后台命令/保活必需） -->
         <provider
-            android:name="rikka.shizuku.ShizukuProvider"
-            android:authorities="${applicationId}.shizuku"
-            android:multiprocess="false"
-            android:enabled="true"
-            android:exported="true"
-            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+        android:name="rikka.shizuku.ShizukuProvider"
+        android:authorities="${applicationId}.shizuku"
+        android:multiprocess="false"
+        android:enabled="true"
+        android:exported="true"
+        android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
 
-    </application>
+</application>
 
 </manifest>

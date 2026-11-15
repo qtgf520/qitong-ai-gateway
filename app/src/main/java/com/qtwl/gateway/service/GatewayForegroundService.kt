@@ -30,7 +30,7 @@ data class LiveSession(
     val id: Long = System.nanoTime(),
     val modelName: String,
     val requestPreview: String,
-    val status: String = "📤 发送",   // 📤 发送 | 💭 思考 | 📥 回复
+    val status: String = "发送",   // 发送 | 思考 | 回复
     val responsePreview: String = "",
     val timestamp: Long = System.currentTimeMillis()
 )
@@ -72,7 +72,6 @@ class GatewayForegroundService : Service() {
 
         val app = application as GatewayApplication
         gatewayService = GatewayService(app.database)
-        currentGatewayService = gatewayService  // ★★ 暴露当前网关实例（供预测预热/远程调用）★★
         wakeEnabled = getWakeEnabled()
         // ★★★ 恢复持久化的总流量统计（APP内使用）★★★ 通知栏流量不从持久化恢复，重启即清零
         totalUploadBytes.set(getSavedTraffic("total_upload"))
@@ -123,9 +122,9 @@ class GatewayForegroundService : Service() {
             val port = getGatewayPort()
             if (getGatewayWasRunning()) {
                 gatewayService.start(port = port)
-                addDebugLog("🔁 自启→网关已启动（上次运行中）")
+                addDebugLog(" 自启网关已启动（上次运行中）")
             } else {
-                addDebugLog("🔁 自启→网关未启动（上次已关闭）")
+                addDebugLog(" 自启网关未启动（上次已关闭）")
             }
         }
 
@@ -198,15 +197,15 @@ class GatewayForegroundService : Service() {
 
         val text = buildString {
             append(localizedText("端口 ", "Port ")).append(port)
-            append(localizedText("\n📊 当前会话 ", "\n📊 Current session ")).append("↑${formatBytes(upBytes)} ↓${formatBytes(downBytes)}")
-            append(localizedText("\n📈 总统计 ", "\n📈 All-time totals ")).append("↑${formatBytes(totalUp)} ↓${formatBytes(totalDown)}")
+            append(localizedText("\n当前会话 ", "\nCurrent session ")).append("${formatBytes(upBytes)} ${formatBytes(downBytes)}")
+            append(localizedText("\n总统计 ", "\nAll-time totals ")).append("${formatBytes(totalUp)} ${formatBytes(totalDown)}")
             append("\n$proxyText")
         }
 
         val title = buildString {
             append(if (wakeEnabled) localizedText("綦桐网关保活", "QiTong Gateway (keep-alive)") else localizedText("綦桐网关", "QiTong Gateway"))
             if (nodeName.isNotBlank()) {
-                val light = if (hasTraffic && isActive) " 🟢" else if (hasTraffic) " ⚪" else ""
+                val light = if (hasTraffic && isActive) " [·]" else if (hasTraffic) " [ ]" else ""
                 // ★★ 显示服务商ID：P服务商ID · 模型名 ★★
                 val nodeDisplay = if (activeNodeProviderId > 0L) "P$activeNodeProviderId · $nodeName" else nodeName
                 append(" ·$light $nodeDisplay")
@@ -287,7 +286,7 @@ class GatewayForegroundService : Service() {
                     setReferenceCounted(false)
                     acquire(30 * 60 * 1000L) // 最多30分钟自动释放
                 }
-                addDebugLog("🔌 WakeLock acquired")
+                addDebugLog(" WakeLock acquired")
             } catch (_: Exception) { }
         }
     }
@@ -312,7 +311,7 @@ class GatewayForegroundService : Service() {
                 300000, // 每5分钟
                 pi
             )
-            addDebugLog("⏰ Alarm keep-alive scheduled (5min)")
+            addDebugLog(" Alarm keep-alive scheduled (5min)")
         } catch (_: Exception) { }
     }
 
@@ -349,29 +348,31 @@ class GatewayForegroundService : Service() {
         private const val EXTRA_TOGGLE_WAKE = "toggle_wake"
         private const val KEY_TRAFFIC_UPLOAD = "traffic_upload"
         private const val KEY_TRAFFIC_DOWNLOAD = "traffic_download"
-        private const val KEY_GATEWAY_RUNNING = "gateway_was_running" // ★★ 自启状态记录 ★★
-        private const val KEY_CONTINUOUS_CHAT = "continuous_chat" // ★★ 连续对话模式 ★★
-        private const val DISABLED_SKILLS = "disabled_skills" // ★★ 禁用的技能编码列表 ★★
-        private const val KEY_PIPELINE_INTERVAL = "pipeline_interval_minutes" // ★★ 自动测速间隔（分钟）★★
+        private const val KEY_GATEWAY_RUNNING = "gateway_was_running" //  自启状态记录 
+        private const val KEY_CONTINUOUS_CHAT = "continuous_chat" //  连续对话模式 
+        private const val DISABLED_SKILLS = "disabled_skills" //  禁用的技能编码列表 
+        private const val KEY_PIPELINE_INTERVAL = "pipeline_interval_minutes" //  自动测速间隔（分钟）
         private const val DEFAULT_PORT = 8889
         private const val DEFAULT_PROXY_PORT = 7890
 
         // 运行时流量统计（由gateway更新）
         @Volatile var tokenPromptInput: Long = 0L
 @Volatile var tokenCompletionOutput: Long = 0L
-val trafficUploadBytes = java.util.concurrent.atomic.AtomicLong(0L)   // ★ 通知栏显示（可重置）
-val trafficDownloadBytes = java.util.concurrent.atomic.AtomicLong(0L) // ★ 通知栏显示（可重置）
-val totalUploadBytes = java.util.concurrent.atomic.AtomicLong(0L)     // ★ APP内总统计（持久化不重置）
-val totalDownloadBytes = java.util.concurrent.atomic.AtomicLong(0L)   // ★ APP内总统计（持久化不重置）
+val trafficUploadBytes = java.util.concurrent.atomic.AtomicLong(0L)   //  通知栏显示（可重置）
+val trafficDownloadBytes = java.util.concurrent.atomic.AtomicLong(0L) //  通知栏显示（可重置）
+val totalUploadBytes = java.util.concurrent.atomic.AtomicLong(0L)     //  APP内总统计（持久化不重置）
+val totalDownloadBytes = java.util.concurrent.atomic.AtomicLong(0L)   //  APP内总统计（持久化不重置）
         @Volatile var isServiceRunning: Boolean = false  // 由 start/stop 同步更新
-        @Volatile var currentGatewayService: GatewayService? = null  // ★★ 当前网关实例（供预测预热/远程调用）★★
 
         @Volatile var activeNodeName: String = ""
-        @Volatile var activeNodeProviderId: Long = 0L  // ★ 当前活跃模型的服务商ID（通知栏显示P服务商ID·模型名）
+        @Volatile var activeNodeProviderId: Long = 0L  //  当前活跃模型的服务商ID（通知栏显示P服务商ID·模型名）
         @Volatile var lastUploadBytes: Long = 0L
         @Volatile var lastDownloadBytes: Long = 0L
         @Volatile var idleCount: Int = 0
-        @Volatile var lastActivityTime: Long = 0L  // ★ 最后活跃时间戳（毫秒）
+        @Volatile var lastActivityTime: Long = 0L  //  最后活跃时间戳（毫秒）
+
+        // ★★ 当前网关实例（供预测预热/远程调用）★★
+        @Volatile var currentGatewayService: com.qtwl.gateway.gateway.GatewayService? = null
 
         // ★ Debug 日志（环形缓冲区，保留最近20条）
         @Volatile var debugLogBuffer = mutableListOf<String>()
@@ -414,7 +415,7 @@ val totalDownloadBytes = java.util.concurrent.atomic.AtomicLong(0L)   // ★ APP
                 // 带上当前流量统计
                 val up = trafficUploadBytes.get()
                 val down = trafficDownloadBytes.get()
-                val trafficInfo = if (up > 0 || down > 0) " ↑${formatBytesStatic(up)} ↓${formatBytesStatic(down)}" else ""
+                val trafficInfo = if (up > 0 || down > 0) " ${formatBytesStatic(up)} ${formatBytesStatic(down)}" else ""
                 debugLogBuffer.add("[$time$trafficInfo] $msg")
                 if (debugLogBuffer.size > MAX_DEBUG_LOG) {
                     debugLogBuffer.removeAt(0)
@@ -440,7 +441,7 @@ val totalDownloadBytes = java.util.concurrent.atomic.AtomicLong(0L)   // ★ APP
         }
         fun getAutoFailover(): Boolean = GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).getBoolean(KEY_AUTO_FAILOVER, false)
 
-        /** v3.18.26：输出截断自动续写开关（finish_reason=length 时自动再请求一次） */
+        /**  v3.19.0：输出截断自动续写开关（finish_reason=length 时自动再请求一次） */
         fun saveAutoContinueOnLength(enabled: Boolean) {
             GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).edit().putBoolean(KEY_AUTO_CONTINUE_ON_LENGTH, enabled).apply()
         }
@@ -451,13 +452,13 @@ val totalDownloadBytes = java.util.concurrent.atomic.AtomicLong(0L)   // ★ APP
         }
         fun getQtaiSjEnabled(): Boolean = GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).getBoolean(KEY_QTAI_SJ_ENABLED, true)
 
-        /** ★★ qtai-sj 绑定的脑子模型ID ★★ */
+        /**  qtai-sj 绑定的脑子模型ID  */
     fun saveQtaiSjBrain(modelId: String) {
         GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).edit().putString(KEY_QTAI_SJ_BRAIN, modelId).apply()
     }
     fun getQtaiSjBrain(): String = GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).getString(KEY_QTAI_SJ_BRAIN, "") ?: ""
     
-    /** ★★ qtai-sj 人格名称（动态绑定，用户可自定义） ★★ */
+    /**  qtai-sj 人格名称（动态绑定，用户可自定义）  */
     fun saveQtaiSjName(name: String) {
         GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).edit().putString(KEY_QTAI_SJ_NAME, name).apply()
     }
@@ -479,7 +480,7 @@ val totalDownloadBytes = java.util.concurrent.atomic.AtomicLong(0L)   // ★ APP
     }
     fun isSkillEnabled(code: String): Boolean = code !in getDisabledSkills()
 
-    /** ★★ 自动测速间隔（分钟），默认30分钟，范围5~240 ★★ */
+    /**  自动测速间隔（分钟），默认30分钟，范围5~240  */
     fun savePipelineInterval(minutes: Int) {
         GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).edit().putInt(KEY_PIPELINE_INTERVAL, minutes.coerceIn(5, 240)).apply()
     }
@@ -634,13 +635,13 @@ val totalDownloadBytes = java.util.concurrent.atomic.AtomicLong(0L)   // ★ APP
             }
         }
         
-        /** ★★ 切换模型时调用：通知栏流量清零重新累计，APP内总统计不变 ★★ */
+        /**  切换模型时调用：通知栏流量清零重新累计，APP内总统计不变  */
         fun resetNotificationTraffic() {
             trafficUploadBytes.set(0L)
             trafficDownloadBytes.set(0L)
         }
         
-        /** ★★ 清除全部总统计（总上传+总下载+持久化）★★ */
+        /**  清除全部总统计（总上传+总下载+持久化） */
         fun clearTotalTraffic() {
             totalUploadBytes.set(0L)
             totalDownloadBytes.set(0L)
@@ -749,14 +750,13 @@ val totalDownloadBytes = java.util.concurrent.atomic.AtomicLong(0L)   // ★ APP
         // ★★ 预测式预热管理器 —— 思考阶段预判下一模型，提前预热连接 ★★
         // ============================================================
         private class PredictivePrewarmManager(
-            private val gatewayService: GatewayService,
-            private val serviceScope: CoroutineScope
+            private val gatewayService: com.qtwl.gateway.gateway.GatewayService,
+            private val serviceScope: kotlinx.coroutines.CoroutineScope
         ) {
             private var lastThinkingModel: String? = null
             private var lastThinkingProvider: Long = 0L
             private var lastRequestType: String? = null
-            private var prewarmJob: Job? = null
-
+            private var prewarmJob: kotlinx.coroutines.Job? = null
             /** 思考开始：记录当前模型特征，预测下一模型并启动预热 */
             fun onThinkingStarted(modelId: String, providerId: Long, requestType: String) {
                 lastThinkingModel = modelId
@@ -764,19 +764,15 @@ val totalDownloadBytes = java.util.concurrent.atomic.AtomicLong(0L)   // ★ APP
                 lastRequestType = requestType
                 predictAndPrewarm()
             }
-
             /** 基于强制池/测速榜预测下一模型并预热连接 */
             private fun predictAndPrewarm() {
-                val nextModel = predictNextModel()
-                    ?: return
-
+                val nextModel = predictNextModel() ?: return
                 prewarmJob?.cancel()
                 prewarmJob = serviceScope.launch {
                     gatewayService.prewarmConnection(nextModel, timeoutMs = 5000)
                 }
                 addDebugLog("🔮 预测预热: 下一模型 $nextModel → 已启动连接预热")
             }
-
             /** 预测策略：①强制池下一个 ②测速榜下一个 ③兜底 qtai-sj */
             private fun predictNextModel(): String? {
                 val forcedPool = getForcedPool()
@@ -785,11 +781,9 @@ val totalDownloadBytes = java.util.concurrent.atomic.AtomicLong(0L)   // ★ APP
                     if (currentIdx >= 0 && currentIdx + 1 < forcedPool.size) {
                         return forcedPool[currentIdx + 1]
                     }
-                    // 当前不在池里或是最后一个，取池首
                     return forcedPool.firstOrNull()
                 }
-                // 无强制池：回退测速榜（需 GatewayService 暴露）
-                val speedRank = gatewayService.getSpeedRanking()
+                val speedRank = runCatching { gatewayService.getSpeedRanking() }.getOrNull().orEmpty()
                 if (speedRank.isNotEmpty()) {
                     val currentIdx = speedRank.indexOfFirst { it.modelId == lastThinkingModel }
                     if (currentIdx >= 0 && currentIdx + 1 < speedRank.size) {
@@ -797,10 +791,8 @@ val totalDownloadBytes = java.util.concurrent.atomic.AtomicLong(0L)   // ★ APP
                     }
                     return speedRank.firstOrNull()?.modelId
                 }
-                // 兜底：qtai-sj
                 return if (getQtaiSjEnabled()) "qtai-sj" else null
             }
-
             /** 切换完成：清理状态 */
             fun onSwitchCompleted() {
                 prewarmJob?.cancel()
@@ -809,30 +801,27 @@ val totalDownloadBytes = java.util.concurrent.atomic.AtomicLong(0L)   // ★ APP
                 lastThinkingProvider = 0L
                 lastRequestType = null
             }
-
             /** 销毁 */
             fun destroy() {
                 prewarmJob?.cancel()
                 prewarmJob = null
             }
         }
-
         @Volatile private var predictivePrewarmManager: PredictivePrewarmManager? = null
 
         /**
          * 思考阶段通知：记录当前模型特征 → 预测下一模型 → 预热连接
          * 供 GatewayService qtai-sj 大脑思考段调用
          */
-        fun notifyThinkingStarted(gatewayService: GatewayService, modelId: String, providerId: Long, requestType: String) {
+        fun notifyThinkingStarted(gatewayService: com.qtwl.gateway.gateway.GatewayService, modelId: String, providerId: Long, requestType: String) {
             try {
                 val mgr = predictivePrewarmManager
-                    ?: PredictivePrewarmManager(gatewayService, CoroutineScope(SupervisorJob() + Dispatchers.IO)).also {
+                    ?: PredictivePrewarmManager(gatewayService, kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)).also {
                         predictivePrewarmManager = it
                     }
                 mgr.onThinkingStarted(modelId, providerId, requestType)
             } catch (_: Exception) { }
         }
-
         /** 切换完成：清理预热状态 */
         fun notifySwitchCompleted() {
             try {

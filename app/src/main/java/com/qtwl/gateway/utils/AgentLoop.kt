@@ -70,7 +70,7 @@ object AgentLoop {
         userMessage: String,
         history: List<Pair<String, String>> = emptyList(),
         systemPrompt: String = "",
-        maxRounds: Int = 3,
+        maxRounds: Int = 200,
         /** 模型总 token 预算，用于裁剪输入、给输出留空间 */
         maxTokens: Int = 4096,
         generate: suspend (List<Pair<String, String>>) -> String,
@@ -96,7 +96,15 @@ object AgentLoop {
             round++
 
             // 按 token 预算裁剪。历史增长后必须裁，否则输出空间被挤没。
-            val trimmed = trimHistory(messages, maxTokens, reserveForOutput = 768)
+            // ★ 修复：旧版硬编码 reserveForOutput = 768，
+            //   但 generate() 那边的 n_predict 是另一个数，
+            //   两者对不上时会出现「历史留了很多、输出只给 512」的错配。
+            //   现在统一由 LocalLlmEngine 计算。
+            val trimmed = LocalLlmEngine.trimHistory(
+                messages,
+                maxTokens,
+                reserveForOutput = LocalLlmEngine.reserveForOutputTokens(maxTokens)
+            )
 
             // 1. 让模型生成
             val output = try {
@@ -180,38 +188,5 @@ object AgentLoop {
             steps = steps,
             hitLimit = true
         )
-    }
-
-    // ============ 内联工具函数（移植自 LocalLlmEngine，消除外部依赖）============
-
-    /** 粗略估算 token 数：中文按 1 字 1 token，英文按 4 字符 1 token */
-    private fun estimateTokens(text: String): Int {
-        var cjk = 0
-        var other = 0
-        for (ch in text) {
-            if (ch.code in 0x4E00..0x9FFF || ch.code in 0x3000..0x303F || ch.code in 0xFF00..0xFFEF) cjk++
-            else other++
-        }
-        return cjk + other / 4 + 1
-    }
-
-    /** 按 token 预算裁剪历史，保留最近的消息 */
-    private fun trimHistory(
-        messages: List<Pair<String, String>>,
-        maxTokens: Int,
-        reserveForOutput: Int = 768
-    ): List<Pair<String, String>> {
-        val budget = (maxTokens - reserveForOutput).coerceAtLeast(256)
-        val systems = messages.filter { it.first == "system" }
-        val rest = messages.filter { it.first != "system" }
-        var used = systems.sumOf { estimateTokens(it.second) }
-        val kept = ArrayDeque<Pair<String, String>>()
-        for (m in rest.asReversed()) {
-            val t = estimateTokens(m.second)
-            if (used + t > budget) break
-            used += t
-            kept.addFirst(m)
-        }
-        return systems + kept.toList()
     }
 }

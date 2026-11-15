@@ -34,7 +34,7 @@ fun KeyManagementScreen(onDismiss: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(localizedText("🔑 API 密钥管理", "🔑 API Key management")) },
+                title = { Text(localizedText("API 密钥管理", "API Key management")) },
                 navigationIcon = { IconButton(onClick = onDismiss) { Icon(Icons.Default.ArrowBack, contentDescription = null) } },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.primary, titleContentColor = MaterialTheme.colorScheme.onPrimary, navigationIconContentColor = MaterialTheme.colorScheme.onPrimary)
             )
@@ -165,7 +165,7 @@ private fun AddKeyDialog(onDismiss: () -> Unit, onSave: (String, String, List<St
                     Text(localizedText("允许 qtai-sj 访问", "Allow qtai-sj access"), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                     Switch(checked = qtaiSj, onCheckedChange = { qtaiSj = it })
                 }
-                Text(localizedText("💡 密钥为空列表时默认允许所有模型", "💡 Empty model list = allow all models"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(localizedText("密钥为空列表时默认允许所有模型", "Empty model list = allow all models"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
         confirmButton = { Button(onClick = { onSave(key, label, emptyList(), qtaiSj) }, enabled = key.isNotBlank()) { Text(localizedText("添加", "Add")) } },

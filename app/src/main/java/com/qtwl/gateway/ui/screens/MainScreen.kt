@@ -15,10 +15,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.draw.shadow
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -89,8 +87,6 @@ import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.qtwl.gateway.ui.components.GlassNavItem
 import com.qtwl.gateway.ui.components.LiquidGlassBottomNav
-import com.qtwl.gateway.ui.components.GlassSurface
-import com.qtwl.gateway.ui.components.GlassGroup
 import com.qtwl.gateway.utils.TranslationManager
 import com.qtwl.gateway.utils.tr
 import kotlinx.coroutines.delay
@@ -232,7 +228,7 @@ fun MainScreen(
                     6 -> AboutScreen(viewModel)
                     7 -> InstancesScreen(viewModel)
                     8 -> StatsScreen(viewModel)
-                    9 -> LocalModelScreen()
+                    9 -> LocalModelScreen(viewModel, onBack = { selectedTab = 4 })
                     else -> HomeScreen(viewModel)
                 }
             }
@@ -293,50 +289,13 @@ fun HomeScreen(viewModel: GatewayViewModel) {
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Spacer(modifier = Modifier.height(16.dp))
-        // 顶部标题区（液态玻璃质感 + 层次）
-        GlassSurface(
+
+        // 状态卡片
+        Card(
             modifier = Modifier.fillMaxWidth(),
-            cornerRadius = 28.dp,
-            alpha = 0.72f
-        ) {
-            Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
-                Text(
-                    text = tr("app_name"),
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    // 运行状态指示灯（发光圆点）
-                    Box(
-                        modifier = Modifier
-                            .size(10.dp)
-                            .shadow(
-                                elevation = 6.dp,
-                                shape = RoundedCornerShape(5.dp),
-                                ambientColor = if (serviceRunning) Online else Error,
-                                spotColor = if (serviceRunning) Online else Error
-                            )
-                            .background(
-                                if (serviceRunning) Online else Error,
-                                RoundedCornerShape(5.dp)
-                            )
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = if (serviceRunning) tr("gateway_running") else tr("gateway_stopped"),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (serviceRunning) Online else Error,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-            }
-        }
-        Spacer(modifier = Modifier.height(12.dp))
-        // 状态卡片（液态玻璃质感）
-        GlassSurface(
-            modifier = Modifier.fillMaxWidth(),
-            cornerRadius = 24.dp
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
+            )
         ) {
             Column(modifier = Modifier.padding(20.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -486,9 +445,11 @@ fun HomeScreen(viewModel: GatewayViewModel) {
         val pRunning by pipelineRunning.collectAsState()
         val pProgress by pipelineProgress.collectAsState()
         val pCountdown by pipelineCountdown.collectAsState()
-        GlassSurface(
+        Card(
             modifier = Modifier.fillMaxWidth(),
-            cornerRadius = 22.dp
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
+            )
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 // 开关行
@@ -854,9 +815,9 @@ Text(
         // ★★ 实时会话跑马灯（优化：水平滚动由 InfiniteTransition 动画驱动，会话列表低频刷新，避免全页每800ms重组卡顿）★★
         val currentSessions by viewModel.quickLiveSessions.collectAsState()
         if (currentSessions.isNotEmpty() && serviceRunning) {
-            GlassSurface(
+            Card(
                 modifier = Modifier.fillMaxWidth(),
-                cornerRadius = 20.dp
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 Column(modifier = Modifier.padding(12.dp)) {
                     Row(
@@ -923,7 +884,7 @@ Text(
         val thinkingDepth = remember { mutableStateOf(ThinkingConfigManager.getDepth()) }
         val depthOptions = ThinkingConfigManager.ThinkingDepth.entries
         var depthExpanded by remember { mutableStateOf(false) }
-        GlassSurface(modifier = Modifier.fillMaxWidth(), cornerRadius = 20.dp) {
+        Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Psychology, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
@@ -1029,9 +990,9 @@ Text(
                 delay(2000)
             }
         }
-        GlassSurface(
+        Card(
             modifier = Modifier.fillMaxWidth(),
-            cornerRadius = 20.dp
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1099,10 +1060,13 @@ Text(
             }
         }
         Spacer(modifier = Modifier.height(16.dp))
+
         // 使用说明
-        GlassSurface(
+        Card(
             modifier = Modifier.fillMaxWidth(),
-            cornerRadius = 20.dp
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
+            )
         ) {
             Column(modifier = Modifier.padding(20.dp)) {
                 Text(
@@ -1125,12 +1089,13 @@ Text(
         }
 
         Spacer(modifier = Modifier.height(16.dp))
+
         // 提示
-        GlassSurface(
+        Card(
             modifier = Modifier.fillMaxWidth(),
-            cornerRadius = 18.dp,
-            tint = Warning,
-            alpha = 0.22f
+            colors = CardDefaults.cardColors(
+                containerColor = Warning.copy(alpha = 0.15f)
+            )
         ) {
             Row(
                 modifier = Modifier.padding(16.dp),

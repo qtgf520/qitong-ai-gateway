@@ -85,7 +85,7 @@ object GroupChatManager {
         val maxRounds = getMaxRounds()
 
         val fullLog = mutableListOf<String>().apply {
-            add(localizedText("📋 **群聊开始**", "📋 **Group chat started**"))
+            add(localizedText("**群聊开始**", "**Group chat started**"))
             add(localizedText("用户提问：", "User question: ") + userMsg)
             add("---")
         }
@@ -143,13 +143,13 @@ object GroupChatManager {
                     if (summary.isNotBlank()) {
                         fullLog.add("")
                         fullLog.add("---")
-                        fullLog.add(localizedText("## 📝 总结报告", "## 📝 Summary report"))
+                        fullLog.add(localizedText("## 总结报告", "## Summary report"))
                         fullLog.add(summary)
                     }
                 } catch (e: Exception) {
                     fullLog.add("")
                     fullLog.add("---")
-                    fullLog.add(localizedText("## 📝 总结失败: ", "## 📝 Summary failed: ") + (e.message?.take(100) ?: "unknown"))
+                    fullLog.add(localizedText("## 总结失败: ", "## Summary failed: ") + (e.message?.take(100) ?: "unknown"))
                 }
             }
         }

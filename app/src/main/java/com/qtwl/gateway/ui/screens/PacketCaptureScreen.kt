@@ -80,14 +80,14 @@ fun PacketCaptureScreen(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(localizedText("🔍 抓包日志", "🔍 Packet capture logs"), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text(localizedText("抓包日志", "Packet capture logs"), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             if (showClearConfirm) {
                 Row {
                     TextButton(onClick = { showClearConfirm = false }) { Text(localizedText("取消", "Cancel")) }
                     TextButton(onClick = { PacketCapture.clear(); showClearConfirm = false }) { Text(localizedText("确认清空", "Confirm clear")) }
                 }
             } else {
-                TextButton(onClick = { showClearConfirm = true }) { Text(localizedText("🗑 清空", "🗑 Clear")) }
+                TextButton(onClick = { showClearConfirm = true }) { Text(localizedText("清空", "Clear")) }
             }
         }
 
@@ -103,7 +103,7 @@ fun PacketCaptureScreen(
             OutlinedTextField(
                 value = searchText,
                 onValueChange = setSearchText,
-                placeholder = { Text(localizedText("🔍 搜索关键词", "🔍 Search keyword")) },
+                placeholder = { Text(localizedText("搜索关键词", "Search keyword")) },
                 singleLine = true,
                 maxLines = 1,
                 modifier = Modifier.weight(2f),
@@ -115,11 +115,11 @@ fun PacketCaptureScreen(
                 },
                 textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp)
             )
-            TextButton(onClick = { statusFilter = null }) { Text(if (statusFilter == null) localizedText("📋 全部", "📋 All") else localizedText("全部", "All"), fontWeight = if (statusFilter == null) FontWeight.Bold else FontWeight.Normal) }
-            TextButton(onClick = { statusFilter = "200" }) { Text(if (statusFilter == "200") "✅ 200" else "200") }
-            TextButton(onClick = { statusFilter = "4xx" }) { Text(if (statusFilter == "4xx") "⚠️ 4xx" else "4xx") }
-            TextButton(onClick = { statusFilter = "5xx" }) { Text(if (statusFilter == "5xx") "❌ 5xx" else "5xx") }
-            TextButton(onClick = { statusFilter = "FAIL" }) { Text(if (statusFilter == "FAIL") "🔄 FAILOVER" else "FAIL") }
+            TextButton(onClick = { statusFilter = null }) { Text(if (statusFilter == null) localizedText("全部", "All") else localizedText("全部", "All"), fontWeight = if (statusFilter == null) FontWeight.Bold else FontWeight.Normal) }
+            TextButton(onClick = { statusFilter = "200" }) { Text(if (statusFilter == "200") "200" else "200") }
+            TextButton(onClick = { statusFilter = "4xx" }) { Text(if (statusFilter == "4xx") "4xx" else "4xx") }
+            TextButton(onClick = { statusFilter = "5xx" }) { Text(if (statusFilter == "5xx") "5xx" else "5xx") }
+            TextButton(onClick = { statusFilter = "FAIL" }) { Text(if (statusFilter == "FAIL") "FAILOVER" else "FAIL") }
         }
 
         Spacer(modifier = Modifier.height(8.dp))
@@ -130,7 +130,7 @@ fun PacketCaptureScreen(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
-                Text(localizedText("📭 暂无抓包记录\\n先开启抓包模式再发请求", "📭 No packet-capture records yet\\nEnable capture mode before sending requests"), textAlign = androidx.compose.ui.text.style.TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(localizedText("暂无抓包记录\\n先开启抓包模式再发请求", "No packet-capture records yet\\nEnable capture mode before sending requests"), textAlign = androidx.compose.ui.text.style.TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         } else {
             LazyColumn(
@@ -186,7 +186,7 @@ fun PacketRecordCard(
                     else -> MaterialTheme.colorScheme.onSurfaceVariant
                 }
                 Text(
-                    text = if (isError) "❌" else if (record.failover != null) "🔄" else if (isComplete) "✅" else "⏳",
+                    text = if (isError) "" else if (record.failover != null) "" else if (isComplete) "" else "⏳",
                     modifier = Modifier.size(16.dp)
                 )
                 Text(
@@ -213,7 +213,7 @@ fun PacketRecordCard(
                 record.response?.let { resp ->
                     if (resp.promptTokens > 0) {
                         Text(
-                            text = "↑${resp.promptTokens} ↓${resp.completionTokens}",
+                            text = "${resp.promptTokens} ↓${resp.completionTokens}",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.secondary
                         )
@@ -249,7 +249,7 @@ fun PacketCaptureDetailDialog(
         onDismissRequest = onDismiss,
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(localizedText("📦 抓包详情 #", "📦 Packet capture details #") + currentRecord.id)
+                Text(localizedText("抓包详情 #", "Packet capture details #") + currentRecord.id)
                 Spacer(modifier = Modifier.weight(1f))
                 TextButton(onClick = onDismiss) { Text(localizedText("关闭", "Close")) }
             }
@@ -262,7 +262,7 @@ fun PacketCaptureDetailDialog(
                 // 入站
                 currentRecord.inbound?.let { inbound ->
                     item {
-                        Text(localizedText("📥 入站", "📥 Inbound"), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        Text(localizedText("入站", "Inbound"), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                         CodeBlock(
                             text = buildString {
                                 appendLine(localizedText("时间: ", "Time: ") + currentRecord.timestamp)
@@ -280,7 +280,7 @@ fun PacketCaptureDetailDialog(
                 // 出站
                 currentRecord.outbound?.let { outbound ->
                     item {
-                        Text(localizedText("📤 出站", "📤 Outbound"), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
+                        Text(localizedText("出站", "Outbound"), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
                         CodeBlock(
                             text = buildString {
                                 appendLine("URL: ${outbound.targetUrl}")
@@ -296,7 +296,7 @@ fun PacketCaptureDetailDialog(
                 // 响应
                 currentRecord.response?.let { resp ->
                     item {
-                        Text(localizedText("📥 响应", "📥 Response"), fontWeight = FontWeight.Bold, color = when {
+                        Text(localizedText("响应", "Response"), fontWeight = FontWeight.Bold, color = when {
                             resp.httpStatus >= 500 -> MaterialTheme.colorScheme.error
                             resp.httpStatus >= 400 -> MaterialTheme.colorScheme.tertiary
                             else -> MaterialTheme.colorScheme.primary
@@ -318,7 +318,7 @@ fun PacketCaptureDetailDialog(
                 // 故障转移
                 currentRecord.failover?.let { failover ->
                     item {
-                        Text(localizedText("🔄 故障转移", "🔄 Failover"), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
+                        Text(localizedText("故障转移", "Failover"), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
                         CodeBlock(
                             text = buildString {
                                 appendLine(localizedText("最终模型: ", "Final model: ") + failover.finalModel)

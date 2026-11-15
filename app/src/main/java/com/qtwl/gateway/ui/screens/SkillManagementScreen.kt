@@ -52,12 +52,12 @@ fun SkillManagementScreen(onDismiss: () -> Unit) {
                     IconButton(onClick = onDismiss) {
                         Icon(Icons.Default.Close, contentDescription = localizedText("关闭", "Close"))
                     }
-                    Text(localizedText("📋 技能管理", "📋 Skill Management"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Text(localizedText("技能管理", "Skill Management"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 }
             }
             
             Column(
-                modifier = Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()),
+                modifier = Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()).padding(bottom = 96.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
             // 内置技能
@@ -66,7 +66,7 @@ fun SkillManagementScreen(onDismiss: () -> Unit) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Build, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.width(8.dp))
-                        Text(localizedText("🔧 内置技能 (${builtinSkills.size})", "🔧 Built-in skills (${builtinSkills.size})"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text(localizedText("内置技能 (${builtinSkills.size})", "Built-in skills (${builtinSkills.size})"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     }
                     Spacer(Modifier.height(8.dp))
                     Text(localizedText("内置技能不可删除和编辑，仅可查看详情", "Built-in skills cannot be deleted or edited"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -103,7 +103,7 @@ fun SkillManagementScreen(onDismiss: () -> Unit) {
                         Icon(Icons.Default.Extension, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.width(8.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(localizedText("🧩 自定义技能 (${customSkills.size})", "🧩 Custom skills (${customSkills.size})"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text(localizedText("自定义技能 (${customSkills.size})", "Custom skills (${customSkills.size})"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         }
                     }
                     Spacer(Modifier.height(8.dp))
@@ -152,7 +152,7 @@ fun SkillManagementScreen(onDismiss: () -> Unit) {
                                     IconButton(onClick = {
                                         CustomSkillManager.delete(skill.id)
                                         customSkills = CustomSkillManager.getAll()
-                                        scope.launch { snackbarHostState.showSnackbar(localizedText("✅ 已删除: ", "✅ Deleted: ") + skill.name) }
+                                        scope.launch { snackbarHostState.showSnackbar(localizedText("已删除: ", "Deleted: ") + skill.name) }
                                     }) {
                                         Icon(Icons.Default.Delete, contentDescription = localizedText("删除", "Delete"), tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
                                     }
@@ -174,7 +174,7 @@ fun SkillManagementScreen(onDismiss: () -> Unit) {
             onSave = {
                 showAddDialog = false
                 customSkills = CustomSkillManager.getAll()
-                scope.launch { snackbarHostState.showSnackbar(localizedText("✅ 技能已保存", "✅ Skill saved")) }
+                scope.launch { snackbarHostState.showSnackbar(localizedText("技能已保存", "Skill saved")) }
             }
         )
     }
@@ -186,7 +186,7 @@ fun SkillManagementScreen(onDismiss: () -> Unit) {
             onImported = { count ->
                 showImportDialog = false
                 customSkills = CustomSkillManager.getAll()
-                scope.launch { snackbarHostState.showSnackbar(localizedText("✅ 导入了 $count 个技能", "✅ Imported $count skills")) }
+                scope.launch { snackbarHostState.showSnackbar(localizedText("导入了 $count 个技能", "Imported $count skills")) }
             }
         )
     }
@@ -267,7 +267,7 @@ private fun ImportSkillDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(localizedText("📥 从Git导入技能", "📥 Import skills from Git"), fontWeight = FontWeight.Bold) },
+        title = { Text(localizedText("从Git导入技能", "Import skills from Git"), fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(localizedText("输入raw.githubusercontent.com的raw链接", "Enter raw.githubusercontent.com URL"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

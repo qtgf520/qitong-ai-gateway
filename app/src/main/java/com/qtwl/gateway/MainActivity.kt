@@ -34,10 +34,24 @@ class MainActivity : AppCompatActivity() {
     private val notifPermLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { /* 用户已响应 */ }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        // ★ 载入主题配置（风格 + 明暗）
+        //   只在「进程首次创建」时读 SP。
+        //   原因：Activity 会因旋转屏幕、切换深色模式、分屏等重建，
+        //   每次重建都 onCreate。如果每次都 load()，
+        //   而用户刚好在这之前用 setStyle() 改了内存状态，
+        //   SP 的 .apply() 是异步落盘的，load() 可能读到旧值，
+        //   表现为「切了主题一旋转又变回去」。
+        //   用 Application 级别的标记保证全局只读一次。
+        val app = application as com.qtwl.gateway.GatewayApplication
+        if (!app.themeLoaded) {
+            app.themeLoaded = true
+            com.qtwl.gateway.ui.theme.ThemeState.load(this)
+        }
+
 
         // ★★ 应用隐藏多任务设置（运行时从最近任务中移除）★★
         val hideFromRecents = com.qtwl.gateway.service.GatewayForegroundService.getGatewayConfig("hide_from_recents", "false").toBoolean()
@@ -64,7 +78,7 @@ class MainActivity : AppCompatActivity() {
                 if (showPermDialog) {
                     AlertDialog(
                         onDismissRequest = { showPermDialog = false },
-                        title = { Text(localizedText("⚙️ 优化建议", "⚙️ Optimization suggestion")) },
+                        title = { Text(localizedText(" 优化建议", " Optimization suggestion")) },
                         text = { Text(permMessage) },
                         confirmButton = {
                             Button(onClick = {
@@ -133,7 +147,7 @@ class MainActivity : AppCompatActivity() {
                 .getBoolean("wake_enabled", false)
         }
         if (!wakeEnabled) {
-            missingPerms.add(localizedText("🔌 唤醒保活（通知栏开启）", "🔌 Keep-alive mode (enable in notification)"))
+            missingPerms.add(localizedText(" 唤醒保活（通知栏开启）", " Keep-alive mode (enable in notification)"))
         }
 
         // 如果有缺失，生成提示消息

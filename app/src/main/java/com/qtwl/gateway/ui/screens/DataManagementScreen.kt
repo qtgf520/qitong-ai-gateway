@@ -71,6 +71,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import com.qtwl.gateway.utils.localizeRuntimeText
 import com.qtwl.gateway.utils.localizeGeneratedName
 import com.qtwl.gateway.utils.localizeGeneratedContent
+import com.qtwl.gateway.utils.MessageMark
 
 @Composable
 private fun PersonaSlider(label: String, value: Int, range: IntRange, onChange: (Int) -> Unit) {
@@ -107,9 +108,9 @@ fun DataManagementScreen(
     ) { granted ->
         scope.launch {
             if (granted) {
-                snackbarHostState.showSnackbar(localizedText("✅ 文件存储权限已授予", "✅ File storage permission granted"))
+                snackbarHostState.showSnackbar(localizedText("文件存储权限已授予", "File storage permission granted"))
             } else {
-                snackbarHostState.showSnackbar(localizedText("⚠️ 权限被拒，备份将使用 MediaStore 保存到 Downloads", "⚠️ Permission denied; backup will be saved to Downloads via MediaStore"))
+                snackbarHostState.showSnackbar(localizedText("权限被拒，备份将使用 MediaStore 保存到 Downloads", "Permission denied; backup will be saved to Downloads via MediaStore"))
             }
         }
     }
@@ -131,12 +132,12 @@ fun DataManagementScreen(
                         viewModel.restoreFromFile(tempFile.absolutePath)
                     }
                     result.onSuccess {
-                        snackbarHostState.showSnackbar(localizedText("✅ 数据恢复成功！", "✅ Data restored successfully!"))
+                        snackbarHostState.showSnackbar(localizedText("数据恢复成功！", "Data restored successfully!"))
                     }.onFailure { e ->
-                        snackbarHostState.showSnackbar(localizedText("❌ 恢复失败: ", "❌ Restore failed: ") + e.message)
+                        snackbarHostState.showSnackbar(localizedText("恢复失败: ", "Restore failed: ") + e.message)
                     }
                 } catch (e: Exception) {
-                    snackbarHostState.showSnackbar(localizedText("❌ 读取文件失败: ", "❌ Failed to read file: ") + e.message)
+                    snackbarHostState.showSnackbar(localizedText("读取文件失败: ", "Failed to read file: ") + e.message)
                 }
             }
         }
@@ -158,11 +159,13 @@ fun DataManagementScreen(
                     .fillMaxSize()
                     .padding(padding)
                     .verticalScroll(rememberScrollState())
+                    // navBottomPad：滚动内容底部留白，最后一项可停在胶囊上方
+                    .padding(bottom = 96.dp)
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
             // 标题
-            Text(localizedText("📋 数据管理", "📋 Data management"), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            Text(localizedText("数据管理", "Data management"), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
             Text(localizedText("备份、恢复和重置应用数据，以及添加新的 AI 服务商", "Back up, restore, and reset app data, and add new AI providers"),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -174,14 +177,14 @@ fun DataManagementScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.BatterySaver, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(localizedText("🔄 自启管理", "🔄 Auto-start management"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text(localizedText("自启管理", "Auto-start management"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(localizedText("确保应用能在后台自启动，不被系统杀死。", "Ensure the app can auto-start in the background and is not killed by the system."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(modifier = Modifier.height(12.dp))
                     Button(onClick = { viewModel.bindBackgroundPermissions() }, modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)) {
-                        Text(localizedText("🔗 一键引导自启授权", "🔗 One-tap auto-start authorization guide"))
+                        Text(localizedText("一键引导自启授权", "One-tap auto-start authorization guide"))
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -219,7 +222,7 @@ fun DataManagementScreen(
                         Icon(Icons.Default.VisibilityOff, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                         Spacer(Modifier.width(8.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(localizedText("👻 隐藏多任务", "👻 Hide from recents"), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                            Text(localizedText("隐藏多任务", "Hide from recents"), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
                             Text(localizedText("开启后APP不在多任务列表中显示", "When enabled, the app won't appear in the recent tasks list"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Switch(
@@ -247,7 +250,7 @@ fun DataManagementScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Save, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(localizedText("💾 备份 & 恢复", "💾 Backup & Restore"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text(localizedText("备份 & 恢复", "Backup & Restore"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(localizedText("手动备份 / 定时自动备份 / 从备份文件一键恢复", "Manual backup / scheduled automatic backup / one-tap restore from backup file"),
@@ -267,7 +270,7 @@ fun DataManagementScreen(
                     var showTimePicker by remember { mutableStateOf(false) }
 
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text(localizedText("⏰ 定时自动备份", "⏰ Scheduled automatic backup"), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                        Text(localizedText("定时自动备份", "Scheduled automatic backup"), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
                         Switch(
                             checked = autoBackupEnabled.value,
                             onCheckedChange = { enabled ->
@@ -288,7 +291,7 @@ fun DataManagementScreen(
                     if (autoBackupEnabled.value) {
                         Spacer(modifier = Modifier.height(4.dp))
                         TextButton(onClick = { showTimePicker = true }) {
-                            Text(localizedText("🕐 备份时间: ", "🕐 Backup time: ") + String.format("%02d", autoBackupHour.value) + ":" + String.format("%02d", autoBackupMinute.value), style = MaterialTheme.typography.bodySmall)
+                            Text(localizedText("备份时间: ", "Backup time: ") + String.format("%02d", autoBackupHour.value) + ":" + String.format("%02d", autoBackupMinute.value), style = MaterialTheme.typography.bodySmall)
                         }
                     }
 
@@ -348,10 +351,10 @@ fun DataManagementScreen(
                                     val file = java.io.File(dir, "backup_$timeStr.qtbk")
                                     val result = manager.exportToFile(file)
                                     result.onSuccess {
-                                        snackbarHostState.showSnackbar(localizedText("✅ 备份完成: ", "✅ Backup complete: ") + file.name)
-                                    }.onFailure { e -> snackbarHostState.showSnackbar(localizedText("❌ 备份失败: ", "❌ Backup failed: ") + e.message) }
+                                        snackbarHostState.showSnackbar(localizedText("备份完成: ", "Backup complete: ") + file.name)
+                                    }.onFailure { e -> snackbarHostState.showSnackbar(localizedText("备份失败: ", "Backup failed: ") + e.message) }
                                 } catch (e: Exception) {
-                                    snackbarHostState.showSnackbar(localizedText("❌ 备份失败: ", "❌ Backup failed: ") + e.message)
+                                    snackbarHostState.showSnackbar(localizedText("备份失败: ", "Backup failed: ") + e.message)
                                 }
                             }
                         }, modifier = Modifier.weight(1f)) {
@@ -376,8 +379,8 @@ fun DataManagementScreen(
                                 result.onSuccess { json ->
                                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                     clipboard.setPrimaryClip(ClipData.newPlainText(localizedText("AI网关备份", "AI Gateway Backup"), json))
-                                    snackbarHostState.showSnackbar(localizedText("✅ 备份 JSON 已复制到剪贴板", "✅ Backup JSON copied to clipboard"))
-                                }.onFailure { e -> snackbarHostState.showSnackbar(localizedText("❌ 导出失败: ", "❌ Export failed: ") + e.message) }
+                                    snackbarHostState.showSnackbar(localizedText("备份 JSON 已复制到剪贴板", "Backup JSON copied to clipboard"))
+                                }.onFailure { e -> snackbarHostState.showSnackbar(localizedText("导出失败: ", "Export failed: ") + e.message) }
                             }
                         }, modifier = Modifier.weight(1f)) {
                             Icon(Icons.Default.ContentCopy, contentDescription = null)
@@ -391,7 +394,7 @@ fun DataManagementScreen(
                                     context.startActivity(Intent.createChooser(Intent().apply {
                                         action = Intent.ACTION_SEND; putExtra(Intent.EXTRA_TEXT, json); type = "application/json"
                                     }, localizedText("分享备份", "Share backup")))
-                                }.onFailure { e -> snackbarHostState.showSnackbar(localizedText("❌ 导出失败: ", "❌ Export failed: ") + e.message) }
+                                }.onFailure { e -> snackbarHostState.showSnackbar(localizedText("导出失败: ", "Export failed: ") + e.message) }
                             }
                         }, modifier = Modifier.weight(1f)) {
                             Icon(Icons.Default.Share, contentDescription = null)
@@ -406,25 +409,25 @@ fun DataManagementScreen(
                     }, modifier = Modifier.fillMaxWidth()) {
                         Icon(Icons.Default.NoteAdd, contentDescription = null)
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text(localizedText("📂 手动导入（选择 .qtbk 文件）", "📂 Manual import (select .qtbk file)"))
+                        Text(localizedText("手动导入（选择 .qtbk 文件）", "Manual import (select .qtbk file)"))
                     }
                     Spacer(modifier = Modifier.height(4.dp))
                     if (autoBackupEnabled.value) {
-                        Text(localizedText("⏱️ 下次自动备份: ", "⏱️ Next automatic backup: ") + String.format("%02d", autoBackupHour.value) + ":" + String.format("%02d", autoBackupMinute.value),
+                        Text(localizedText("下次自动备份: ", "Next automatic backup: ") + String.format("%02d", autoBackupHour.value) + ":" + String.format("%02d", autoBackupMinute.value),
                             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                     } else {
-Text(localizedText("💡 备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加密)", "💡 Backup format: .qtbk (GZIP+SHA256+AES-256)"))
+Text(localizedText("备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加密)", "Backup format: .qtbk (GZIP+SHA256+AES-256)"))
                     }
                     Spacer(modifier = Modifier.height(4.dp))
                     // ★ 测试备份按钮
                     OutlinedButton(onClick = {
                         com.qtwl.gateway.data.db.AutoBackupWorker.scheduleTest(context)
-                        scope.launch { snackbarHostState.showSnackbar(localizedText("🧪 测试备份已调度（10秒后执行）", "🧪 Test backup scheduled (10 seconds)")) }
+                        scope.launch { snackbarHostState.showSnackbar(localizedText("测试备份已调度（10秒后执行）", "Test backup scheduled (10 seconds)")) }
                     }, modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.secondary)) {
                         Icon(Icons.Default.BugReport, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text(localizedText("🧪 测试备份（10秒后执行）", "🧪 Test backup (10 seconds)"))
+                        Text(localizedText("测试备份（10秒后执行）", "Test backup (10 seconds)"))
                     }
                     Spacer(modifier = Modifier.height(4.dp))
 
@@ -463,13 +466,13 @@ Text(localizedText("💡 备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加
                                                                 manager.importFromFile(java.io.File(meta.filePath))
                                                             }
                                                             result.onSuccess {
-                                                                snackbarHostState.showSnackbar(localizedText("✅ 数据恢复成功！", "✅ Data restored successfully!"))
+                                                                snackbarHostState.showSnackbar(localizedText("数据恢复成功！", "Data restored successfully!"))
                                                                 showBackupList = false
                                                             }.onFailure { e ->
-                                                                snackbarHostState.showSnackbar(localizedText("❌ 恢复失败: ", "❌ Restore failed: ") + e.message)
+                                                                snackbarHostState.showSnackbar(localizedText("恢复失败: ", "Restore failed: ") + e.message)
                                                             }
                                                         } catch (e: Exception) {
-                                                            snackbarHostState.showSnackbar(localizedText("❌ 读取备份失败: ", "❌ Failed to read backup: ") + e.message)
+                                                            snackbarHostState.showSnackbar(localizedText("读取备份失败: ", "Failed to read backup: ") + e.message)
                                                         }
                                                     }
                                                 },
@@ -501,7 +504,7 @@ Text(localizedText("💡 备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Route, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(localizedText("🔀 路由规则", "🔀 Routing rules"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text(localizedText("路由规则", "Routing rules"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(localizedText("自定义请求转发规则，根据路径、模型名、API密钥等条件路由到指定模型或拒绝请求", "Custom routing rules to forward/block requests based on path, model name, API key, etc."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -545,7 +548,7 @@ Text(localizedText("💡 备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Memory, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(localizedText("🧠 大脑记忆", "🧠 Brain memory"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                        Text(localizedText("大脑记忆", "Brain memory"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                         Switch(checked = memEnabled, onCheckedChange = { e ->
                             memEnabled = e
                             BrainMemoryManager.updateConfig(cfg.copy(enabled = e))
@@ -573,7 +576,7 @@ Text(localizedText("💡 备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加
                             }
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(localizedText("🧠 绑定大脑模型: ", "🧠 Brain model: ") + (currentBrain.value.ifBlank { localizedText("未绑定", "Not bound") }),
+                        Text(localizedText("绑定大脑模型: ", "Brain model: ") + (currentBrain.value.ifBlank { localizedText("未绑定", "Not bound") }),
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
                         TextButton(onClick = { showBrainModelPicker = true }) {
                             Text(localizedText("选择", "Select"), style = MaterialTheme.typography.labelSmall)
@@ -589,7 +592,7 @@ Text(localizedText("💡 备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加
                                     brainGroupedModels.forEach { (providerLabel, modelList) ->
                                         item {
                                             Spacer(Modifier.height(4.dp))
-                                            Text("📌 $providerLabel", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                            Text("$providerLabel", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                                         }
                                         items(modelList, key = { it.id }) { model ->
                                             val isSelected = model.routeKey == currentBrain.value
@@ -669,7 +672,7 @@ Text(localizedText("💡 备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加
                                 }
                             }, singleLine = true, modifier = Modifier.width(80.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                             Spacer(Modifier.width(8.dp))
-                            OutlinedButton(onClick = { BrainMemoryManager.clearAll(); memList = emptyList(); scope.launch { snackbarHostState.showSnackbar(localizedText("🧹 所有记忆已清空", "🧹 All memories cleared")) } },
+                            OutlinedButton(onClick = { BrainMemoryManager.clearAll(); memList = emptyList(); scope.launch { snackbarHostState.showSnackbar(localizedText("所有记忆已清空", "All memories cleared")) } },
                                 colors = ButtonDefaults.outlinedButtonColors(contentColor = Error)) {
                                 Icon(Icons.Default.DeleteSweep, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(2.dp)); Text(localizedText("清空", "Clear"), style = MaterialTheme.typography.labelSmall)
@@ -698,7 +701,7 @@ Text(localizedText("💡 备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加
                                         }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                                             Row(modifier = Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                                                 // 情感图标
-                                                val emoji = when (mem.emotion) { "happy" -> "😊"; "sad" -> "😢"; "angry" -> "😠"; "surprised" -> "😮"; else -> "😐" }
+                                                val emoji = when (mem.emotion) { "happy" -> ""; "sad" -> ""; "angry" -> ""; "surprised" -> ""; else -> "" }
                                                 Text(emoji, style = MaterialTheme.typography.bodyMedium)
                                                 Spacer(Modifier.width(6.dp))
                                                 Column(modifier = Modifier.weight(1f)) {
@@ -721,7 +724,7 @@ Text(localizedText("💡 备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加
             // 编辑记忆弹窗
             if (editingMem != null) {
                 AlertDialog(onDismissRequest = { editingMem = null },
-                    title = { Text(localizedText("✏️ 编辑记忆", "✏️ Edit memory"), fontWeight = FontWeight.Bold) },
+                    title = { Text(localizedText("编辑记忆", "Edit memory"), fontWeight = FontWeight.Bold) },
                     text = {
                         Column {
                             OutlinedTextField(value = editTitle, onValueChange = { editTitle = it }, label = { Text(localizedText("标题", "Title")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -731,7 +734,7 @@ Text(localizedText("💡 备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(localizedText("情感:", "Emotion:"), style = MaterialTheme.typography.labelSmall)
                                 Spacer(Modifier.width(8.dp))
-                                listOf("neutral" to "😐", "happy" to "😊", "sad" to "😢", "angry" to "😠", "surprised" to "😮").forEach { (k, v) ->
+                                listOf("neutral" to "", "happy" to "", "sad" to "", "angry" to "", "surprised" to "").forEach { (k, v) ->
                                     FilterChip(selected = editEmotion == k, onClick = { editEmotion = k },
                                         label = { Text(v, style = MaterialTheme.typography.labelSmall) }, modifier = Modifier.padding(end = 2.dp))
                                 }
@@ -748,7 +751,7 @@ Text(localizedText("💡 备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加
                         Button(onClick = {
                             BrainMemoryManager.updateMemory(editingMem!!.id, title = editTitle, content = editContent, emotion = editEmotion, importance = editImportance.toIntOrNull())
                             editingMem = null; memList = BrainMemoryManager.getAll()
-                            scope.launch { snackbarHostState.showSnackbar(localizedText("✅ 记忆已更新", "✅ Memory updated")) }
+                            scope.launch { snackbarHostState.showSnackbar(localizedText("记忆已更新", "Memory updated")) }
                         }) { Text(localizedText("保存", "Save")) }
                     },
                     dismissButton = { TextButton(onClick = { editingMem = null }) { Text(localizedText("取消", "Cancel")) } }
@@ -788,7 +791,7 @@ Text(localizedText("💡 备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Face, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(localizedText("🧑 人格设定", "🧑 Persona settings"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                        Text(localizedText("人格设定", "Persona settings"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                     }
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(localizedText("定制 qtai-sj 的个性化形象", "Customize the qtai-sj persona"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -864,7 +867,7 @@ Text(localizedText("💡 备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加
                     Spacer(modifier = Modifier.height(8.dp))
 
                     // ★★ 人格维度滑块 ★★
-                    Text(localizedText("🎭 人格维度（大五人格）", "🎭 Personality Dimensions"), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                    Text(localizedText("人格维度（大五人格）", "Personality Dimensions"), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(8.dp))
 
                     val pCfg = BrainMemoryManager.getConfig()
@@ -895,7 +898,7 @@ Text(localizedText("💡 备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Translate, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("🌐 " + tr("language_settings"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text("" + tr("language_settings"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     }
                     Spacer(modifier = Modifier.height(8.dp))
 
@@ -974,7 +977,7 @@ Text(localizedText("💡 备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加
                         Icon(Icons.Default.SmartToy, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.width(8.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(localizedText("🤖 綦小桐技能管理", "🤖 QiTong AI skills"), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                            Text(localizedText("綦小桐技能管理", "QiTong AI skills"), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                             Text(localizedText("管理綦小桐的连续对话和技能开关", "Manage continuous chat and skill toggles"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
@@ -982,22 +985,22 @@ Text(localizedText("💡 备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加
                     // 连续对话模式开关
                     val continuousChat = remember { mutableStateOf(GatewayForegroundService.isContinuousChat()) }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text(localizedText("💬 连续对话模式", "💬 Continuous chat mode"), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                        Text(localizedText("连续对话模式", "Continuous chat mode"), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
                         Switch(checked = continuousChat.value, onCheckedChange = { e ->
                             continuousChat.value = e
                             GatewayForegroundService.setContinuousChat(e)
-                            scope.launch { snackbarHostState.showSnackbar(if (e) localizedText("✅ 连续对话已开启，所有消息自动走綦小桐大脑", "✅ Continuous chat ON") else localizedText("✅ 连续对话已关闭，需喊綦小桐才能触发", "✅ Continuous chat OFF")) }
+                            scope.launch { snackbarHostState.showSnackbar(if (e) localizedText("连续对话已开启，所有消息自动走綦小桐大脑", "Continuous chat ON") else localizedText("连续对话已关闭，需喊綦小桐才能触发", "Continuous chat OFF")) }
                         })
                     }
                     Spacer(Modifier.height(4.dp))
-                    Text(if (continuousChat.value) localizedText("🔵 开启后所有消息自动由綦小桐大脑处理，无需喊前缀", "🔵 All messages auto-processed by 綦小桐 brain, no prefix needed") else localizedText("⚪ 关闭后需喊「綦小桐」或前缀才能触发大脑", "⚪ Say '綦小桐' or prefix to trigger brain"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(if (continuousChat.value) localizedText("开启后所有消息自动由綦小桐大脑处理，无需喊前缀", "All messages auto-processed by 綦小桐 brain, no prefix needed") else localizedText("关闭后需喊「綦小桐」或前缀才能触发大脑", "Say '綦小桐' or prefix to trigger brain"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     
                     // 技能列表
                     Spacer(Modifier.height(8.dp))
                     Button(onClick = { showSkillManagement = true }, modifier = Modifier.fillMaxWidth()) {
                         Icon(Icons.Default.List, contentDescription = null)
                         Spacer(Modifier.width(4.dp))
-                        Text(localizedText("📋 管理技能 (${SkillRegistry.allSkills.size}内置 + ${CustomSkillManager.getAll().size}自定义)", "📋 Manage skills (${SkillRegistry.allSkills.size} built-in + ${CustomSkillManager.getAll().size} custom)"))
+                        Text(localizedText("管理技能 (${SkillRegistry.allSkills.size}内置 + ${CustomSkillManager.getAll().size}自定义)", "Manage skills (${SkillRegistry.allSkills.size} built-in + ${CustomSkillManager.getAll().size} custom)"))
                     }
                 }
             }
@@ -1009,7 +1012,7 @@ Text(localizedText("💡 备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加
                         Icon(Icons.Default.VpnKey, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.width(8.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(localizedText("🔑 API 密钥管理", "🔑 API Key management"), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                            Text(localizedText("API 密钥管理", "API Key management"), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                             Text(localizedText("管理访问密钥，本地请求免密钥，每把钥匙可单独控制模型访问权限", "Manage access keys. Local requests are exempt. Each key can control model access individually"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1025,7 +1028,7 @@ Text(localizedText("💡 备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.BugReport, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(localizedText("🔍 网关抓包", "🔍 Gateway packet capture"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text(localizedText("网关抓包", "Gateway packet capture"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     }
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(localizedText("开启后记录所有网关请求/响应到内存，可查看最近20条（含实时输入/输出流量）", "When enabled, records all gateway requests/responses in memory; view the latest 20 records including live input/output traffic"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1043,7 +1046,7 @@ Text(localizedText("💡 备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加
                     }
                     if (debugMode) {
                         Spacer(modifier = Modifier.height(4.dp))
-                        Text(localizedText("🟢 抓包运行中...", "🟢 Capture running..."), style = MaterialTheme.typography.labelSmall, color = Online)
+                        Text(localizedText("抓包运行中...", "Capture running..."), style = MaterialTheme.typography.labelSmall, color = Online)
                     }
                 }
             }
@@ -1061,7 +1064,7 @@ Text(localizedText("💡 备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加
                         Text(localizedText("重置所有数据", "Reset all data"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Error)
                     }
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text(localizedText("⚠️ 此操作将清空所有服务商、模型、聊天记录和 Token 用量，不可恢复！", "⚠️ This will delete all providers, models, chats, and token usage. It cannot be undone!"),
+                    Text(localizedText("此操作将清空所有服务商、模型、聊天记录和 Token 用量，不可恢复！", "This will delete all providers, models, chats, and token usage. It cannot be undone!"),
                         style = MaterialTheme.typography.bodySmall, color = Error.copy(alpha = 0.8f))
                     Spacer(modifier = Modifier.height(12.dp))
                     OutlinedButton(onClick = { showResetConfirm = true }, modifier = Modifier.fillMaxWidth(),
@@ -1075,7 +1078,7 @@ Text(localizedText("💡 备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加
             Spacer(modifier = Modifier.height(16.dp))
 
             // 添加服务
-            Text(localizedText("🔌 添加服务", "🔌 Add service"), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            Text(localizedText("添加服务", "Add service"), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
             Text(localizedText("支持 OpenAI Compatible API，自动检测端口，智能获取模型列表", "Supports OpenAI-compatible APIs, auto-detects ports, and intelligently fetches model lists"),
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(modifier = Modifier.height(8.dp))
@@ -1084,7 +1087,7 @@ Text(localizedText("💡 备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加
             ServiceTemplateCard("OpenAI", "https://api.openai.com") { viewModel.showAddProvider() }
             ServiceTemplateCard(localizedText("自定义 OpenAI Compatible", "Custom OpenAI-compatible"), localizedText("输入任意兼容 OpenAI API 格式的地址", "Enter any OpenAI API-compatible address")) { showAddServiceDialog = true }
 
-            Spacer(modifier = Modifier.height(80.dp))
+            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 // ★★ 抓包日志全屏覆盖（脱离 verticalScroll）★★
@@ -1100,8 +1103,8 @@ Text(localizedText("💡 备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text(localizedText("🔍 网关抓包日志", "🔍 Gateway packet-capture logs"), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                        TextButton(onClick = { showDebugLogs = false }) { Text(localizedText("✕ 关闭", "✕ Close")) }
+                        Text(localizedText("网关抓包日志", "Gateway packet-capture logs"), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                        TextButton(onClick = { showDebugLogs = false }) { Text(localizedText("关闭", "Close")) }
                     }
                     Spacer(modifier = Modifier.height(8.dp))
 
@@ -1125,7 +1128,7 @@ Text(localizedText("💡 备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加
 
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                         OutlinedTextField(value = filterText, onValueChange = { filterText = it },
-                            placeholder = { Text(localizedText("🔍 搜索", "🔍 Search")) }, singleLine = true, modifier = Modifier.weight(2f),
+                            placeholder = { Text(localizedText("搜索", "Search")) }, singleLine = true, modifier = Modifier.weight(2f),
                             textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp))
                         TextButton(onClick = { statusFilter = null }) { Text(if (statusFilter == null) localizedText("全部", "All") else localizedText("全部", "All")) }
                         TextButton(onClick = { statusFilter = "200" }) { Text("200") }
@@ -1146,12 +1149,12 @@ Text(localizedText("💡 备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加
                             ) {
                                 Column(modifier = Modifier.padding(10.dp)) {
                                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                        Text(text = if (isError) "❌" else if (record.failover != null) "🔄" else "✅", style = MaterialTheme.typography.bodyMedium)
+                                        Text(text = if (isError) "" else if (record.failover != null) "" else "", style = MaterialTheme.typography.bodyMedium)
                                         Text(text = record.summary, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                     }
                                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                                         Text(text = timeFmt.format(record.timestamp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, fontFamily = FontFamily.Monospace)
-                                        record.response?.let { resp -> if (resp.promptTokens > 0) Text(text = "↑${resp.promptTokens} ↓${resp.completionTokens}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary) }
+                                        record.response?.let { resp -> if (resp.promptTokens > 0) Text(text = "${resp.promptTokens} ↓${resp.completionTokens}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary) }
                                         Spacer(modifier = Modifier.weight(1f))
                                         Text(text = record.outbound?.modelId ?: "?", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
                                     }
@@ -1160,11 +1163,11 @@ Text(localizedText("💡 备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加
                             if (showDetail) {
                                 AlertDialog(
                                     onDismissRequest = { showDetail = false },
-                                    title = { Text(localizedText("📦 抓包详情 #", "📦 Packet capture details #") + record.id) },
+                                    title = { Text(localizedText("抓包详情 #", "Packet capture details #") + record.id) },
                                     text = {
                                         LazyColumn(modifier = Modifier.heightIn(max = 400.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                             record.inbound?.let { inbound -> item {
-                                                Text(localizedText("📥 入站", "📥 Inbound"), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                                Text(localizedText("入站", "Inbound"), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                                                 Surface(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), shape = MaterialTheme.shapes.small) {
                                                     Text(buildString {
                                                         appendLine(localizedText("方法: ", "Method: ") + "${inbound.method} ${inbound.path}")
@@ -1175,7 +1178,7 @@ Text(localizedText("💡 备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加
                                                 }
                                             }}
                                             record.outbound?.let { outbound -> item {
-                                                Text(localizedText("📤 出站", "📤 Outbound"), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
+                                                Text(localizedText("出站", "Outbound"), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
                                                 Surface(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), shape = MaterialTheme.shapes.small) {
                                                     Text(buildString {
                                                         appendLine("URL: ${outbound.targetUrl}")
@@ -1186,7 +1189,7 @@ Text(localizedText("💡 备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加
                                                 }
                                             }}
                                             record.response?.let { resp -> item {
-                                                Text(localizedText("📥 响应", "📥 Response"), fontWeight = FontWeight.Bold, color = if (resp.httpStatus >= 500) MaterialTheme.colorScheme.error else if (resp.httpStatus >= 400) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary)
+                                                Text(localizedText("响应", "Response"), fontWeight = FontWeight.Bold, color = if (resp.httpStatus >= 500) MaterialTheme.colorScheme.error else if (resp.httpStatus >= 400) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary)
                                                 Surface(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), shape = MaterialTheme.shapes.small) {
                                                     Text(buildString {
                                                         appendLine(localizedText("状态: ", "Status: ") + "${resp.httpStatus} | ${resp.elapsedMs}ms")
@@ -1197,7 +1200,7 @@ Text(localizedText("💡 备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加
                                                 }
                                             }}
                                             record.failover?.let { failover -> item {
-                                                Text(localizedText("🔄 故障转移", "🔄 Failover"), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
+                                                Text(localizedText("故障转移", "Failover"), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
                                                 Surface(color = MaterialTheme.colorScheme.error.copy(alpha = 0.08f), shape = MaterialTheme.shapes.small) {
                                                     Text(buildString {
                                                         failover.attempts.forEach { attempt ->
@@ -1212,31 +1215,31 @@ Text(localizedText("💡 备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加
                                         val ctx = LocalContext.current
                                         Button(onClick = {
                                             val detailText = buildString {
-                                                appendLine(localizedText("📦 抓包详情 #", "📦 Packet capture details #") + record.id)
+                                                appendLine(localizedText("抓包详情 #", "Packet capture details #") + record.id)
                                                 appendLine(localizedText("时间: ", "Time: ") + timeFmt.format(record.timestamp))
                                                 record.inbound?.let { inbound ->
-                                                    appendLine(localizedText("\\n📥 入站", "\\n📥 Inbound"))
+                                                    appendLine(localizedText("\\n入站", "\\nInbound"))
                                                     appendLine(localizedText("方法: ", "Method: ") + "${inbound.method} ${inbound.path}")
                                                     appendLine(localizedText("头部: ", "Headers: ") + inbound.headers)
                                                     appendLine(localizedText("--- 请求体 (", "--- Request body (") + "${inbound.bodySize}B) ---")
                                                     appendLine(inbound.body)
                                                 }
                                                 record.outbound?.let { outbound ->
-                                                    appendLine(localizedText("\\n📤 出站", "\\n📤 Outbound"))
+                                                    appendLine(localizedText("\\n出站", "\\nOutbound"))
                                                     appendLine("URL: ${outbound.targetUrl}")
                                                     appendLine(localizedText("模型: ", "Model: ") + outbound.modelId)
                                                     appendLine(localizedText("--- 请求体 (", "--- Request body (") + "${outbound.bodySize}B) ---")
                                                     appendLine(outbound.body)
                                                 }
                                                 record.response?.let { resp ->
-                                                    appendLine(localizedText("\\n📥 响应", "\\n📥 Response"))
+                                                    appendLine(localizedText("\\n响应", "\\nResponse"))
                                                     appendLine(localizedText("状态: ", "Status: ") + "${resp.httpStatus} | ${resp.elapsedMs}ms")
                                                     appendLine("Tokens: ↑${resp.promptTokens} ↓${resp.completionTokens}")
                                                     appendLine(localizedText("--- 响应体 (", "--- Response body (") + "${resp.bodySize}B) ---")
                                                     appendLine(resp.body)
                                                 }
                                                 record.failover?.let { failover ->
-                                                    appendLine(localizedText("\\n🔄 故障转移", "\\n🔄 Failover"))
+                                                    appendLine(localizedText("\\n故障转移", "\\nFailover"))
                                                     failover.attempts.forEach { attempt ->
                                                         appendLine("[${attempt.index}] ${attempt.modelId}: ${attempt.error} (${attempt.elapsedMs}ms)")
                                                     }
@@ -1244,7 +1247,7 @@ Text(localizedText("💡 备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加
                                             }
                                             val clipboard = ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                                             clipboard.setPrimaryClip(android.content.ClipData.newPlainText(localizedText("抓包详情", "Packet capture details"), detailText))
-                                        }) { Text(localizedText("📋 复制", "📋 Copy")) }
+                                        }) { Text(localizedText("复制", "Copy")) }
                                     }
                                 )
                             }
@@ -1293,7 +1296,7 @@ Text(localizedText("💡 备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加
         var confirmInput by remember { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { showResetConfirm = false },
-            title = { Text(localizedText("⚠️ 危险操作确认", "⚠️ Dangerous operation confirmation"), fontWeight = FontWeight.Bold, color = Error) },
+            title = { Text(localizedText("危险操作确认", "Dangerous operation confirmation"), fontWeight = FontWeight.Bold, color = Error) },
             text = {
                 Column {
                     Text(localizedText("此操作将永久删除所有数据，包括：\\n• 所有服务商配置\\n• 所有 AI 模型列表\\n• 所有聊天记录和对话\\n• 所有 Token 用量统计\\n\\n此操作不可撤销！", "This will permanently delete all data, including:\\n• All provider configurations\\n• All AI model lists\\n• All chats and conversations\\n• All token usage statistics\\n\\nThis action cannot be undone!"), style = MaterialTheme.typography.bodyMedium)
@@ -1325,7 +1328,7 @@ Text(localizedText("💡 备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加
     // 智能添加服务弹窗
     if (showAddServiceDialog) {
         SmartAddServiceDialog(viewModel = viewModel, onDismiss = { showAddServiceDialog = false },
-            onSuccess = { showAddServiceDialog = false; scope.launch { snackbarHostState.showSnackbar(localizedText("✅ 服务商添加成功！", "✅ Provider added successfully!")) } })
+            onSuccess = { showAddServiceDialog = false; scope.launch { snackbarHostState.showSnackbar(localizedText("服务商添加成功！", "Provider added successfully!")) } })
     }
 }
 
@@ -1416,7 +1419,7 @@ private fun SmartAddServiceDialog(viewModel: GatewayViewModel, onDismiss: () -> 
                     }
                 }
                 Spacer(modifier = Modifier.height(4.dp))
-                Text(localizedText("💡 输入 /c 自动补全 /v1/chat/completions，/m 补全 /v1/messages 等", "💡 Type /c to auto-complete /v1/chat/completions, /m for /v1/messages, etc."),
+                Text(localizedText("输入 /c 自动补全 /v1/chat/completions，/m 补全 /v1/messages 等", "Type /c to auto-complete /v1/chat/completions, /m for /v1/messages, etc."),
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 // ★★ 最终URL预览 ★★
                 val previewBase = form.baseUrl.trimEnd('/')
@@ -1465,8 +1468,8 @@ private fun SmartAddServiceDialog(viewModel: GatewayViewModel, onDismiss: () -> 
                 val syncResult by viewModel.syncResult.collectAsState()
                 LaunchedEffect(syncResult) { isTesting = false; testResult = syncResult }
                 if (testResult != null) {
-                    Card(colors = CardDefaults.cardColors(containerColor = if (testResult!!.startsWith("✅")) Online.copy(alpha = 0.15f) else if (testResult!!.startsWith("❌")) Error.copy(alpha = 0.15f) else Warning.copy(alpha = 0.15f))) {
-                        Text(localizeRuntimeText(testResult!!), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(12.dp))
+                    Card(colors = CardDefaults.cardColors(containerColor = if (MessageMark.isOk(testResult!!)) Online.copy(alpha = 0.15f) else if (MessageMark.isFail(testResult!!)) Error.copy(alpha = 0.15f) else Warning.copy(alpha = 0.15f))) {
+                        Text(localizeRuntimeText(MessageMark.strip(testResult!!)), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(12.dp))
                     }
                 }
             }
@@ -1511,8 +1514,8 @@ private fun ProxyManagementDialog(viewModel: GatewayViewModel, onDismiss: () -> 
         onDismissRequest = onDismiss,
         title = {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text(localizedText("⚙️ 代理管理", "⚙️ Proxy management"), fontWeight = FontWeight.Bold)
-                Text(if (proxyEnabled) localizedText("🟢 已激活", "🟢 Active") else localizedText("🔴 未激活", "🔴 Inactive"), style = MaterialTheme.typography.bodySmall, color = if (proxyEnabled) Online else Error)
+                Text(localizedText("代理管理", "Proxy management"), fontWeight = FontWeight.Bold)
+                Text(if (proxyEnabled) localizedText("已激活", "Active") else localizedText("未激活", "Inactive"), style = MaterialTheme.typography.bodySmall, color = if (proxyEnabled) Online else Error)
             }
         },
         text = {
@@ -1525,7 +1528,7 @@ private fun ProxyManagementDialog(viewModel: GatewayViewModel, onDismiss: () -> 
                     TextButton(onClick = { showSubscriptionDialog = true }) {
                         Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(4.dp))
-                        Text(localizedText("📡 一键订阅", "📡 One-tap subscription"), style = MaterialTheme.typography.labelMedium)
+                        Text(localizedText("一键订阅", "One-tap subscription"), style = MaterialTheme.typography.labelMedium)
                     }
                 }
                 if (proxyProfiles.isEmpty()) {
@@ -1559,7 +1562,7 @@ private fun ProxyManagementDialog(viewModel: GatewayViewModel, onDismiss: () -> 
         var subUrl by remember { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { showSubscriptionDialog = false },
-            title = { Text(localizedText("📡 一键订阅", "📡 One-tap subscription"), fontWeight = FontWeight.Bold) },
+            title = { Text(localizedText("一键订阅", "One-tap subscription"), fontWeight = FontWeight.Bold) },
             text = {
                 Column {
                     Text(localizedText("输入订阅地址，自动拉取并批量导入节点", "Enter a subscription URL to fetch and batch-import nodes automatically"), style = MaterialTheme.typography.bodyMedium)
@@ -1579,7 +1582,7 @@ private fun ProxyManagementDialog(viewModel: GatewayViewModel, onDismiss: () -> 
     if (showPasteDialog) {
         AlertDialog(
             onDismissRequest = { showPasteDialog = false },
-            title = { Text(localizedText("📋 检测到代理链接", "📋 Proxy link detected"), fontWeight = FontWeight.Bold) },
+            title = { Text(localizedText("检测到代理链接", "Proxy link detected"), fontWeight = FontWeight.Bold) },
             text = {
                 Column {
                     Text(localizedText("剪贴板中检测到代理/订阅链接：", "Proxy/subscription link detected in clipboard:"), style = MaterialTheme.typography.bodySmall)
@@ -1625,7 +1628,7 @@ private fun ProxyProfileCard(
                     Column {
                         Text(localizeGeneratedName(profile.name), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                         Text("${profile.type} · ${profile.host}:${profile.port}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        if (profile.username.isNotBlank()) Text("👤 ${profile.username}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (profile.username.isNotBlank()) Text("${profile.username}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 Switch(checked = profile.enabled, onCheckedChange = { onToggleEnable() })
@@ -1698,7 +1701,7 @@ private fun AddEditProxyDialog(
 
                 if (type.startsWith("SOCKS") && (username.isNotBlank() || password.isNotBlank())) {
                     Surface(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f), shape = MaterialTheme.shapes.small) {
-                        Text(localizedText("✅ SOCKS5 将使用 RFC 1929 用户名/密码认证", "✅ SOCKS5 will use RFC 1929 username/password authentication"), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(8.dp))
+                        Text(localizedText("SOCKS5 将使用 RFC 1929 用户名/密码认证", "SOCKS5 will use RFC 1929 username/password authentication"), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(8.dp))
                     }
                 }
             }
@@ -1746,7 +1749,7 @@ fun AboutScreen(viewModel: GatewayViewModel = viewModel(factory = GatewayViewMod
 
             Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text(localizedText("📱 应用信息", "📱 App information"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(localizedText("应用信息", "App information"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(localizedText("版本: v", "Version: v") + appVersion, style = MaterialTheme.typography.bodyMedium)
                     Text(localizedText("开发者: 綦桐网络", "Developer: QiTong Network"), style = MaterialTheme.typography.bodyMedium)
@@ -1757,7 +1760,7 @@ fun AboutScreen(viewModel: GatewayViewModel = viewModel(factory = GatewayViewMod
 
             Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text(localizedText("⚙️ 当前配置", "⚙️ Current configuration"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(localizedText("当前配置", "Current configuration"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text(localizedText("网关端口:", "Gateway port:"), style = MaterialTheme.typography.bodyMedium)
@@ -1766,7 +1769,7 @@ fun AboutScreen(viewModel: GatewayViewModel = viewModel(factory = GatewayViewMod
                     Spacer(modifier = Modifier.height(4.dp))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text(localizedText("代理加速:", "Proxy acceleration:"), style = MaterialTheme.typography.bodyMedium)
-                        Text(if (proxyEnabled) localizedText("✅ 已开启", "✅ Enabled") else localizedText("❌ 未开启", "❌ Disabled"), color = if (proxyEnabled) Online else Error)
+                        Text(if (proxyEnabled) localizedText("已开启", "Enabled") else localizedText("未开启", "Disabled"), color = if (proxyEnabled) Online else Error)
                     }
                     // 显示激活的代理详情
                     val activeProxy = if (proxyEnabled) proxyProfiles.find { it.id == activeProxyId } else null
@@ -1787,12 +1790,12 @@ fun AboutScreen(viewModel: GatewayViewModel = viewModel(factory = GatewayViewMod
                     // 流量统计
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(localizedText("↑ 上传:", "↑ Upload:"), style = MaterialTheme.typography.bodyMedium)
+                        Text(localizedText("上传:", "Upload:"), style = MaterialTheme.typography.bodyMedium)
                         Text(formatTraffic(GatewayForegroundService.trafficUploadBytes.get()), style = MaterialTheme.typography.bodyMedium, color = Online)
                     }
                     Spacer(modifier = Modifier.height(4.dp))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(localizedText("↓ 下载:", "↓ Download:"), style = MaterialTheme.typography.bodyMedium)
+                        Text(localizedText("下载:", "Download:"), style = MaterialTheme.typography.bodyMedium)
                         Text(formatTraffic(GatewayForegroundService.trafficDownloadBytes.get()), style = MaterialTheme.typography.bodyMedium, color = Online)
                     }
                 }
@@ -1805,7 +1808,7 @@ fun AboutScreen(viewModel: GatewayViewModel = viewModel(factory = GatewayViewMod
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.Warning, contentDescription = null, tint = Error)
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text(localizedText("💥 检测到崩溃日志", "💥 Crash log detected"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Error)
+                            Text(localizedText("检测到崩溃日志", "Crash log detected"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Error)
                         }
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(localizedText("APP上次运行发生崩溃，已自动保存日志。", "The app crashed last time, log has been saved."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1816,7 +1819,7 @@ fun AboutScreen(viewModel: GatewayViewModel = viewModel(factory = GatewayViewMod
                                     val log = CrashHandler.getCrashLog()
                                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                     clipboard.setPrimaryClip(ClipData.newPlainText("Crash Log", log))
-                                    snackbarHostState.showSnackbar(localizedText("✅ 崩溃日志已复制", "✅ Crash log copied"))
+                                    snackbarHostState.showSnackbar(localizedText("崩溃日志已复制", "Crash log copied"))
                                 }
                             }, modifier = Modifier.weight(1f)) {
                                 Icon(Icons.Default.ContentCopy, contentDescription = null, tint = Error)
@@ -1835,7 +1838,7 @@ fun AboutScreen(viewModel: GatewayViewModel = viewModel(factory = GatewayViewMod
                         }
                         Spacer(modifier = Modifier.height(4.dp))
                         TextButton(onClick = { CrashHandler.clearCrashLog() }) {
-                            Text(localizedText("🗑️ 清除日志", "🗑️ Clear log"), style = MaterialTheme.typography.bodySmall, color = Error.copy(alpha = 0.7f))
+                            Text(localizedText("清除日志", "Clear log"), style = MaterialTheme.typography.bodySmall, color = Error.copy(alpha = 0.7f))
                         }
                     }
                 }
@@ -1847,7 +1850,7 @@ fun AboutScreen(viewModel: GatewayViewModel = viewModel(factory = GatewayViewMod
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.SystemUpdate, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(localizedText("🔄 检查更新", "🔄 Check for updates"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text(localizedText("检查更新", "Check for updates"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     var updateStatus by remember { mutableStateOf("") }
@@ -1878,14 +1881,14 @@ fun AboutScreen(viewModel: GatewayViewModel = viewModel(factory = GatewayViewMod
                                     val isNewer = latestTag.removePrefix("v") > current.removePrefix("v")
                                     scope.launch {
                                         if (isNewer) {
-                                            updateStatus = localizedText("🎉 发现新版本: $latestName\n当前版本: v$current", "🎉 New version: $latestName\nCurrent: v$current")
+                                            updateStatus = localizedText("发现新版本: $latestName\n当前版本: v$current", "New version: $latestName\nCurrent: v$current")
                                         } else {
-                                            updateStatus = localizedText("✅ 已是最新版本: v$current", "✅ Already latest: v$current")
+                                            updateStatus = localizedText("已是最新版本: v$current", "Already latest: v$current")
                                         }
                                     }
                                 } catch (e: Exception) {
                                     scope.launch {
-                                        updateStatus = localizedText("❌ 检查失败: ${e.message}", "❌ Check failed: ${e.message}")
+                                        updateStatus = localizedText("检查失败: ${e.message}", "Check failed: ${e.message}")
                                     }
                                 }
                                 isChecking = false
@@ -1923,7 +1926,7 @@ fun AboutScreen(viewModel: GatewayViewModel = viewModel(factory = GatewayViewMod
                     lastClickTime = now
                 }) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("🔧", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
+                    Text("", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
                 }
             }
 
@@ -1959,7 +1962,7 @@ private fun RoutingRulesDialog(viewModel: GatewayViewModel, onDismiss: () -> Uni
         onDismissRequest = onDismiss,
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(localizedText("🔀 路由规则管理", "🔀 Routing rules"), fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Text(localizedText("路由规则管理", "Routing rules"), fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                 if (isLoading) {
                     CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                 }
@@ -2031,8 +2034,8 @@ private fun RoutingRulesDialog(viewModel: GatewayViewModel, onDismiss: () -> Uni
                                             overflow = TextOverflow.Ellipsis
                                         )
                                         val actionDesc = when (rule.action) {
-                                            "block" -> localizedText("🚫 拒绝请求", "🚫 Block")
-                                            "route" -> localizedText("➡️ 路由到 ${rule.targetModelKey}", "➡️ Route to ${rule.targetModelKey}")
+                                            "block" -> localizedText("拒绝请求", "Block")
+                                            "route" -> localizedText("路由到 ${rule.targetModelKey}", "Route to ${rule.targetModelKey}")
                                             else -> rule.action
                                         }
                                         Text(
