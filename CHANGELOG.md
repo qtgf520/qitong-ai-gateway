@@ -3,6 +3,30 @@
 > 签名证书：qitong.jks (别名: qitong)
 > 最后更新：2026-11-15
 ---
+## 🔄 v3.18.31（正式发布）
+
+### 📦 朋友 3.87.0 全量源码拉齐（用户指示：把他源码直接拉过来，但咱的功能不变）
+- **✅ 本地模型完整迁移** — jniLibs/arm64-v8a 15 个 .so（llama.cpp 运行时 libllamaserver/libllama/libggml* + libcloudflared 37MB）+ utils/LocalLlmEngine.kt + LocalModelManager.kt（模型商城/断点续传/多源下载/本地推理）
+- **✅ 全量 UI/主题/res/assets/manifest** — 液态玻璃导航 + HyperOS 设置 + 双主题 + miuix 色板 + iOS 组件 + extractNativeLibs + MANAGE_EXTERNAL_STORAGE
+- **✅ 依赖** — miuix 0.8.8 + jsch 0.2.20 + kyant 三库 + compileSdk/targetSdk 36 + abiFilters arm64
+- **✅ coagent/SshTunnel/TunnelManager/LocalDnsProxy/ShellRunner/UiSettings/PluginManager** 全部就位
+
+### 🔧 咱功能全保留（关键）
+- **预测式自动切换** — prewarmConnection/getSpeedRanking/PredictivePrewarmManager/notifyThinkingStarted 融合回 class 内（思考阶段预热连接，切换零感知）
+- **安全补丁** — validateApiKey 鉴权 18 处
+- **双轨包名** — formal(com.qtwl.gateway) / cs(com.qtwl.gateway.cs)，qitong.jks 签名
+- **中文修复** — nav_settings/clear_brain 翻译 key
+- **输出截断自动续写** + 群聊/技能/备份管理
+
+### ✅ 双轨版本
+- 正式版：`3.18.31`（包名 com.qtwl.gateway）
+- 测试版：`3.18.31-17`（包名 com.qtwl.gateway.cs）
+- versionCode=220，qitong.jks 签名
+### ✅ 验证
+- 双轨编译 BUILD SUCCESSFUL
+- ⚠️ APK 60MB（含本地模型 + cloudflared 二进制，arm64-only）
+
+---
 ## 🔄 v3.18.30（正式发布）
 
 ### 🌐 修复设置页英文显示
