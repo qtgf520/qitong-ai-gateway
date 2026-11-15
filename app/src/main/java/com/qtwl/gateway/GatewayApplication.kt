@@ -76,6 +76,8 @@ class GatewayApplication : Application() {
     }
 
     private fun createNotificationChannel() {
+        // ★ Android 8.0 (API 26)+ 才需要 NotificationChannel；Android 6/7 直接跳过
+        if (android.os.Build.VERSION.SDK_INT < 26) return
         val channel = NotificationChannel(
             CHANNEL_ID,
             getString(R.string.channel_name),

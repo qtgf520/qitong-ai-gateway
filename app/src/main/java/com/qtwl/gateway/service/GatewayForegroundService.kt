@@ -9,6 +9,7 @@ import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
+import androidx.core.content.ContextCompat
 import com.qtwl.gateway.GatewayApplication
 import com.qtwl.gateway.MainActivity
 import com.qtwl.gateway.R
@@ -62,13 +63,18 @@ class GatewayForegroundService : Service() {
             .setOngoing(true)
             .build()
         // ★★★ 用 ServiceCompat.startForeground 兼容各版本，并显式声明前台服务类型 specialUse ★★★
+        var fgStarted = false
         try {
             ServiceCompat.startForeground(
                 this, NOTIFICATION_ID, immediateNotification,
                 if (android.os.Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0
             )
-        } catch (_: Exception) { }
-        notificationInitialized = true
+            fgStarted = true
+        } catch (_: Exception) {
+            // Android 13+ 未授予通知权限时可能抛异常——不能标记已启动，
+            // 否则后续只走 notify() 会导致 ForegroundServiceDidNotStartInTimeException 崩溃
+        }
+        notificationInitialized = fgStarted
 
         val app = application as GatewayApplication
         gatewayService = GatewayService(app.database)
@@ -605,7 +611,18 @@ val totalDownloadBytes = java.util.concurrent.atomic.AtomicLong(0L)   //  APP内
         fun isWakeKeepAliveEnabled(): Boolean = getWakeEnabled()
 
         fun start() {
-            GatewayApplication.getInstance().startForegroundService(Intent(GatewayApplication.getInstance(), GatewayForegroundService::class.java))
+            val ctx = GatewayApplication.getInstance()
+            val intent = Intent(ctx, GatewayForegroundService::class.java)
+            try {
+                if (android.os.Build.VERSION.SDK_INT >= 26) {
+                    ContextCompat.startForegroundService(ctx, intent)
+                } else {
+                    ctx.startService(intent)
+                }
+            } catch (_: Exception) {
+                // Android 12+ 后台启动前台服务受限，可能抛 ForegroundServiceStartNotAllowedException
+                try { ctx.startService(intent) } catch (_: Exception) { }
+            }
         }
         fun stop() {
             GatewayApplication.getInstance().stopService(Intent(GatewayApplication.getInstance(), GatewayForegroundService::class.java))

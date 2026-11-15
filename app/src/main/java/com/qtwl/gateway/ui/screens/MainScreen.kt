@@ -132,7 +132,10 @@ fun MainScreen(
     LaunchedEffect(snackbarMessage) {
         snackbarMessage?.let {
             val ctx = context
-            android.widget.Toast.makeText(ctx, localizeRuntimeText(MessageMark.strip(it)), android.widget.Toast.LENGTH_SHORT).show()
+            val toast = android.widget.Toast.makeText(ctx, localizeRuntimeText(MessageMark.strip(it)), android.widget.Toast.LENGTH_SHORT)
+            // ★ 避免被底部玻璃导航盖住：偏上显示（屏幕高度 60% 处）
+            toast.setGravity(android.view.Gravity.TOP or android.view.Gravity.CENTER_HORIZONTAL, 0, 400)
+            toast.show()
             viewModel.clearSnackbar()
         }
     }
@@ -2153,7 +2156,10 @@ fun ModelsScreen(viewModel: GatewayViewModel) {
                                                 context,
                                                 localizeRuntimeText("探测完成，共 ${modelsToProbe.size} 个模型"),
                                                 android.widget.Toast.LENGTH_SHORT
-                                            ).show()
+                                            ).apply {
+                                                // ★ 避免被底部玻璃导航盖住，偏上显示
+                                                setGravity(android.view.Gravity.TOP or android.view.Gravity.CENTER_HORIZONTAL, 0, 400)
+                                            }.show()
                                         } finally {
                                             probingMaxOutput = false
                                         }
