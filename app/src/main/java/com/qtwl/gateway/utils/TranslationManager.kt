@@ -209,6 +209,20 @@ object TranslationManager {
             AppLanguage.PT to "Chat", AppLanguage.VI to "Trò chuyện", AppLanguage.TH to "แชท",
             AppLanguage.AR to "الدردشة", AppLanguage.HI to "चैट", AppLanguage.ID to "Obrolan"
         ))
+        put("nav_settings", mapOf(
+            AppLanguage.ZH_CN to "设置", AppLanguage.ZH_TW to "設定", AppLanguage.EN to "Settings",
+            AppLanguage.JA to "設定", AppLanguage.KO to "설정", AppLanguage.ES to "Ajustes",
+            AppLanguage.FR to "Paramètres", AppLanguage.DE to "Einstellungen", AppLanguage.RU to "Настройки",
+            AppLanguage.PT to "Configurações", AppLanguage.VI to "Cài đặt", AppLanguage.TH to "การตั้งค่า",
+            AppLanguage.AR to "الإعدادات", AppLanguage.HI to "सेटिंग्स", AppLanguage.ID to "Pengaturan"
+        ))
+        put("clear_brain", mapOf(
+            AppLanguage.ZH_CN to "🧠 清除大脑", AppLanguage.ZH_TW to "🧠 清除大腦", AppLanguage.EN to "🧠 Clear Brain",
+            AppLanguage.JA to "🧠 ブレインをクリア", AppLanguage.KO to "🧠 브레인 초기화", AppLanguage.ES to "🧠 Limpiar cerebro",
+            AppLanguage.FR to "🧠 Effacer le cerveau", AppLanguage.DE to "🧠 Gehirn leeren", AppLanguage.RU to "🧠 Очистить мозг",
+            AppLanguage.PT to "🧠 Limpar cérebro", AppLanguage.VI to "🧠 Xóa não", AppLanguage.TH to "🧠 ล้างสมอง",
+            AppLanguage.AR to "🧠 مسح الذاكرة", AppLanguage.HI to "🧠 मस्तिष्क साफ़ करें", AppLanguage.ID to "🧠 Bersihkan otak"
+        ))
         put("nav_stats", mapOf(
             AppLanguage.ZH_CN to "统计", AppLanguage.ZH_TW to "統計", AppLanguage.EN to "Stats",
             AppLanguage.JA to "統計", AppLanguage.KO to "통계", AppLanguage.ES to "Estadísticas",
