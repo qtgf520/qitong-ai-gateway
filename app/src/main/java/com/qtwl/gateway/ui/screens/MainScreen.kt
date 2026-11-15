@@ -120,8 +120,11 @@ fun MainScreen(
     val context = LocalContext.current
     // Observe locale changes at the navigation root so every tab recomposes.
     val languageTick = TranslationManager.currentLanguageFlow.collectAsState().value
-
     var selectedTab by rememberSaveable { mutableStateOf(0) }
+    // ★★ 系统返回键适配：二级页（5-9）按返回回到设置页(4)，主 tab 交给系统退出 ★★
+    androidx.activity.compose.BackHandler(enabled = selectedTab >= 5) {
+        selectedTab = 4
+    }
     val snackbarMessage by viewModel.snackbarMessage.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -1267,7 +1270,9 @@ fun ProvidersScreen(viewModel: GatewayViewModel) {
             ExtendedFloatingActionButton(
                 onClick = { viewModel.showAddProvider() },
                 icon = { Icon(Icons.Default.Add, contentDescription = null) },
-                text = { Text(tr("add_provider")) }
+                text = { Text(tr("add_provider")) },
+                // ★ 底部避让：玻璃导航悬浮层会盖住 FAB，给 bottom padding 抬升
+                modifier = Modifier.navigationBarsPadding().padding(bottom = 76.dp)
             )
         }
     ) { padding ->

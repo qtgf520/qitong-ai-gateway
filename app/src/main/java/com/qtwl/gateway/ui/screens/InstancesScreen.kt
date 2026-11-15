@@ -53,7 +53,11 @@ fun InstancesScreen(viewModel: GatewayViewModel = viewModel(factory = GatewayVie
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = { showAddDialog = true }) {
+            FloatingActionButton(
+                onClick = { showAddDialog = true },
+                // ★ 底部避让：玻璃导航悬浮层会盖住 FAB
+                modifier = Modifier.navigationBarsPadding().padding(bottom = 76.dp)
+            ) {
                 Icon(Icons.Default.Add, contentDescription = null)
             }
         }
@@ -62,7 +66,9 @@ fun InstancesScreen(viewModel: GatewayViewModel = viewModel(factory = GatewayVie
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(16.dp),
+                .padding(16.dp)
+                // ★ 列表底部留白：最后一项不被玻璃导航盖住
+                .padding(bottom = 96.dp),
             verticalArrangement = Arrangement.Top
         ) {
             // 实例列表

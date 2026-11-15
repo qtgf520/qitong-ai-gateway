@@ -1259,12 +1259,16 @@ Text(localizedText("备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加密)"
     } // end Box
     // 密钥管理全屏覆盖
     if (showKeyManagement) {
+        // ★ 系统返回键关闭
+        androidx.activity.compose.BackHandler(enabled = true) { showKeyManagement = false }
         Box(modifier = Modifier.fillMaxSize()) {
             KeyManagementScreen(onDismiss = { showKeyManagement = false })
         }
     }
     // 技能管理全屏覆盖
     if (showSkillManagement) {
+        // ★ 系统返回键关闭
+        androidx.activity.compose.BackHandler(enabled = true) { showSkillManagement = false }
         Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
             SkillManagementScreen(onDismiss = { showSkillManagement = false })
         }
