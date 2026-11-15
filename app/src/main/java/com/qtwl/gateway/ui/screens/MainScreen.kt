@@ -1309,40 +1309,15 @@ fun ProvidersScreen(viewModel: GatewayViewModel) {
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 itemsIndexed(providers.sortedBy { it.orderIndex }, key = { _, p -> p.id }) { index, provider ->
-                    var showMoveMenu by remember { mutableStateOf(false) }
                     ProviderCard(
                         provider = provider,
                         onToggleEnabled = { viewModel.toggleProviderEnabled(provider) },
                         onEdit = { viewModel.showEditProvider(provider) },
                         onDelete = { viewModel.deleteProvider(provider) },
                         onSync = { viewModel.syncModels(provider) },
-                        modifier = Modifier.combinedClickable(
-                            onClick = { },
-                            onLongClick = { showMoveMenu = true }
-                        )
+                        onMoveUp = if (index > 0) {{ viewModel.moveProvider(provider, -1) }} else null,
+                        onMoveDown = if (index < providers.sortedBy { it.orderIndex }.size - 1) {{ viewModel.moveProvider(provider, 1) }} else null
                     )
-                    // 长按弹出移动菜单
-                    if (showMoveMenu) {
-                        AlertDialog(
-                            onDismissRequest = { showMoveMenu = false },
-                            title = { Text(provider.name, fontWeight = FontWeight.Bold) },
-                            text = {
-                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    if (index > 0) {
-                                        TextButton(onClick = { viewModel.moveProvider(provider, -1); showMoveMenu = false }, modifier = Modifier.fillMaxWidth()) {
-                                            Text("▲  上移")
-                                        }
-                                    }
-                                    if (index < providers.sortedBy { it.orderIndex }.size - 1) {
-                                        TextButton(onClick = { viewModel.moveProvider(provider, 1); showMoveMenu = false }, modifier = Modifier.fillMaxWidth()) {
-                                            Text("▼  下移")
-                                        }
-                                    }
-                                }
-                            },
-                            confirmButton = { TextButton(onClick = { showMoveMenu = false }) { Text(tr("close")) } }
-                        )
-                    }
                 }
             }
         }
@@ -1376,6 +1351,8 @@ private fun ProviderCard(
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     onSync: () -> Unit,
+    onMoveUp: (() -> Unit)? = null,
+    onMoveDown: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -1419,6 +1396,17 @@ private fun ProviderCard(
                 }
                 // 右侧：操作按钮，固定宽度不会被挤
                 Row {
+                    // ★ 上移/下移按钮（点击式，不抢列表滚动手势）
+                    if (onMoveUp != null) {
+                        IconButton(onClick = onMoveUp, modifier = Modifier.size(30.dp)) {
+                            Text("▲")
+                        }
+                    }
+                    if (onMoveDown != null) {
+                        IconButton(onClick = onMoveDown, modifier = Modifier.size(30.dp)) {
+                            Text("▼")
+                        }
+                    }
                     IconButton(onClick = onToggleEnabled, modifier = Modifier.size(36.dp)) {
                         Text(
                             if (provider.isEnabled) "" else "",
