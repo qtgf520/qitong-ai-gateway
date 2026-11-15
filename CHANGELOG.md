@@ -3,6 +3,23 @@
 > 签名证书：qitong.jks (别名: qitong)
 > 最后更新：2026-11-15
 ---
+## 🔄 v3.18.32（正式发布）
+
+### 🖥️ UI 全面布局修复 + 系统返回键适配
+- **✅ ProvidersScreen「添加服务商」FAB 底部避让** — navigationBarsPadding + bottom 76dp 抬升，不再被玻璃导航悬浮层盖住（用户反馈按钮跑最底下）
+- **✅ InstancesScreen** — FAB 底部避让 + 列表底部 96dp 留白，最后一项不再被胶囊遮住
+- **✅ KeyManagementScreen** — 列表底部 104dp 留白
+- **✅ 系统返回键适配** — MainScreen 二级页（统计/管理/实例/关于/本地模型 5-9）按返回键回到设置页(4)；密钥管理/技能管理全屏覆盖层按返回键关闭
+- **✅ 全面排查** — 各界面底部 padding 与玻璃导航避让统一核对
+
+### ✅ 双轨版本
+- 正式版：`3.18.32`（包名 com.qtwl.gateway）
+- 测试版：`3.18.32-18`（包名 com.qtwl.gateway.cs）
+- versionCode=221，qitong.jks 签名
+### ✅ 验证
+- 双轨编译 BUILD SUCCESSFUL（assembleFormalDebug + assembleCsDebug）
+
+---
 ## 🔄 v3.18.31（正式发布）
 
 ### 📦 朋友 3.87.0 全量源码拉齐（用户指示：把他源码直接拉过来，但咱的功能不变）
