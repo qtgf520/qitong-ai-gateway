@@ -130,7 +130,7 @@ fun PacketCaptureScreen(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
-                Text(localizedText("暂无抓包记录\\n先开启抓包模式再发请求", "No packet-capture records yet\\nEnable capture mode before sending requests"), textAlign = androidx.compose.ui.text.style.TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(localizedText("暂无抓包记录\n先开启抓包模式再发请求", "No packet-capture records yet\nEnable capture mode before sending requests"), textAlign = androidx.compose.ui.text.style.TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         } else {
             LazyColumn(

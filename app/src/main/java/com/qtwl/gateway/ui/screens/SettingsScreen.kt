@@ -79,9 +79,9 @@ fun SettingsScreen(
                     fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
                 )
                 Text(
-                    text = localizedText("确保应用在后台稳定运行，不被系统杀死。将尝试：\\n", "Keep the app running reliably in the background and prevent the system from killing it. Will try to:\\n") +
-                            localizedText("1️⃣ 加入电池优化白名单\\n", "1️⃣ Add to the battery optimization whitelist\\n") +
-                            localizedText("2️⃣ 允许后台运行\\n", "2️⃣ Allow background running\\n") +
+                    text = localizedText("确保应用在后台稳定运行，不被系统杀死。将尝试：\n", "Keep the app running reliably in the background and prevent the system from killing it. Will try to:\n") +
+                            localizedText("1️⃣ 加入电池优化白名单\n", "1️⃣ Add to the battery optimization whitelist\n") +
+                            localizedText("2️⃣ 允许后台运行\n", "2️⃣ Allow background running\n") +
                             localizedText("3️⃣ 忽略电池优化（需要 Root）", "3️⃣ Ignore battery optimization (requires root)"),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -96,6 +96,30 @@ fun SettingsScreen(
                 ) {
                     Text(localizedText("绑定后台权限", "Bind background permissions"))
                 }
+                // ★ 唤醒保活开关（开启 = 前台服务 + 唤醒锁 + 定时唤醒 + Shizuku 强制后台）
+                var wakeKeepAlive by remember { mutableStateOf(com.qtwl.gateway.service.GatewayForegroundService.isWakeKeepAliveEnabled()) }
+                androidx.compose.material3.Switch(
+                    checked = wakeKeepAlive,
+                    onCheckedChange = { on ->
+                        wakeKeepAlive = on
+                        com.qtwl.gateway.service.GatewayForegroundService.setWakeKeepAlive(on)
+                        // ★ 开启时同时强制后台保活（deviceidle 白名单 + appops）+ Shizuku 授权
+                        viewModel.bindBackgroundPermissions()
+                        if (on) {
+                            try {
+                                com.qtwl.gateway.coagent.ShizukuBridge.requestPermission()
+                            } catch (_: Exception) { }
+                        }
+                    }
+                )
+                Text(
+                    text = if (wakeKeepAlive)
+                        localizedText("✅ 唤醒保活已开启：前台服务 + 唤醒锁 + 每5分钟自唤醒 + 后台白名单", "✅ Keep-alive ON: foreground service + wake lock + 5-min self-wake + background whitelist")
+                    else
+                        localizedText("唤醒保活：开启后应用在后台/关屏持续运行，不被系统杀死", "Keep-alive: keeps the app running in background/screen-off"),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
 
                 // 提示信息
                 Surface(
@@ -143,7 +167,7 @@ fun SettingsScreen(
                     fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
                 )
                 Text(
-                    text = localizedText("代理配置已隐藏，在「关于」页面连点 3 下可快速开关代理加速。\\n开启后所有大模型 API 请求将自动经过代理转发。", "Proxy configuration is hidden. Tap the About page 3 times to quickly toggle proxy acceleration.\\nWhen enabled, all LLM API requests are automatically forwarded through the proxy."),
+                    text = localizedText("代理配置已隐藏，在「关于」页面连点 3 下可快速开关代理加速。\n开启后所有大模型 API 请求将自动经过代理转发。", "Proxy configuration is hidden. Tap the About page 3 times to quickly toggle proxy acceleration.\nWhen enabled, all LLM API requests are automatically forwarded through the proxy."),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

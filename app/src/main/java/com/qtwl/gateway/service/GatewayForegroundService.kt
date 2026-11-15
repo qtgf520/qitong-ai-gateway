@@ -588,6 +588,23 @@ val totalDownloadBytes = java.util.concurrent.atomic.AtomicLong(0L)   //  APP内
         }
         private fun getWakeEnabled(): Boolean = GatewayApplication.getInstance().getSharedPreferences(PREF_NAME, 0).getBoolean(KEY_WAKE_ENABLED, false)
 
+        /** ★ 设置页唤醒保活开关：写入配置；开启时同时启动常驻服务（服务内部读配置自动获取唤醒锁+定时唤醒） */
+        fun setWakeKeepAlive(enabled: Boolean) {
+            saveWakeEnabled(enabled)
+            if (enabled) {
+                // 启动前台服务：onStartCommand 会读取 wakeEnabled=true 自动 acquireWakeLock + scheduleAlarmKeepAlive
+                start()
+            } else {
+                // 发广播让运行中的服务释放唤醒锁
+                try {
+                    val ctx = GatewayApplication.getInstance()
+                    val intent = Intent(ctx, GatewayForegroundService::class.java).putExtra(EXTRA_TOGGLE_WAKE, true)
+                    ctx.startService(intent)
+                } catch (_: Exception) { }
+            }
+        }
+        fun isWakeKeepAliveEnabled(): Boolean = getWakeEnabled()
+
         fun start() {
             GatewayApplication.getInstance().startForegroundService(Intent(GatewayApplication.getInstance(), GatewayForegroundService::class.java))
         }

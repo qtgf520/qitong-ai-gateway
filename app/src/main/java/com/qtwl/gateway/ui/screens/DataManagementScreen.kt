@@ -1218,28 +1218,28 @@ Text(localizedText("备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加密)"
                                                 appendLine(localizedText("抓包详情 #", "Packet capture details #") + record.id)
                                                 appendLine(localizedText("时间: ", "Time: ") + timeFmt.format(record.timestamp))
                                                 record.inbound?.let { inbound ->
-                                                    appendLine(localizedText("\\n入站", "\\nInbound"))
+                                                    appendLine(localizedText("\n入站", "\nInbound"))
                                                     appendLine(localizedText("方法: ", "Method: ") + "${inbound.method} ${inbound.path}")
                                                     appendLine(localizedText("头部: ", "Headers: ") + inbound.headers)
                                                     appendLine(localizedText("--- 请求体 (", "--- Request body (") + "${inbound.bodySize}B) ---")
                                                     appendLine(inbound.body)
                                                 }
                                                 record.outbound?.let { outbound ->
-                                                    appendLine(localizedText("\\n出站", "\\nOutbound"))
+                                                    appendLine(localizedText("\n出站", "\nOutbound"))
                                                     appendLine("URL: ${outbound.targetUrl}")
                                                     appendLine(localizedText("模型: ", "Model: ") + outbound.modelId)
                                                     appendLine(localizedText("--- 请求体 (", "--- Request body (") + "${outbound.bodySize}B) ---")
                                                     appendLine(outbound.body)
                                                 }
                                                 record.response?.let { resp ->
-                                                    appendLine(localizedText("\\n响应", "\\nResponse"))
+                                                    appendLine(localizedText("\n响应", "\nResponse"))
                                                     appendLine(localizedText("状态: ", "Status: ") + "${resp.httpStatus} | ${resp.elapsedMs}ms")
                                                     appendLine("Tokens: ↑${resp.promptTokens} ↓${resp.completionTokens}")
                                                     appendLine(localizedText("--- 响应体 (", "--- Response body (") + "${resp.bodySize}B) ---")
                                                     appendLine(resp.body)
                                                 }
                                                 record.failover?.let { failover ->
-                                                    appendLine(localizedText("\\n故障转移", "\\nFailover"))
+                                                    appendLine(localizedText("\n故障转移", "\nFailover"))
                                                     failover.attempts.forEach { attempt ->
                                                         appendLine("[${attempt.index}] ${attempt.modelId}: ${attempt.error} (${attempt.elapsedMs}ms)")
                                                     }
@@ -1303,7 +1303,7 @@ Text(localizedText("备份格式: .qtbk (GZIP压缩+SHA256校验+AES-256加密)"
             title = { Text(localizedText("危险操作确认", "Dangerous operation confirmation"), fontWeight = FontWeight.Bold, color = Error) },
             text = {
                 Column {
-                    Text(localizedText("此操作将永久删除所有数据，包括：\\n• 所有服务商配置\\n• 所有 AI 模型列表\\n• 所有聊天记录和对话\\n• 所有 Token 用量统计\\n\\n此操作不可撤销！", "This will permanently delete all data, including:\\n• All provider configurations\\n• All AI model lists\\n• All chats and conversations\\n• All token usage statistics\\n\\nThis action cannot be undone!"), style = MaterialTheme.typography.bodyMedium)
+                    Text(localizedText("此操作将永久删除所有数据，包括：\n• 所有服务商配置\n• 所有 AI 模型列表\n• 所有聊天记录和对话\n• 所有 Token 用量统计\n\n此操作不可撤销！", "This will permanently delete all data, including:\n• All provider configurations\n• All AI model lists\n• All chats and conversations\n• All token usage statistics\n\nThis action cannot be undone!"), style = MaterialTheme.typography.bodyMedium)
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(localizedText("请输入「确认重置」以继续：", "Please type \"Confirm reset\" to continue:"), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(8.dp))
@@ -1757,6 +1757,7 @@ fun AboutScreen(viewModel: GatewayViewModel = viewModel(factory = GatewayViewMod
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(localizedText("版本: v", "Version: v") + appVersion, style = MaterialTheme.typography.bodyMedium)
                     Text(localizedText("开发者: 綦桐网络", "Developer: QiTong Network"), style = MaterialTheme.typography.bodyMedium)
+                    Text(localizedText("开发UI设计师: 江", "UI Designer: Jiang"), style = MaterialTheme.typography.bodyMedium)
                     Text(localizedText("QQ群: 966345026", "QQ Group: 966345026"), style = MaterialTheme.typography.bodyMedium)
                     Text(localizedText("协议: OpenAI Compatible API", "Protocol: OpenAI-compatible API"), style = MaterialTheme.typography.bodyMedium)
                 }

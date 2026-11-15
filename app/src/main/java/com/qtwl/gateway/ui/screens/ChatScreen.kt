@@ -380,6 +380,8 @@ fun ChatScreen(viewModel: GatewayViewModel) {
             alpha = if (com.qtwl.gateway.utils.UiSettings.glassSurfaces) 0.56f else 0.98f,
             modifier = Modifier
                 .fillMaxWidth()
+                // ★ 键盘弹出时输入框跟随上移
+                .imePadding()
                 .navigationBarsPadding()
                 .padding(horizontal = 6.dp)
                 .padding(bottom = 84.dp)
@@ -630,7 +632,7 @@ Text(
                     if (enabledModels.isEmpty()) {
                         item {
                             Box(modifier = Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) {
-                                Text(localizedText("暂无可用模型\\n请先在「模型」页面启用模型", "No available models\\nEnable a model on the Models page first"), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(localizedText("暂无可用模型\n请先在「模型」页面启用模型", "No available models\nEnable a model on the Models page first"), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     } else {

@@ -1305,7 +1305,9 @@ fun ProvidersScreen(viewModel: GatewayViewModel) {
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding)
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    // ★ 底部留白：最后一项不被玻璃导航/悬浮按钮盖住
+                    .padding(bottom = 96.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 itemsIndexed(providers.sortedBy { it.orderIndex }, key = { _, p -> p.id }) { index, provider ->
@@ -1994,7 +1996,9 @@ fun ModelsScreen(viewModel: GatewayViewModel) {
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            // ★ 底部留白：最后一项不被玻璃导航盖住
+            .padding(bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         // 搜索框 + 标签筛选
