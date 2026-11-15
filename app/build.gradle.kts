@@ -13,8 +13,8 @@ android {
         applicationId = "com.qtwl.gateway"
         minSdk = 24
         targetSdk = 36
-versionCode = 223
-        versionName = "3.18.34"
+versionCode = 224
+        versionName = "3.18.35"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // 只保留 arm64：llama.cpp 等 .so 需要
         ndk {
@@ -31,12 +31,12 @@ versionCode = 223
         create("formal") {
             dimension = "track"
             applicationId = "com.qtwl.gateway"
-            versionName = "3.18.34"
+            versionName = "3.18.35"
         }
         create("cs") {
             dimension = "track"
             applicationId = "com.qtwl.gateway.cs"
-            versionName = "3.18.34-20"
+            versionName = "3.18.35-21"
         }
     }
 

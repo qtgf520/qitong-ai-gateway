@@ -197,15 +197,14 @@ class GatewayForegroundService : Service() {
 
         val text = buildString {
             append(localizedText("端口 ", "Port ")).append(port)
-            append(localizedText("\n当前会话 ", "\nCurrent session ")).append("${formatBytes(upBytes)} ${formatBytes(downBytes)}")
-            append(localizedText("\n总统计 ", "\nAll-time totals ")).append("${formatBytes(totalUp)} ${formatBytes(totalDown)}")
+            append(localizedText("\n📊 当前会话 ", "\n📊 Current session ")).append("↑${formatBytes(upBytes)} ↓${formatBytes(downBytes)}")
+            append(localizedText("\n📈 总统计 ", "\n📈 All-time totals ")).append("↑${formatBytes(totalUp)} ↓${formatBytes(totalDown)}")
             append("\n$proxyText")
         }
-
         val title = buildString {
             append(if (wakeEnabled) localizedText("綦桐网关保活", "QiTong Gateway (keep-alive)") else localizedText("綦桐网关", "QiTong Gateway"))
             if (nodeName.isNotBlank()) {
-                val light = if (hasTraffic && isActive) " [·]" else if (hasTraffic) " [ ]" else ""
+                val light = if (hasTraffic && isActive) " 🟢" else if (hasTraffic) " ⚪" else ""
                 // ★★ 显示服务商ID：P服务商ID · 模型名 ★★
                 val nodeDisplay = if (activeNodeProviderId > 0L) "P$activeNodeProviderId · $nodeName" else nodeName
                 append(" ·$light $nodeDisplay")
