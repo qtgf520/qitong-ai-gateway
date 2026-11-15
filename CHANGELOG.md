@@ -3,6 +3,21 @@
 > 签名证书：qitong.jks (别名: qitong)
 > 最后更新：2026-11-15
 ---
+## 🔄 v3.18.30（正式发布）
+
+### 🌐 修复设置页英文显示
+- **✅ 底部导航「设置」显示英文** — 朋友版 MainScreen 用 tr("nav_settings")，但 TranslationManager 缺该 key → fallback 回退显示英文 key。已补齐 nav_settings（15 语言：设置/設定/Settings/設定...）
+- **✅ 🧠清除大脑按钮英文** — 补 clear_brain 翻译 key
+- **✅ 全量扫描** — ui/screens 所有 tr() key 校验无缺失
+
+### ✅ 双轨版本
+- 正式版：`3.18.30`（包名 com.qtwl.gateway）
+- 测试版：`3.18.30-16`（包名 com.qtwl.gateway.cs）
+- versionCode=219，qitong.jks 签名
+### ✅ 验证
+- 双轨编译 BUILD SUCCESSFUL
+
+---
 ## 🔄 v3.18.29（正式发布 · 打磨收尾版）
 
 ### 🪟 UI 实体验证通过 + 液态玻璃质感打磨
