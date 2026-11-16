@@ -9,7 +9,7 @@
 > Recommended: Uninstall old version OR clear app data → Install new version → Import backup.
 
 > **包名 / Package：** `com.qtwl.gateway`  
-> **最新版本 / Latest：** v3.18.28 (versionCode=217)  
+> **最新版本 / Latest：** v3.18.36 (versionCode=225)  
 > **开源协议 / License：** Apache 2.0  
 > **语言 / Languages：** 🌐 15 languages (CN/EN/JP/KR/FR/DE/ES/RU/PT/VN/TH/AR/HI/ID)
 > **官方QQ群 / QQ Group：** [1007488535](https://qm.qq.com/q/1007488535) 💬
@@ -179,6 +179,17 @@ See [CHANGELOG.md](CHANGELOG.md) for full changelog.
 
 | Version | Key Features |
 |:--------|:-------------|
+| **v3.18.36** | 🔧 **崩溃修复 + Toast 置顶 + Android 版本适配** — 修复 ForegroundServiceDidNotStartInTimeException 崩溃（Android 15 前台服务 5 秒超时，startForeground 失败不再误标 initialized + ContextCompat 启动兜底）；Toast 不再被底部玻璃导航盖住（置顶显示）；createNotificationChannel 加 API 26+ 保护适配 Android 6~最新。双轨 v3.18.36 / v3.18.36-22（vC=225） |
+| **v3.18.35** | 🟢 **恢复通知栏绿灯 + 上传下载流量指示** — 全量迁移时被覆盖的 🟢绿灯/⚪灰点状态灯、↑上传↓下载箭头、📊当前会话/📈总统计全部找回。双轨 v3.18.35 / v3.18.35-21（vC=224） |
+| **v3.18.34** | 🛠️ **批量修复 + Shizuku 保活 + 唤醒开关** — 服务商/模型列表底部留白可拉到底、聊天输入框键盘跟随上移、关于页加「开发UI设计师: 江」、\n乱码修正、Shizuku 永久挂载恢复（全量迁移覆盖丢失已融合回）、新增「唤醒保活」开关（前台服务+唤醒锁+5分钟自唤醒+白名单）。双轨 v3.18.34 / v3.18.34-20（vC=223） |
+| **v3.18.33** | 🔄 **修复服务商列表不能滑动** — ProviderCard 整卡 combinedClickable 空 onClick 抢占触摸事件吞掉 LazyColumn 滚动手势；移除手势拦截，改卡片右侧 ▲▼ 点击式排序按钮。双轨 v3.18.33 / v3.18.33-19（vC=222） |
+| **v3.18.32** | 🖥️ **UI 全面布局修复 + 系统返回键适配** — 添加服务商 FAB 底部抬升不再被玻璃导航盖住、实例页 FAB+列表留白、密钥页底部留白；二级页返回键回设置页、密钥/技能覆盖层返回关闭。双轨 v3.18.32 / v3.18.32-18（vC=221） |
+| **v3.18.31** | 📦 **朋友 3.87.0 全量源码拉齐（含本地模型）+ 咱功能全保留** — jniLibs 15 个 .so（llama.cpp 运行时 + cloudflared 37MB）+ LocalLlmEngine/LocalModelManager 引擎、全量 UI（液态玻璃/HyperOS/双主题）、预测式切换/安全补丁/双轨包名全保留。⚠️ APK 60MB（arm64-only，vC=220） |
+| **v3.18.30** | 🌐 **修复设置页英文显示** — 底部导航 nav_settings + clear_brain 翻译 key 缺失导致回退英文，已补齐（15 语言）。双轨 v3.18.30 / v3.18.30-16（vC=219） |
+| **v3.18.29** | 🪟 **界面层完整迁移 + 液态玻璃打磨（用户实体验证通过）** — 液态玻璃底部导航（iOS 26 毛玻璃胶囊+弹簧动画）、iOS 式滑动转场、HyperOS 风格设置页、MIUI/Apple 双主题、首页卡片玻璃化打磨（顶部标题区+全部卡片 GlassSurface）。双轨 v3.18.29 / v3.18.29-15（vC=218） |
+| **v3.18.28** | 🤖 **全新协同 Agent 引擎（coagent）+ 权限沙盒 + 时间线系统** — AgentRunner 全新 ReAct 执行器（400 参数自愈/真取消）、AgentGuard 三档权限沙盒（危险操作审批卡片）、ShellRunner 多身份 shell、时间线系统（正文/思考/工具卡按序渲染）、思考档位/无限轮数/Shizuku 授权。双轨 v3.18.28 / v3.18.28-14（vC=217） |
+| **v3.18.27** | 🎨 **Agent 自动化 UI 完整接入 + 玻璃拟态/双主题组件** — ChatScreen Agent 模式开关条 + 执行轨迹面板（流式实时预览）+ Agent 设置弹窗；GlassEffect 玻璃卡片/发光按钮、ThemeStyle MIUI/Apple 双主题。双轨 v3.18.27 / v3.18.27-13（vC=216） |
+| **v3.18.26** | 🤖 **Agent 核心系统迁移 + 输出截断自动续写** — ReAct 循环执行器、内置/网络/技能工具、知识库、SSE 解析、群聊编排；finish_reason=length 自动续写（非流式 JSON 合并 + 流式 SSE 追加）。双轨 v3.18.26 / v3.18.26-12（vC=215） |
 | **v3.18.25** | 🔒 **安全补丁迁移（8项）+ 预测式切换融合** — 迁移朋友补丁：①局域网免密钥绕过修复（仅回环免密钥）②`/chat/completions` 补鉴权 ③HTTPS代理移除trust-all恢复证书校验 ④tool_calls空content不再误判故障 ⑤`/v1/completions` stream=true改网关包装SSE ⑥`/v1/messages` Claude格式整段重写（tools/tool_use/tool_result完整转换+Claude SSE包装） ⑦访问日志真实耗时 ⑧模型不存在404；保留 v3.18.24 预测式自动切换 |
 | **v3.18.24** | 🔮 **预测式自动切换（思考阶段预热）** — qtai-sj 思考阶段提前预判下一模型并预热连接：基于 ①强制故障池下一个 ②测速榜下一个 ③兜底qtai-sj 三级预测策略，`prewarmConnection()` 预建 TCP/TLS/HTTP/2 连接（超时5s、OkHttp连接池复用），故障切换毫秒级零感知；预热管理器挂网关前台服务，切换完成自动清理 |
 | **v3.18.23** | 🐛 **强制故障池重启丢失修复** — 修复 `saveForcedModel("")` 连带清空整个强制池的bug（开启qtai-sj自动化/取消强制切换/重启都会误清），清空强制模型时保留用户多选的故障转移列表，重启不再丢失 |
