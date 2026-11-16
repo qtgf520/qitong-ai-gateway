@@ -265,6 +265,53 @@ curl -s -X POST \
   --data-binary @app/build/outputs/apk/debug/app-debug.apk
 ```
 
+### 7.4 GitCode（AtomGit）双通道发布（2026-11-16 实测启用）
+
+> **GitCode = 国内可直接访问的开源发布区**（AtomGit 为其开放平台品牌）。发布流程与 GitHub 并行，代码 + Release + 附件一起镜像。
+> **API Host:** `https://api.atomgit.com/api/v5/`（不是 api.gitcode.com！）
+> **鉴权:** `Authorization: Bearer <token>` 或 `PRIVATE-TOKEN: <token>` 均可（access_token query 形式不可用）
+> **仓库地址:** 用企业命名空间！如 `qitong-ai-gateway/gateway-1`（不是用户名 qtgf520，用错会 403）
+
+```bash
+# 配置 git remote（幂等）
+git remote | grep -qx gitcode || git remote add gitcode https://用户名:TOKEN@atomgit.com/企业空间/仓库.git
+
+# 1. 推送分支（强制覆盖，保持与 GitHub 一致）
+git push --force gitcode main
+
+# 2. 推送全部 tag
+git push --force gitcode --tags
+
+# 3. 创建 Release（必须有 body，空 body 返回 400）
+curl -s -X POST "https://api.atomgit.com/api/v5/repos/企业空间/仓库/releases" \
+  -H "Authorization: Bearer $GC_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"tag_name":"vx.x.x","name":"vx.x.x","body":"发行说明"}' \
+# release_status 可选 pre（预发布）/latest
+
+# 4. 上传附件（两步：拿上传地址 → PUT 到 OBS）
+# 4a. 获取上传地址（GET，带 file_name）
+curl -s -H "Authorization: Bearer $GC_TOKEN" \
+  "https://api.atomgit.com/api/v5/repos/企业空间/仓库/releases/vx.x.x/upload_url?file_name=App-vx.x.x.apk"
+# 返回 {"url":"https://file.gitcode.com/...签名URL","headers":{...}}
+
+# 4b. 用返回的 url + headers 发 PUT 请求（Content-Length + OBS 头）
+curl -s -X PUT "$UPLOAD_URL" -H "x-obs-meta-project-id: ..." -H "x-obs-acl: private" \
+  -H "x-obs-callback: ..." -H "Content-Length: 文件大小" --data-binary @本地.apk
+# 返回 success 即成功，随后 release assets 会出现 type=attach 条目
+
+# 5. 核验
+git ls-remote gitcode main | awk '{print $1}'  # 与本地 HEAD 比对
+curl -s -H "Authorization: Bearer $GC_TOKEN" \
+  "https://api.atomgit.com/api/v5/repos/企业空间/仓库/releases/tags/vx.x.x" | python3 -m json.tool
+```
+
+> ⚠️ **注意：**
+> - 创建 Release 用 POST 后，tag 应已存在（先 push tag 或用 target_commitish 指定）。tag 已存在时 POST 返回 409 Release already exists，属正常（说明已创建过）。
+> - 删除附件为 `DELETE /releases/{tag}/attach_files/{file_name}`；删除 release 需先删 tag，release 随 tag 自动清理。
+> - GitHub 源 404 的旧资产无法转存（如 v3.7.7 被删的 APK），属预期。
+> - 批量迁移可参考：GET /user/repos 拿仓库列表 → 逐个 POST /releases → GET upload_url → PUT 上传。列表接口 per_page 最大 100，注意分页。
+
 ---
 
 ## 8. 清理旧文件
