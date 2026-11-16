@@ -311,6 +311,8 @@ curl -s -H "Authorization: Bearer $GC_TOKEN" \
 > - 删除附件为 `DELETE /releases/{tag}/attach_files/{file_name}`；删除 release 需先删 tag，release 随 tag 自动清理。
 > - GitHub 源 404 的旧资产无法转存（如 v3.7.7 被删的 APK），属预期。
 > - 批量迁移可参考：GET /user/repos 拿仓库列表 → 逐个 POST /releases → GET upload_url → PUT 上传。列表接口 per_page 最大 100，注意分页。
+>
+> 🚨 **发布顺序坑（2026-11-16 实测踩坑）：** GitCode/AtomGit 网页 **Releases 按 created_at 降序显示**（后创建的在最前），而 GitHub 按版本新旧排。若批量迁移时创建顺序混乱，网页会乱序（如最早创建的 v3.7.7 反而顶到最前）。**正确姿势：** 迁移时按版本**从旧到新**逐个创建（v3.0.0 先建 → v3.18.36 最后建），这样网页降序显示 = 版本降序 = 与 GitHub 一致。若已建乱：删除全部 release 重建（删 tag 会连带删 release，tag 删前务必 `git rev-parse tag^{commit}` 备份 commit 指针，删完 `git push --force gitcode --tags` 恢复 tag，再按序重建 release + 重传附件）。
 
 ---
 
