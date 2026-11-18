@@ -96,18 +96,18 @@ data class PipelineTestItem(
         get() = ModelRouteKey.encode(providerId, modelId)
 }
 
-private val _pipelineStatus = MutableStateFlow<List<PipelineTestItem>>(emptyList())
+internal val _pipelineStatus = MutableStateFlow<List<PipelineTestItem>>(emptyList())
 val pipelineStatus: StateFlow<List<PipelineTestItem>> = _pipelineStatus.asStateFlow()
 
 /**  流水线测速进度  */
-private val _pipelineProgress = MutableStateFlow(0f)
+internal val _pipelineProgress = MutableStateFlow(0f)
 val pipelineProgress: StateFlow<Float> = _pipelineProgress.asStateFlow()
 
-private val _pipelineRunning = MutableStateFlow(false)
+internal val _pipelineRunning = MutableStateFlow(false)
 val pipelineRunning: StateFlow<Boolean> = _pipelineRunning.asStateFlow()
 
 /**  测速倒计时（秒），0表示不在倒计时  */
-private val _pipelineCountdown = MutableStateFlow(0)
+internal val _pipelineCountdown = MutableStateFlow(0)
 val pipelineCountdown: StateFlow<Int> = _pipelineCountdown.asStateFlow()
 
 /**  qtai-sj 虚拟模型独立状态  */
@@ -120,7 +120,7 @@ data class QtaiSjStatus(
     val isTesting: Boolean = false,
 )
 
-private val _qtaiSjStatus = MutableStateFlow(QtaiSjStatus())
+internal val _qtaiSjStatus = MutableStateFlow(QtaiSjStatus())
 val qtaiSjStatus: StateFlow<QtaiSjStatus> = _qtaiSjStatus.asStateFlow()
 
 private var pipelineJob: kotlinx.coroutines.Job? = null
@@ -352,7 +352,7 @@ object ModelCapabilityManager {
         probeJob = null
     }
 }
-private fun savePipelineCache(items: List<PipelineTestItem>) {
+internal fun savePipelineCache(items: List<PipelineTestItem>) {
     try {
         val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
         val str = json.encodeToString(items)
@@ -3263,165 +3263,19 @@ fun clearChatError() {
 
     // ==================== 流水线接力测速 ====================
 
-    /** 启动流水线测速（全自动循环模式，每20秒刷新一轮） */
+/** 启动流水线测速（全自动循环模式，每间隔连续循环一轮） */
     fun startPipelineTest() {
-        if (_pipelineRunning.value) return
-        pipelineJob?.cancel()
-        pipelineJob = viewModelScope.launch {
-            _pipelineRunning.value = true
-            _qtaiSjStatus.value = _qtaiSjStatus.value.copy(isTesting = true)
-            _pipelineProgress.value = 0f
-            try {
-                var firstRound = true
-                while (_pipelineRunning.value) {
-                    val enabledList = database.aiModelDao().getEnabledModelsList().filter { it.isEnabled }
-                    if (enabledList.isEmpty()) { _pipelineRunning.value = false; refreshQtaiSjStatus(); return@launch }
-
-                    // 保留旧测速结果，新模型加入等待中
-                    val oldStatus = _pipelineStatus.value
-                    val oldMap = oldStatus.associateBy { it.selectionKey }
-                    _pipelineStatus.value = enabledList.map { model ->
-                        oldMap[model.routeKey]?.copy(
-                            modelName = model.customAlias.ifBlank { model.displayName },
-                            providerId = model.providerId,
-                            ) ?: PipelineTestItem(
-                            modelId = model.modelId,
-                            modelName = model.customAlias.ifBlank { model.displayName },
-                            providerId = model.providerId,
-                                status = PipelineStatusMark.WAIT + "等待中"
-                        )
-                    }
-
-                    val sortedList = if (firstRound) enabledList
-                    else {
-                        val speedMap = _pipelineStatus.value.associate { it.selectionKey to it.latencyMs }
-                        enabledList.sortedBy { speedMap[it.routeKey] ?: Long.MAX_VALUE }
-                    }
-
-                    for (model in sortedList) {
-                        if (!_pipelineRunning.value) break
-                        val realIdx = _pipelineStatus.value.indexOfFirst { it.selectionKey == model.routeKey }
-                        if (realIdx < 0) continue
-                        if (!_pipelineRunning.value) break
-                        // ★★ 更新进度 ★★
-                        val testedCount = _pipelineStatus.value.count { PipelineStatusMark.isDone(it.status) }
-                        val total = _pipelineStatus.value.size
-                        _pipelineProgress.value = if (total > 0) testedCount.toFloat() / total.toFloat() else 0f
-
-                        val cur = _pipelineStatus.value.toMutableList()
-                        cur[realIdx] = cur[realIdx].copy(status = PipelineStatusMark.TEST + "测速中...", isCurrent = true)
-                        for (i in cur.indices) { if (i != realIdx) cur[i] = cur[i].copy(isCurrent = false) }
-                        _pipelineStatus.value = cur
-
-                        val provider = database.providerDao().getProviderById(model.providerId)
-                        if (provider == null || !provider.isEnabled) {
-                            val sk = _pipelineStatus.value.toMutableList()
-                            sk[realIdx] = sk[realIdx].copy(status = PipelineStatusMark.FAIL + "服务商不可用", latencyMs = Long.MAX_VALUE, isCurrent = false)
-                            _pipelineStatus.value = sk; continue
-                        }
-
-                        // ★★ 三指标测速（TTFT / TPS / 总耗时） ★★
-                        var success = false; var latency = 0L; var errorMsg = ""
-                        var ttft = 0L; var tps = 0.0; var tokens = 0
-                        try {
-                            withContext(Dispatchers.IO) {
-                                val resolvedUrl = provider.resolvedBaseUrl.trimEnd('/')
-                                val metrics = speedTester.measure(model.modelId, resolvedUrl, provider.apiKey, provider.chatPath)
-                                latency = metrics.totalMs
-                                ttft = metrics.ttftMs
-                                tps = metrics.tps
-                                tokens = metrics.tokenCount
-                                if (metrics.ttftMs >= 0) {
-                                    success = true
-                                    if (tokens == 0) errorMsg = "· 无输出"
-                                } else {
-                                    errorMsg = "测速失败"
-                                }
-                            }
-                        } catch (e: Exception) { errorMsg = e.message?.take(60) ?: "超时" }
-
-                        // ★★ 记录测速历史到数据库（用于趋势图）★★
-                        if (ttft != 0L || tps != 0.0) {
-                            val modelName = model.customAlias.ifBlank { model.displayName }
-                            recordSpeedHistory(model.routeKey, modelName, model.providerId,
-                                SpeedMetrics(ttftMs = ttft, tps = tps, totalMs = latency, tokenCount = tokens, measuredAt = System.currentTimeMillis()))
-                        }
-
-                        // ★★ 用完返回再发探针检测模型能力（异步，不影响排序）★★
-                                if (success) {
-                                    try {
-                                        ModelCapabilityManager.probeModel(
-                                            model.modelId,
-                                            provider.resolvedBaseUrl,
-                                            provider.apiKey,
-                                            provider.chatPath
-                                        )
-                                    } catch (_: Exception) {}
-                                }
-
-                                val rl = _pipelineStatus.value.toMutableList()
-                        rl[realIdx] = rl[realIdx].copy(
-                            status = if (success) PipelineStatusMark.OK + "TTFT=${ttft}ms TPS=${"%.0f".format(tps)} ${latency}ms" else PipelineStatusMark.FAIL + errorMsg,
-                            latencyMs = if (success) latency else Long.MAX_VALUE, isCurrent = false
-                        )
-                        _pipelineStatus.value = rl
-                    }
-
-                    val sorted = _pipelineStatus.value.sortedBy { it.latencyMs }
-                    _pipelineStatus.value = sorted
-                    com.qtwl.gateway.gateway.GatewayScheduler.pipelineSortedModelKeys = sorted.map { it.selectionKey }
-                    // ★ 保存测速结果缓存
-                    savePipelineCache(sorted)
-                    firstRound = false
-                    // ★★ 测速完成一轮 → 关闭运行状态，开启倒计时 ★★
-                    _pipelineRunning.value = false
-                    val intervalMinutes = GatewayForegroundService.getPipelineInterval()
-                    val totalSeconds = (intervalMinutes * 60).coerceAtLeast(10) // 最少10秒
-                    _pipelineCountdown.value = totalSeconds
-                    // ★★ 倒计时循环，每秒更新一次，归零自动重启测速 ★★
-                    // ★ 修复：使用独立try-catch保护倒计时，防止异常中断循环 ★
-                    try {
-                        while (_pipelineCountdown.value > 0) {
-                            kotlinx.coroutines.delay(1000)
-                            _pipelineCountdown.value--
-                        }
-                    } catch (_: Exception) {
-                        // 倒计时被取消，不重启测速
-                        _pipelineCountdown.value = 0
-                        refreshQtaiSjStatus()
-                        return@launch
-                    }
-                    _pipelineCountdown.value = 0
-                    _pipelineRunning.value = true
-                }
-            } catch (_: Exception) {
-                // 外层异常：测速异常中断，仍尝试重启
-                _pipelineRunning.value = false
-                _pipelineCountdown.value = 0
-                refreshQtaiSjStatus()
-                // 异常后延迟10秒自动重启
-                kotlinx.coroutines.delay(10000)
-                if (!_pipelineRunning.value) {
-                    _pipelineRunning.value = true
-                }
-            }
-            if (_pipelineRunning.value) {
-                // 正常循环继续
-            } else {
-                _pipelineRunning.value = false
-                _pipelineCountdown.value = 0
-                refreshQtaiSjStatus()
-            }
-        }
+        // ★★ v3.18.37：后台测速引擎统一管理循环（服务常驻期间 UI 关闭也持续跑）★★
+        if (_pipelineRunning.value && com.qtwl.gateway.service.PipelineSpeedRunner.isRunning()) return
+        com.qtwl.gateway.service.PipelineSpeedRunner.start(database)
     }
-
     fun stopPipelineTest() {
+        // ★★ v3.18.37：委托后台测速引擎停止 ★★
+        com.qtwl.gateway.service.PipelineSpeedRunner.stop()
         _pipelineRunning.value = false
         _pipelineCountdown.value = 0
-        pipelineJob?.cancel()
         refreshQtaiSjStatus()
     }
-
     /**  刷新 qtai-sj 虚拟模型状态（基于测速排行） */
     private fun refreshQtaiSjStatus() {
         val sorted = com.qtwl.gateway.gateway.GatewayScheduler.pipelineSortedModelKeys

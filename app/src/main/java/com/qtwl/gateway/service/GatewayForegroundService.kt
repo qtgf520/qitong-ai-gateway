@@ -110,6 +110,7 @@ class GatewayForegroundService : Service() {
         // ★★ 处理退出按钮 ★★
         if (intent?.hasExtra("stop_service") == true) {
             gatewayService.stop()
+            PipelineSpeedRunner.stop()  // ★ v3.18.37：停止后台测速引擎
             isServiceRunning = false
             saveGatewayRunningState(false)
             stopForeground(STOP_FOREGROUND_REMOVE)
@@ -129,6 +130,15 @@ class GatewayForegroundService : Service() {
             if (getGatewayWasRunning()) {
                 gatewayService.start(port = port)
                 addDebugLog(" 自启网关已启动（上次运行中）")
+                // ★★ v3.18.37：网关服务启动后自动开始后台流水线测速（服务常驻期间持续循环，UI 关闭不影响）★★
+                try {
+                    if (getAutoFailover()) {
+                        addDebugLog(" 后台测速引擎启动（自动故障转移开启）")
+                        PipelineSpeedRunner.start((application as GatewayApplication).database)
+                    }
+                } catch (e: Exception) {
+                    addDebugLog(" 后台测速引擎启动失败: ${e.message}")
+                }
             } else {
                 addDebugLog(" 自启网关未启动（上次已关闭）")
             }
@@ -273,6 +283,7 @@ class GatewayForegroundService : Service() {
     override fun onDestroy() {
         notificationJob?.cancel()
         alarmKeepAliveJob?.cancel()
+        PipelineSpeedRunner.stop()  // ★ v3.18.37：服务销毁同步停止后台测速
         releaseWakeLock()
         cancelAlarmKeepAlive()
         gatewayService.stop()

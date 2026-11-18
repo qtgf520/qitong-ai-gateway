@@ -13,8 +13,8 @@ android {
         applicationId = "com.qtwl.gateway"
         minSdk = 24
         targetSdk = 36
-versionCode = 225
-        versionName = "3.18.36"
+versionCode = 226
+        versionName = "3.18.37"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // 只保留 arm64：llama.cpp 等 .so 需要
         ndk {
@@ -31,12 +31,12 @@ versionCode = 225
         create("formal") {
             dimension = "track"
             applicationId = "com.qtwl.gateway"
-            versionName = "3.18.36"
+            versionName = "3.18.37"
         }
         create("cs") {
             dimension = "track"
             applicationId = "com.qtwl.gateway.cs"
-            versionName = "3.18.36-22"
+            versionName = "3.18.37-23"
         }
     }
 
@@ -80,6 +80,9 @@ versionCode = 225
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // ★★★ 安卓 7/API 24+ 兼容：java.time/stream 等 Java 8+ API 自动脱糖，
+        //     否则老系统运行到这些 API 直接 NoSuchMethodError 崩 ★★★
+        isCoreLibraryDesugaringEnabled = true
     }
     buildFeatures {
         compose = true
@@ -148,6 +151,8 @@ dependencies {
 
     // WorkManager (定时备份)
     implementation("androidx.work:work-runtime-ktx:2.9.1")
+    // ★★★ Core Library Desugaring 运行时（配合 isCoreLibraryDesugaringEnabled）★★★
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
 
     // Shizuku（本地模型保活 + 后台命令）
     implementation(libs.shizuku.api)

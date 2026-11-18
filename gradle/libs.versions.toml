@@ -2,6 +2,7 @@
 agp = "9.0.0"
 kotlin = "2.3.10"
 coreKtx = "1.10.1"
+desugarJdkLibs = "2.1.4"
 junit = "4.13.2"
 junitVersion = "1.1.5"
 espressoCore = "3.5.1"
@@ -60,6 +61,9 @@ kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-
 
 # Coroutines
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
+
+# Core Library Desugaring（安卓 7/API 24 兼容 java.time/stream 等）
+desugar-jdk-libs = { group = "com.android.tools", name = "desugar_jdk_libs", version.ref = "desugarJdkLibs" }
 
 # Shizuku（本地模型守护/保活用）
 shizuku-api = { group = "dev.rikka.shizuku", name = "api", version.ref = "shizuku" }
