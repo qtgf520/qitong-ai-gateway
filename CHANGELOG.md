@@ -1,7 +1,28 @@
 # 綦桐AI网关 完整更新日志
 > 包名：com.qtwl.gateway
 > 签名证书：qitong.jks (别名: qitong)
-> 最后更新：2026-11-15
+> 最后更新：2026-11-18
+---
+## 🔄 v3.18.37（正式发布）
+
+### 🔧 后台测速引擎重构（修复「打开 APP 才测速」根因）
+- **根因**：测速循环挂在 GatewayViewModel.viewModelScope 上，ViewModel 生命周期 = APP 前台界面，界面不在协程即被取消 → 只有打开 APP 才测速
+- **方案**：新增 `PipelineSpeedRunner` 独立后台测速引擎（自带协程作用域，挂常驻前台服务 GatewayForegroundService 管理）
+  - 测速循环从 ViewModel 迁至引擎，UI 关闭后仍按配置间隔（5分钟~4小时）持续后台循环
+  - ViewModel 的 start/stopPipelineTest 改为委托引擎，UI 状态 StateFlow 零改动
+  - 服务启动自动开测速（自动故障转移开启时）、服务停止/销毁同步停引擎
+- 状态仍写回包级 StateFlow，首页排行榜/进度/倒计时/qtai-sj 状态全部照常显示
+
+### 🛡️ 安卓 7~最新 闪退加固
+- **开启 Core Library Desugaring**（desugar_jdk_libs 2.1.4）：java.time/stream 等 Java 8+ API 在 Android 7/API 24-25 上自动脱糖，修复老系统 NoSuchMethodError 崩溃
+
+### ✅ 双轨版本
+- 正式版：`3.18.37`（包名 com.qtwl.gateway）
+- 测试版：`3.18.37-23`（包名 com.qtwl.gateway.cs）
+- versionCode=226，qitong.jks 签名
+### ✅ 验证
+- 双轨编译 BUILD SUCCESSFUL（assembleFormalDebug + assembleCsDebug）
+
 ---
 ## 🔄 v3.18.36（正式发布）
 

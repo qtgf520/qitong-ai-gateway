@@ -9,7 +9,7 @@
 > Recommended: Uninstall old version OR clear app data → Install new version → Import backup.
 
 > **包名 / Package：** `com.qtwl.gateway`  
-> **最新版本 / Latest：** v3.18.36 (versionCode=225)  
+> **最新版本 / Latest：** v3.18.37 (versionCode=226)  
 > **开源协议 / License：** Apache 2.0  
 > **语言 / Languages：** 🌐 15 languages (CN/EN/JP/KR/FR/DE/ES/RU/PT/VN/TH/AR/HI/ID)
 > **官方QQ群 / QQ Group：** [1007488535](https://qm.qq.com/q/1007488535) 💬
@@ -179,6 +179,7 @@ See [CHANGELOG.md](CHANGELOG.md) for full changelog.
 
 | Version | Key Features |
 |:--------|:-------------|
+| **v3.18.37** | 🔧 **后台测速引擎重构 + 安卓7~最新闪退加固** — 修复「打开 APP 才测速」根因：测速循环从 ViewModel 迁至常驻前台服务（新增 PipelineSpeedRunner 独立引擎），UI 关闭后仍按配置间隔（5分钟~4小时）持续后台循环，首页排行榜/进度/倒计时零改动照常显示；开启 Core Library Desugaring（java.time/stream 兼容 Android 7/API 24-25，修复老系统 NoSuchMethodError 崩溃）。双轨 v3.18.37 / v3.18.37-23（vC=226） |
 | **v3.18.36** | 🔧 **崩溃修复 + Toast 置顶 + Android 版本适配** — 修复 ForegroundServiceDidNotStartInTimeException 崩溃（Android 15 前台服务 5 秒超时，startForeground 失败不再误标 initialized + ContextCompat 启动兜底）；Toast 不再被底部玻璃导航盖住（置顶显示）；createNotificationChannel 加 API 26+ 保护适配 Android 6~最新。双轨 v3.18.36 / v3.18.36-22（vC=225） |
 | **v3.18.35** | 🟢 **恢复通知栏绿灯 + 上传下载流量指示** — 全量迁移时被覆盖的 🟢绿灯/⚪灰点状态灯、↑上传↓下载箭头、📊当前会话/📈总统计全部找回。双轨 v3.18.35 / v3.18.35-21（vC=224） |
 | **v3.18.34** | 🛠️ **批量修复 + Shizuku 保活 + 唤醒开关** — 服务商/模型列表底部留白可拉到底、聊天输入框键盘跟随上移、关于页加「开发UI设计师: 江」、\n乱码修正、Shizuku 永久挂载恢复（全量迁移覆盖丢失已融合回）、新增「唤醒保活」开关（前台服务+唤醒锁+5分钟自唤醒+白名单）。双轨 v3.18.34 / v3.18.34-20（vC=223） |
